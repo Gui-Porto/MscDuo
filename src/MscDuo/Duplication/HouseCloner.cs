@@ -52,11 +52,17 @@ namespace MscDuo.Duplication
 
             Strip(Clone, stats);
             FixStaticBatching(Original, Clone, stats);
-            KeptSystems.Prepare(Clone);
+            Step("sistemas", () => KeptSystems.Prepare(Clone));
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2 criada em {Format(Position)} yaw {Yaw:0.#} em {clock.ElapsedMilliseconds} ms. {stats}");
-            TreeClearer.Apply(Clone);
-            TerrainFlattener.Apply(Clone);
+            Step("árvores", () => TreeClearer.Apply(Clone));
+            Step("terreno", () => TerrainFlattener.Apply(Clone));
+        }
+
+        static void Step(string name, System.Action action)
+        {
+            try { action(); }
+            catch (Exception e) { ModConsole.Error($"[MSC Duo] casa 2, etapa '{name}' falhou: {e}"); }
         }
 
         internal static void Move(Vector3 position, float yaw)
@@ -67,8 +73,8 @@ namespace MscDuo.Duplication
             if (Clone == null) return;
             Clone.transform.position = position;
             Clone.transform.rotation = RotationFor(yaw);
-            TreeClearer.Apply(Clone);
-            TerrainFlattener.Apply(Clone);
+            Step("árvores", () => TreeClearer.Apply(Clone));
+            Step("terreno", () => TerrainFlattener.Apply(Clone));
         }
 
         internal static bool FaceTowards(Vector3 target)

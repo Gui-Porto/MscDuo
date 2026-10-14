@@ -30,8 +30,16 @@ namespace MscDuo.Duplication
             foreach (var fsm in clone.GetComponentsInChildren<PlayMakerFSM>(true))
             {
                 if (!Keeps(fsm.transform)) continue;
-                tags += PrefixSaveTags(fsm);
-                redirected += RedirectConsumption(fsm, meter);
+                try
+                {
+                    if (!fsm.Fsm.Initialized) fsm.Fsm.InitData();
+                    tags += PrefixSaveTags(fsm);
+                    redirected += RedirectConsumption(fsm, meter);
+                }
+                catch (System.Exception e)
+                {
+                    ModConsole.Warning($"[MSC Duo] casa 2: não foi possível preparar '{fsm.gameObject.name}/{fsm.FsmName}': {e.Message}");
+                }
             }
 
             foreach (var light in clone.GetComponentsInChildren<Light>(true))
