@@ -134,7 +134,7 @@ namespace MscDuo.Tools
     internal class TeleportCommand : ConsoleCommand
     {
         public override string Name => "duo_tp";
-        public override string Help => "duo_tp [1 | 2 | x y z]  teleporta para a casa 1, casa 2 ou coordenada";
+        public override string Help => "duo_tp [1 | 2 | car2 | x y z]  teleporta para a casa 1, casa 2, Satsuma 2 ou coordenada";
 
         public override void Run(string[] args)
         {
@@ -144,6 +144,8 @@ namespace MscDuo.Tools
             Vector3 target;
             if (args.Length == 1 && args[0] == "1" && HouseCloner.Original != null)
                 target = HouseCloner.Original.transform.position;
+            else if (args.Length == 1 && args[0] == "car2" && SatsumaCloner.Clone != null)
+                target = SatsumaCloner.Clone.transform.position + SatsumaCloner.Clone.transform.right * 2.5f;
             else if (args.Length == 1 && args[0] == "2" && HouseCloner.Clone != null)
                 target = HouseCloner.Clone.transform.position;
             else if (args.Length == 3
