@@ -274,9 +274,12 @@ namespace MscDuo.Duplication
             foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
             {
                 if (behaviour == null || behaviour.GetType().Name != "ES2Auto") continue;
-                var field = behaviour.GetType().GetField("saveFile");
+                var type = behaviour.GetType();
+                var field = type.GetField("saveFile");
                 if (field == null) continue;
                 field.SetValue(behaviour, SaveFile);
+                var init = type.GetMethod("InitializeSettings", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (init != null) init.Invoke(behaviour, null);
                 count++;
             }
             return count;
