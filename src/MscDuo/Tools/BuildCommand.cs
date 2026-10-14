@@ -16,6 +16,7 @@ namespace MscDuo.Tools
         const int TightenSteps = 10;
         const int MaxPasses = 12;
         const float AssembleTimeout = 6f;
+        const int HeldLayer = 16;
 
         static bool running;
 
@@ -131,6 +132,8 @@ namespace MscDuo.Tools
             var parent = part.transform.parent;
             var position = part.transform.position;
             var rotation = part.transform.rotation;
+            var layer = part.layer;
+            part.layer = HeldLayer;
             part.transform.parent = hand;
             part.transform.position = fsm.transform.position;
 
@@ -143,6 +146,7 @@ namespace MscDuo.Tools
             while (part != null && part.transform.parent == hand && Time.time < timeout) yield return null;
 
             var ok = part == null || part.transform.parent != hand;
+            if (part != null && part.layer == HeldLayer) part.layer = layer;
             if (!ok)
             {
                 part.transform.parent = parent;
