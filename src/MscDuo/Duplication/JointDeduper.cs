@@ -38,7 +38,11 @@ namespace MscDuo.Duplication
         static int Keep<T>(GameObject go) where T : Joint
         {
             var joints = go.GetComponents<T>();
-            for (int i = 0; i < joints.Length - 1; i++) Destroy(joints[i]);
+            for (int i = 0; i < joints.Length - 1; i++)
+            {
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: trava {typeof(T).Name} duplicada removida de '{go.name}'.");
+                Destroy(joints[i]);
+            }
             return Mathf.Max(0, joints.Length - 1);
         }
     }

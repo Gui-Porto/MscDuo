@@ -25,6 +25,9 @@ namespace MscDuo.Duplication
         internal static GameObject Parts { get; private set; }
         internal static GameObject Database { get; private set; }
         internal static Dictionary<string, NamedVariable> Variables { get; private set; }
+        internal static Dictionary<Object, Object> Map { get; private set; }
+        internal static GameObject Original { get; private set; }
+        internal static GameObject OriginalDatabase { get; private set; }
 
         internal static void Spawn(GameObject house1, GameObject house2)
         {
@@ -39,7 +42,9 @@ namespace MscDuo.Duplication
 
             var move = house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix;
             var turn = house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation);
-            var map = new Dictionary<Object, Object>();
+            var map = Map = new Dictionary<Object, Object>();
+            Original = car1;
+            OriginalDatabase = db1;
 
             Clone = CloneRoot(car1, "SATSUMA_P2", move, turn, map);
             foreach (var joint in Clone.GetComponents<FixedJoint>()) Object.DestroyImmediate(joint);
@@ -82,6 +87,7 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
             Clone.AddComponent<JointDeduper>().Roots = new[] { Clone, Parts };
+            Clone.AddComponent<LateItems>();
         }
 
         static float SnapToGround()
@@ -133,7 +139,7 @@ namespace MscDuo.Duplication
             return copy;
         }
 
-        static void MapHierarchy(Transform a, Transform b, Dictionary<Object, Object> map)
+        internal static void MapHierarchy(Transform a, Transform b, Dictionary<Object, Object> map)
         {
             map[a.gameObject] = b.gameObject;
             var ca = a.GetComponents<Component>();
@@ -164,7 +170,7 @@ namespace MscDuo.Duplication
             return locals;
         }
 
-        static int Remap(PlayMakerFSM fsm, Dictionary<Object, Object> map)
+        internal static int Remap(PlayMakerFSM fsm, Dictionary<Object, Object> map)
         {
             var count = 0;
             foreach (var v in fsm.FsmVariables.GameObjectVariables) count += Swap(v, map);
