@@ -73,7 +73,7 @@ namespace MscDuo.Duplication
                 saves += RedirectAutoSaves(root);
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {stripped} sistemas do carro desligados, altura ajustada em {lift:0.00} m.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {stripped} sistemas do carro desligados, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
         }
 
         static float SnapToGround()
@@ -97,17 +97,19 @@ namespace MscDuo.Duplication
             return shift;
         }
 
+        static string lowest = "";
+
         static bool TryBottom(GameObject car, out float bottom, out Bounds footprint)
         {
             bottom = float.MaxValue;
             footprint = new Bounds();
             var found = false;
-            foreach (var collider in car.GetComponentsInChildren<Collider>())
+            foreach (var renderer in car.GetComponentsInChildren<Renderer>())
             {
-                if (collider.isTrigger || !collider.enabled) continue;
-                var b = collider.bounds;
+                if (!renderer.enabled || !(renderer is MeshRenderer || renderer is SkinnedMeshRenderer)) continue;
+                var b = renderer.bounds;
                 if (!found) footprint = b; else footprint.Encapsulate(b);
-                if (b.min.y < bottom) bottom = b.min.y;
+                if (b.min.y < bottom) { bottom = b.min.y; lowest = renderer.name; }
                 found = true;
             }
             return found;

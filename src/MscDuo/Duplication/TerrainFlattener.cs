@@ -46,11 +46,9 @@ namespace MscDuo.Duplication
                 var toWorld = go.transform.localToWorldMatrix;
                 var toMesh = go.transform.worldToLocalMatrix;
                 var changed = false;
-                var worlds = new Vector3[vertices.Length];
                 for (int i = 0; i < vertices.Length; i++)
                 {
                     var world = toWorld.MultiplyPoint3x4(vertices[i]);
-                    worlds[i] = world;
                     var h = toHouse.MultiplyPoint3x4(world);
                     var dx = Mathf.Max(0f, Mathf.Max(local.min.x - h.x, h.x - local.max.x));
                     var dz = Mathf.Max(0f, Mathf.Max(local.min.z - h.z, h.z - local.max.z));
@@ -70,28 +68,19 @@ namespace MscDuo.Duplication
                     var y = Mathf.Lerp(world.y, groundY, t);
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
                     world.y = y;
-                    worlds[i] = world;
                     vertices[i] = toMesh.MultiplyPoint3x4(world);
                     moved++;
                     if (distance <= FlatMargin) flat++;
                     changed = true;
                 }
+                var cutter = new PitCutter(source, vertices, toWorld, pit, PitStep * 0.6f, p => HouseFloor(house, p.x, p.z, top));
                 var triangles = new int[source.subMeshCount][];
-                for (int s = 0; s < triangles.Length; s++)
-                {
-                    var before = source.GetTriangles(s);
-                    triangles[s] = CutPit(before, worlds, pit, house, top, ref uncut);
-                    cut += (before.Length - triangles[s].Length) / 3;
-                    if (triangles[s].Length != before.Length) changed = true;
-                }
-                if (!changed) continue;
+                for (int s = 0; s < triangles.Length; s++) triangles[s] = cutter.Process(source.GetTriangles(s));
+                cut += cutter.Cut;
+                uncut += cutter.Kept;
+                if (!changed && !cutter.Changed) continue;
 
-                var mesh = Object.Instantiate(source);
-                mesh.name = source.name + "_flat";
-                mesh.vertices = vertices;
-                for (int s = 0; s < triangles.Length; s++) mesh.SetTriangles(triangles[s], s);
-                mesh.RecalculateNormals();
-                mesh.RecalculateBounds();
+                var mesh = cutter.Build(source.name + "_flat", triangles);
                 originalMeshes[filter] = source;
                 filter.sharedMesh = mesh;
 
@@ -105,7 +94,7 @@ namespace MscDuo.Duplication
                 meshes++;
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} triângulos abertos ({uncut} na borda mantidos).");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} pedaços abertos ({uncut} mantidos).");
         }
 
         static void Restore()
@@ -205,6 +194,12 @@ namespace MscDuo.Duplication
             return cells;
         }
 
+        static bool HouseFloor(GameObject house, float x, float z, float top)
+        {
+            float y;
+            return HouseFloor(house, x, z, top, out y);
+        }
+
         static bool HouseFloor(GameObject house, float x, float z, float top, out float y)
         {
             y = float.MinValue;
@@ -215,44 +210,6 @@ namespace MscDuo.Duplication
             }
             return y > float.MinValue;
         }
-
-        static int[] CutPit(int[] triangles, Vector3[] worlds, List<Vector2> pit, GameObject house, float top, ref int uncut)
-        {
-            if (pit.Count == 0) return triangles;
-            var kept = new List<int>(triangles.Length);
-            for (int i = 0; i < triangles.Length; i += 3)
-            {
-                var a = worlds[triangles[i]];
-                var b = worlds[triangles[i + 1]];
-                var c = worlds[triangles[i + 2]];
-                if (OverPit(a, b, c, pit))
-                {
-                    float y;
-                    if (HouseFloor(house, a.x, a.z, top, out y) && HouseFloor(house, b.x, b.z, top, out y) && HouseFloor(house, c.x, c.z, top, out y)) continue;
-                    uncut++;
-                }
-                kept.Add(triangles[i]);
-                kept.Add(triangles[i + 1]);
-                kept.Add(triangles[i + 2]);
-            }
-            return kept.ToArray();
-        }
-
-        static bool OverPit(Vector3 a, Vector3 b, Vector3 c, List<Vector2> pit)
-        {
-            foreach (var p in pit)
-            {
-                var d1 = Side(p, a, b);
-                var d2 = Side(p, b, c);
-                var d3 = Side(p, c, a);
-                var negative = d1 < 0f || d2 < 0f || d3 < 0f;
-                var positive = d1 > 0f || d2 > 0f || d3 > 0f;
-                if (!(negative && positive)) return true;
-            }
-            return false;
-        }
-
-        static float Side(Vector2 p, Vector3 a, Vector3 b) => (p.x - b.x) * (a.z - b.z) - (a.x - b.x) * (p.y - b.z);
 
         static float Smooth(float x) => x * x * (3f - 2f * x);
     }
