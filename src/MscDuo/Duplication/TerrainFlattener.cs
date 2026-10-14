@@ -57,9 +57,9 @@ namespace MscDuo.Duplication
                     if (distance > 0f)
                     {
                         var road = RoadDistance(world);
-                        if (road < RoadRamp)
+                        if (road < RoadKeep + RoadRamp)
                         {
-                            t *= Smooth(road / RoadRamp);
+                            t *= Smooth(Mathf.Clamp01((road - RoadKeep) / RoadRamp));
                             nearRoad++;
                         }
                     }
@@ -109,6 +109,7 @@ namespace MscDuo.Duplication
 
         static readonly string[] StructurePrefixes = { "house_wall", "house_base", "house_floor" };
         static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
+        const float RoadKeep = 2f;
         const float RoadRamp = 8f;
         const float RoadStep = 1f;
 
@@ -155,14 +156,14 @@ namespace MscDuo.Duplication
         static float RoadDistance(Vector3 world)
         {
             if (OnRoad(world.x, world.z, world.y)) return 0f;
-            for (var radius = RoadStep; radius <= RoadRamp; radius += RoadStep)
+            for (var radius = RoadStep; radius <= RoadKeep + RoadRamp; radius += RoadStep)
                 for (int k = 0; k < 8; k++)
                 {
                     var angle = k * Mathf.PI / 4f;
                     if (OnRoad(world.x + Mathf.Cos(angle) * radius, world.z + Mathf.Sin(angle) * radius, world.y))
                         return radius;
                 }
-            return RoadRamp;
+            return RoadKeep + RoadRamp;
         }
 
         static bool OnRoad(float x, float z, float y)
