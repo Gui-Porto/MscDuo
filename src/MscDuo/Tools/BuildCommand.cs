@@ -91,6 +91,7 @@ namespace MscDuo.Tools
                     yield return new WaitForSeconds(0.1f);
                 }
                 yield return new WaitForSeconds(0.5f);
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> rodada {pass + 1}: {installed - before} de {jobs.Count} peças montadas.");
                 if (installed == before) break;
             }
 
@@ -140,10 +141,15 @@ namespace MscDuo.Tools
             fsm.SendEvent(TriggerEnter);
             yield return null;
             yield return null;
-            if (HasTransition(fsm, Assemble)) fsm.SendEvent(Assemble);
+            var accepted = fsm != null && HasTransition(fsm, Assemble);
+            if (accepted) fsm.SendEvent(Assemble);
 
-            var timeout = Time.time + AssembleTimeout;
-            while (part != null && part.transform.parent == hand && Time.time < timeout) yield return null;
+            var start = Time.time;
+            while (accepted && part != null && part.transform.parent == hand && Time.time < start + AssembleTimeout)
+            {
+                if (Time.time > start + 0.5f && fsm != null && Waiting(fsm)) break;
+                yield return null;
+            }
 
             var ok = part == null || part.transform.parent != hand;
             if (part != null && part.layer == HeldLayer) part.layer = layer;
