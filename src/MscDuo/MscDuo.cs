@@ -1,4 +1,5 @@
 using MSCLoader;
+using MscDuo.Duplication;
 using MscDuo.Tools;
 using UnityEngine;
 
@@ -22,6 +23,7 @@ namespace MscDuo
             Instance = this;
             SetupFunction(Setup.ModSettings, ModSettings);
             SetupFunction(Setup.OnLoad, OnGameLoad);
+            SetupFunction(Setup.PostLoad, OnPostLoad);
             SetupFunction(Setup.Update, OnUpdate);
         }
 
@@ -32,8 +34,13 @@ namespace MscDuo
 
         void OnGameLoad()
         {
-            DumpCommand.Register();
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> carregado. F8 ou 'duo_dump' exporta a cena.");
+            DevCommands.Register();
+            ModConsole.Print("<color=orange>[MSC Duo]</color> carregado. Comandos: duo_dump, duo_map, duo_house, duo_tp.");
+        }
+
+        void OnPostLoad()
+        {
+            HouseCloner.Spawn();
         }
 
         void OnUpdate()

@@ -4,17 +4,8 @@ namespace MscDuo.Tools
 {
     internal class DumpCommand : ConsoleCommand
     {
-        static bool registered;
-
         public override string Name => "duo_dump";
         public override string Help => "duo_dump [roots | globals | <nome do objeto raiz>]";
-
-        internal static void Register()
-        {
-            if (registered) return;
-            registered = true;
-            ConsoleCommand.Add(new DumpCommand());
-        }
 
         public override void Run(string[] args)
         {

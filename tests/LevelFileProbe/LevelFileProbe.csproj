@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GameDir Condition="'$(GameDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\My Summer Car</GameDir>
+    <ManagedDir>$(GameDir)\mysummercar_Data\Managed</ManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\MscDuo\Duplication\LevelFile.cs" Link="LevelFile.cs" />
+    <Compile Include="..\..\src\MscDuo\Duplication\StaticBatchExtractor.cs" Link="StaticBatchExtractor.cs" />
+    <Reference Include="UnityEngine"><HintPath>$(ManagedDir)\UnityEngine.dll</HintPath></Reference>
+    <Reference Include="MSCLoader"><HintPath>$(ManagedDir)\MSCLoader.dll</HintPath></Reference>
+  </ItemGroup>
+
+</Project>
