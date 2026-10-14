@@ -36,7 +36,7 @@ namespace MscDuo.Sync
             label = tag.AddComponent<TextMesh>();
             label.text = name;
             label.anchor = TextAnchor.MiddleCenter;
-            label.characterSize = 0.05f;
+            label.characterSize = 0.018f;
             label.fontSize = 48;
             label.color = Color.white;
             var font = Resources.GetBuiltinResource<Font>("Arial.ttf");
