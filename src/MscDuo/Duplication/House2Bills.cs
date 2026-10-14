@@ -79,6 +79,9 @@ namespace MscDuo.Duplication
         static GameObject CloneMailbox(GameObject house, GameObject mailbox)
         {
             var spot = MailboxSpot(house);
+            var mailboxMesh = GameObject.Find(MailBoxMeshPath);
+            float clearance;
+            if (Ground.TryClearance(mailbox.transform, Ground.ProbeHeight, out clearance, mailbox, mailboxMesh)) spot.y += clearance;
             var root = house.transform.parent;
             var mailbox2 = Object.Instantiate(mailbox);
             mailbox2.name = "PlayerMailBox_P2";
@@ -87,7 +90,6 @@ namespace MscDuo.Duplication
             var original = HouseCloner.Original != null ? HouseCloner.Original.transform.rotation : Quaternion.identity;
             mailbox2.transform.rotation = house.transform.rotation * Quaternion.Inverse(original) * mailbox.transform.rotation;
 
-            var mailboxMesh = GameObject.Find(MailBoxMeshPath);
             if (mailboxMesh != null)
             {
                 var mesh2 = Object.Instantiate(mailboxMesh);
@@ -110,8 +112,8 @@ namespace MscDuo.Duplication
             front.y = 0f;
             front.Normalize();
             var spot = (door != null ? door.position : center) + front * MailBoxDistance;
-            RaycastHit hit;
-            if (Physics.Raycast(spot + Vector3.up * 20f, Vector3.down, out hit, 50f)) spot.y = hit.point.y;
+            float ground;
+            if (Ground.TryHeight(spot, 3f, out ground)) spot.y = ground;
             return spot;
         }
 

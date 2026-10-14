@@ -46,6 +46,7 @@ namespace MscDuo.Duplication
                 copy.transform.parent = Database.transform;
             }
 
+            var lift = SnapToGround(car1, parts1);
             var stripped = StripCarSystems(Clone);
             var carRef = new FsmGameObject("MscDuoTheCar") { Value = Clone };
             int fsms = 0, remapped = 0, saves = 0, failed = 0;
@@ -71,7 +72,17 @@ namespace MscDuo.Duplication
                 saves += RedirectAutoSaves(root);
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {stripped} sistemas do carro desligados.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {stripped} sistemas do carro desligados, altura ajustada em {lift:0.00} m.");
+        }
+
+        static float SnapToGround(GameObject car1, GameObject parts1)
+        {
+            float clearance, ground;
+            if (!Ground.TryClearance(car1.transform, Ground.ProbeHeight, out clearance, car1, parts1)) return 0f;
+            if (!Ground.TryHeight(Clone.transform.position, Ground.ProbeHeight, out ground, Clone, Parts)) return 0f;
+            var shift = ground + clearance - Clone.transform.position.y;
+            Clone.transform.position += Vector3.up * shift;
+            return shift;
         }
 
         static GameObject CloneRoot(GameObject original, string name, Matrix4x4 move, Quaternion turn, Dictionary<Object, Object> map)
