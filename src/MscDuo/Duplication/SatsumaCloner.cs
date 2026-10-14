@@ -42,6 +42,7 @@ namespace MscDuo.Duplication
             var map = new Dictionary<Object, Object>();
 
             Clone = CloneRoot(car1, "SATSUMA_P2", move, turn, map);
+            foreach (var joint in Clone.GetComponents<FixedJoint>()) Object.DestroyImmediate(joint);
             Parts = CloneRoot(parts1, "CARPARTS_P2", move, turn, map);
             Database = new GameObject("Database_P2");
             foreach (var name in DatabaseParts)
