@@ -11,6 +11,7 @@ namespace MscDuo.Duplication
     {
         internal const string SaveFile = "MscDuo_P2.txt";
         const string GameSaveFile = "defaultES2File.txt";
+        const float GroundProbe = 0.5f;
         const string CarName = "SATSUMA(557kg, 248)";
 
         static readonly string[] DatabaseParts = { "DatabaseBody", "DatabaseMechanics", "DatabaseMotor", "DatabaseWiring", "PartsStatus" };
@@ -46,7 +47,7 @@ namespace MscDuo.Duplication
                 copy.transform.parent = Database.transform;
             }
 
-            var lift = SnapToGround(car1, parts1);
+            var lift = SnapToGround();
             var stripped = StripCarSystems(Clone);
             var carRef = new FsmGameObject("MscDuoTheCar") { Value = Clone };
             int fsms = 0, remapped = 0, saves = 0, failed = 0;
@@ -75,14 +76,41 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {stripped} sistemas do carro desligados, altura ajustada em {lift:0.00} m.");
         }
 
-        static float SnapToGround(GameObject car1, GameObject parts1)
+        static float SnapToGround()
         {
-            float clearance, ground;
-            if (!Ground.TryClearance(car1.transform, Ground.ProbeHeight, out clearance, car1, parts1)) return 0f;
-            if (!Ground.TryHeight(Clone.transform.position, Ground.ProbeHeight, out ground, Clone, Parts)) return 0f;
-            var shift = ground + clearance - Clone.transform.position.y;
+            float bottom;
+            Bounds footprint;
+            if (!TryBottom(Clone, out bottom, out footprint)) return 0f;
+            var ground = float.MinValue;
+            for (int i = 0; i < 4; i++)
+            {
+                var corner = new Vector3(
+                    Mathf.Lerp(footprint.min.x, footprint.max.x, (i & 1) == 0 ? 0.25f : 0.75f),
+                    bottom,
+                    Mathf.Lerp(footprint.min.z, footprint.max.z, (i & 2) == 0 ? 0.25f : 0.75f));
+                float y;
+                if (Ground.TryHeight(corner, GroundProbe, out y, Clone, Parts) && y > ground) ground = y;
+            }
+            if (ground == float.MinValue) return 0f;
+            var shift = ground - bottom;
             Clone.transform.position += Vector3.up * shift;
             return shift;
+        }
+
+        static bool TryBottom(GameObject car, out float bottom, out Bounds footprint)
+        {
+            bottom = float.MaxValue;
+            footprint = new Bounds();
+            var found = false;
+            foreach (var collider in car.GetComponentsInChildren<Collider>())
+            {
+                if (collider.isTrigger || !collider.enabled) continue;
+                var b = collider.bounds;
+                if (!found) footprint = b; else footprint.Encapsulate(b);
+                if (b.min.y < bottom) bottom = b.min.y;
+                found = true;
+            }
+            return found;
         }
 
         static GameObject CloneRoot(GameObject original, string name, Matrix4x4 move, Quaternion turn, Dictionary<Object, Object> map)

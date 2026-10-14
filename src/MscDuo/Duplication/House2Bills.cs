@@ -9,7 +9,6 @@ namespace MscDuo.Duplication
     internal static class House2Bills
     {
         const string MailBoxPath = "YARD/PlayerMailBox";
-        const string MailBoxMeshPath = "YARD/MailBox";
         const float MailBoxDistance = 9f;
 
         internal static readonly BillKind Electricity = new BillKind("Systems/ElectricityBills", "EnvelopeElectricityBill", "Sheets/ElectricityBill", "Electricity", "luz");
@@ -79,9 +78,8 @@ namespace MscDuo.Duplication
         static GameObject CloneMailbox(GameObject house, GameObject mailbox)
         {
             var spot = MailboxSpot(house);
-            var mailboxMesh = GameObject.Find(MailBoxMeshPath);
             float clearance;
-            if (Ground.TryClearance(mailbox.transform, Ground.ProbeHeight, out clearance, mailbox, mailboxMesh)) spot.y += clearance;
+            if (Ground.TryClearance(mailbox.transform, Ground.ProbeHeight, out clearance, mailbox)) spot.y += clearance;
             var root = house.transform.parent;
             var mailbox2 = Object.Instantiate(mailbox);
             mailbox2.name = "PlayerMailBox_P2";
@@ -90,14 +88,6 @@ namespace MscDuo.Duplication
             var original = HouseCloner.Original != null ? HouseCloner.Original.transform.rotation : Quaternion.identity;
             mailbox2.transform.rotation = house.transform.rotation * Quaternion.Inverse(original) * mailbox.transform.rotation;
 
-            if (mailboxMesh != null)
-            {
-                var mesh2 = Object.Instantiate(mailboxMesh);
-                mesh2.name = "MailBox_P2";
-                mesh2.transform.parent = root;
-                mesh2.transform.position = mailbox2.transform.TransformPoint(mailbox.transform.InverseTransformPoint(mailboxMesh.transform.position));
-                mesh2.transform.rotation = mailbox2.transform.rotation * Quaternion.Inverse(mailbox.transform.rotation) * mailboxMesh.transform.rotation;
-            }
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: caixa de correio em {HouseCloner.Format(spot)}.");
             return mailbox2;
         }
