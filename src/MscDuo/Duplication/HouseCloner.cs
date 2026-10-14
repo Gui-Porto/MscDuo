@@ -123,6 +123,7 @@ namespace MscDuo.Duplication
                 foreach (var c in clone.GetComponentsInChildren(type, true))
                 {
                     if (c == null) continue;
+                    if (KeptSystems.Keeps(c.transform)) { stats.Kept++; continue; }
                     var textRenderer = c is TextMesh ? c.GetComponent<MeshRenderer>() : null;
                     UnityEngine.Object.DestroyImmediate(c);
                     if (textRenderer != null) UnityEngine.Object.DestroyImmediate(textRenderer);
@@ -132,7 +133,7 @@ namespace MscDuo.Duplication
 
             foreach (var col in clone.GetComponentsInChildren<Collider>(true))
             {
-                if (!col.isTrigger) continue;
+                if (!col.isTrigger || KeptSystems.Keeps(col.transform)) continue;
                 UnityEngine.Object.DestroyImmediate(col);
                 stats.Removed++;
             }
@@ -249,6 +250,7 @@ namespace MscDuo.Duplication
         class CloneStats
         {
             internal int Removed;
+            internal int Kept;
             internal int Batched;
             internal int Extracted;
             internal int FromCollider;
@@ -256,7 +258,7 @@ namespace MscDuo.Duplication
             internal readonly List<string> HiddenNames = new List<string>();
 
             public override string ToString() =>
-                $"{Removed} componentes removidos; static batching: {Batched} malhas combinadas, {Extracted} recuperadas do level2, {FromCollider} pelo collider, {Hidden} ocultas.";
+                $"{Removed} componentes removidos, {Kept} mantidos (sistemas ativos); static batching: {Batched} malhas combinadas, {Extracted} recuperadas do level2, {FromCollider} pelo collider, {Hidden} ocultas.";
         }
     }
 }
