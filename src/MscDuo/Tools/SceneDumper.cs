@@ -14,47 +14,73 @@ namespace MscDuo.Tools
     {
         static readonly string[] DefaultTargets = { "YARD", "SATSUMA(557kg, 248)" };
         const int MaxArrayItems = 12;
+        const double FrameBudgetMs = 8;
 
-        internal static void DumpDefault()
-        {
-            var folder = NewFolder();
-            Write(folder, "roots.txt", BuildRoots());
-            Write(folder, "globals.txt", BuildGlobals());
-            foreach (var target in DefaultTargets)
-                DumpTarget(folder, target);
-            Done(folder);
-        }
+        static DumpRunner runner;
+        static bool busy;
 
-        internal static void DumpRootsOnly()
-        {
-            var folder = NewFolder();
-            Write(folder, "roots.txt", BuildRoots());
-            Done(folder);
-        }
+        class DumpRunner : MonoBehaviour { }
 
-        internal static void DumpGlobalsOnly()
-        {
-            var folder = NewFolder();
-            Write(folder, "globals.txt", BuildGlobals());
-            Done(folder);
-        }
+        internal static void DumpDefault() => Run(DumpJob(true, true, DefaultTargets));
 
-        internal static void DumpTargets(string name)
-        {
-            var folder = NewFolder();
-            DumpTarget(folder, name);
-            Done(folder);
-        }
+        internal static void DumpRootsOnly() => Run(DumpJob(true, false));
 
-        static void DumpTarget(string folder, string name)
+        internal static void DumpGlobalsOnly() => Run(DumpJob(false, true));
+
+        internal static void DumpTargets(string name) => Run(DumpJob(false, false, name));
+
+        static void Run(IEnumerator job)
         {
-            var root = FindRoot(name);
-            if (root == null)
+            if (busy)
             {
-                ModConsole.Warning($"[MSC Duo] objeto raiz '{name}' não encontrado. Use 'duo_dump roots' para ver os nomes.");
+                ModConsole.Warning("[MSC Duo] já existe um dump em andamento.");
                 return;
             }
-            Write(folder, SafeFileName(name) + ".txt", new HierarchyWriter(GlobalNames()).Build(root));
+            if (runner == null)
+                runner = new GameObject("MscDuo_DumpRunner").AddComponent<DumpRunner>();
+            runner.StartCoroutine(Guard(job));
+        }
+
+        static IEnumerator Guard(IEnumerator job)
+        {
+            busy = true;
+            while (true)
+            {
+                bool more;
+                try { more = job.MoveNext(); }
+                catch (Exception e)
+                {
+                    ModConsole.Error($"[MSC Duo] dump falhou: {e}");
+                    break;
+                }
+                if (!more) break;
+                yield return job.Current;
+            }
+            busy = false;
+        }
+
+        static IEnumerator DumpJob(bool roots, bool globals, params string[] targets)
+        {
+            var folder = NewFolder();
+            ModConsole.Print("<color=orange>[MSC Duo]</color> dump iniciado...");
+            if (roots) Write(folder, "roots.txt", BuildRoots());
+            if (globals) Write(folder, "globals.txt", BuildGlobals());
+
+            foreach (var name in targets)
+            {
+                var root = FindRoot(name);
+                if (root == null)
+                {
+                    ModConsole.Warning($"[MSC Duo] objeto raiz '{name}' não encontrado. Use 'duo_dump roots' para ver os nomes.");
+                    continue;
+                }
+                var writer = new HierarchyWriter(GlobalNames());
+                var steps = writer.Build(root);
+                while (steps.MoveNext()) yield return null;
+                Write(folder, SafeFileName(name) + ".txt", writer.Result);
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> {name}: {writer.Summary}");
+            }
+            Done(folder);
         }
 
         static string NewFolder()
@@ -148,15 +174,45 @@ namespace MscDuo.Tools
             readonly List<string> crossFsmRefs = new List<string>();
             int objectCount;
             int fsmCount;
+            int initializedHere;
+
+            internal string Result { get; private set; }
+            internal string Summary =>
+                $"{objectCount} objetos, {fsmCount} FSMs ({initializedHere} inicializadas só para leitura)";
 
             internal HierarchyWriter(HashSet<string> globals)
             {
                 this.globals = globals;
             }
 
-            internal string Build(GameObject root)
+            internal IEnumerator Build(GameObject root)
             {
-                Visit(root.transform, 0, root.name);
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var stack = new Stack<KeyValuePair<Transform, int>>();
+                var paths = new Dictionary<Transform, string> { { root.transform, root.name } };
+                stack.Push(new KeyValuePair<Transform, int>(root.transform, 0));
+
+                while (stack.Count > 0)
+                {
+                    var item = stack.Pop();
+                    var t = item.Key;
+                    var path = paths[t];
+                    Visit(t, item.Value, path);
+
+                    for (int i = t.childCount - 1; i >= 0; i--)
+                    {
+                        var child = t.GetChild(i);
+                        paths[child] = path + "/" + child.name;
+                        stack.Push(new KeyValuePair<Transform, int>(child, item.Value + 1));
+                    }
+
+                    if (clock.Elapsed.TotalMilliseconds > FrameBudgetMs)
+                    {
+                        yield return null;
+                        clock.Reset();
+                        clock.Start();
+                    }
+                }
 
                 var sb = new StringBuilder();
                 sb.AppendLine($"# Dump de '{root.name}'  posição {Vec(root.transform.position)}  rotação {Vec(root.transform.eulerAngles)}");
@@ -167,7 +223,7 @@ namespace MscDuo.Tools
                 Section(sb, "Ações que falam com OUTRA FSM", crossFsmRefs);
                 sb.AppendLine("## Hierarquia");
                 sb.Append(body);
-                return sb.ToString();
+                Result = sb.ToString();
             }
 
             static void Section(StringBuilder sb, string title, List<string> items)
@@ -192,12 +248,6 @@ namespace MscDuo.Tools
 
                 foreach (var fsm in t.GetComponents<PlayMakerFSM>())
                     WriteFsm(fsm, pad + "    ", path);
-
-                for (int i = 0; i < t.childCount; i++)
-                {
-                    var child = t.GetChild(i);
-                    Visit(child, depth + 1, path + "/" + child.name);
-                }
             }
 
             void WriteFsm(PlayMakerFSM pm, string pad, string path)
@@ -205,7 +255,21 @@ namespace MscDuo.Tools
                 fsmCount++;
                 var fsm = pm.Fsm;
                 var where = $"{path} :: {pm.FsmName}";
-                body.AppendLine($"{pad}FSM \"{pm.FsmName}\"  start={fsm.StartState}  ativo={fsm.ActiveStateName}");
+                var wasInitialized = fsm.Initialized;
+                if (!wasInitialized)
+                {
+                    try
+                    {
+                        fsm.InitData();
+                        initializedHere++;
+                    }
+                    catch (Exception e)
+                    {
+                        body.AppendLine($"{pad}FSM \"{pm.FsmName}\"  <erro ao inicializar: {e.Message}>");
+                        return;
+                    }
+                }
+                body.AppendLine($"{pad}FSM \"{pm.FsmName}\"  start={fsm.StartState}  ativo={fsm.ActiveStateName}{(wasInitialized ? "" : "  (não inicializada no jogo)")}");
 
                 var locals = fsm.Variables.GetAllNamedVariables();
                 if (locals.Length > 0)
