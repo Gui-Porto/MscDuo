@@ -55,6 +55,7 @@ namespace MscDuo.Duplication
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2 criada em {Format(Position)} yaw {Yaw:0.#} em {clock.ElapsedMilliseconds} ms. {stats}");
             TreeClearer.Apply(Clone);
+            TerrainFlattener.Apply(Clone);
         }
 
         internal static void Move(Vector3 position, float yaw)
@@ -66,6 +67,7 @@ namespace MscDuo.Duplication
             Clone.transform.position = position;
             Clone.transform.rotation = RotationFor(yaw);
             TreeClearer.Apply(Clone);
+            TerrainFlattener.Apply(Clone);
         }
 
         internal static bool FaceTowards(Vector3 target)
