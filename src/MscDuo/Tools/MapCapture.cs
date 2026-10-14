@@ -40,6 +40,8 @@ namespace MscDuo.Tools
                 }
             }
             File.WriteAllText(Path.Combine(folder, "heights.csv"), csv.ToString());
+            File.WriteAllText(Path.Combine(folder, "objects.csv"), BuildObjects(center, half));
+            File.WriteAllText(Path.Combine(folder, "terrain_trees.csv"), BuildTerrainTrees(center, half));
 
             var inv = CultureInfo.InvariantCulture;
             File.WriteAllText(Path.Combine(folder, "meta.txt"), string.Format(inv,
@@ -92,6 +94,45 @@ namespace MscDuo.Tools
                 rt.Release();
                 UnityEngine.Object.Destroy(rt);
             }
+        }
+
+        static string BuildObjects(Vector3 center, float half)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            var sb = new StringBuilder("x,z,y,size_x,size_y,size_z,active,root,path\n");
+            foreach (var r in Resources.FindObjectsOfTypeAll<Renderer>())
+            {
+                if (r.hideFlags != HideFlags.None) continue;
+                var p = r.transform.position;
+                if (Mathf.Abs(p.x - center.x) > half || Mathf.Abs(p.z - center.z) > half) continue;
+                var size = r.bounds.size;
+                var path = r.name;
+                var t = r.transform.parent;
+                for (int depth = 0; t != null && depth < 4; depth++, t = t.parent) path = t.name + "/" + path;
+                sb.AppendLine(string.Format(inv, "{0:0.##},{1:0.##},{2:0.##},{3:0.##},{4:0.##},{5:0.##},{6},\"{7}\",\"{8}\"",
+                    p.x, p.z, p.y, size.x, size.y, size.z, r.gameObject.activeInHierarchy ? 1 : 0,
+                    r.transform.root.name.Replace("\"", "'"), path.Replace("\"", "'")));
+            }
+            return sb.ToString();
+        }
+
+        static string BuildTerrainTrees(Vector3 center, float half)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            var sb = new StringBuilder("terrain,x,z,y,prototype\n");
+            foreach (var terrain in Resources.FindObjectsOfTypeAll<Terrain>())
+            {
+                if (terrain.hideFlags != HideFlags.None || terrain.terrainData == null) continue;
+                var data = terrain.terrainData;
+                var origin = terrain.transform.position;
+                foreach (var tree in data.treeInstances)
+                {
+                    var p = origin + Vector3.Scale(tree.position, data.size);
+                    if (Mathf.Abs(p.x - center.x) > half || Mathf.Abs(p.z - center.z) > half) continue;
+                    sb.AppendLine(string.Format(inv, "\"{0}\",{1:0.##},{2:0.##},{3:0.##},{4}", terrain.name, p.x, p.z, p.y, tree.prototypeIndex));
+                }
+            }
+            return sb.ToString();
         }
 
         static void Sample(float x, float z, float baseY, StringBuilder csv)
