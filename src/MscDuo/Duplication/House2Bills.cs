@@ -67,6 +67,22 @@ namespace MscDuo.Duplication
             fsm.FsmVariables.GetFsmGameObject("Bill").Value = envelope2;
             House2Power.Attach(kwh, power);
 
+            var confined = FsmTools.ConfineBroadcasts(fsm, house);
+            int powered = 0, retargeted = 0;
+            foreach (var kept in house.GetComponentsInChildren<PlayMakerFSM>(true))
+            {
+                try
+                {
+                    powered += FsmTools.RedirectGlobal(kept, "HouseElectricity", power);
+                    retargeted += FsmTools.RetargetObject(kept, house1Bills, house2Bills);
+                }
+                catch (System.Exception e)
+                {
+                    ModConsole.Warning($"[MSC Duo] casa 2: energia não ligada em '{kept.gameObject.name}/{kept.FsmName}': {e.Message}");
+                }
+            }
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: energia própria em {powered} pontos, chave geral ligada à conta da casa 2 ({retargeted}), corte restrito à casa 2 ({confined}).");
+
             HookEnvelope(mailbox.transform.Find(Envelope), house1Bills);
             HookEnvelope(envelope2 != null ? envelope2.transform : null, house2Bills);
 

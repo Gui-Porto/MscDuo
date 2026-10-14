@@ -17,7 +17,7 @@ namespace MscDuo.Duplication
         static readonly HashSet<string> KeptSubtrees = new HashSet<string>
         {
             "Shower", "KitchenWaterTap", "Sauna", "GarageDoors", "StoveBuzz", "FireSauna", "Fridge", "RefrigeratorHum",
-            "OvenStove", "FireKitchen", "TV", "TV_Programs", "FireLivingroom", "Sleep", "FireBedroom1",
+            "OvenStove", "FireKitchen", "TV", "TV_Programs", "FireLivingroom", "Sleep", "FireBedroom1", "FuseTable", "COMPUTER",
         };
 
         internal static bool Keeps(Transform t) =>
