@@ -51,13 +51,31 @@ namespace MscDuo.Tools
             int installed = 0, tightened = 0;
             for (int pass = 0; pass < MaxPasses; pass++)
             {
-                var jobs = Jobs(car, parts);
+                List<KeyValuePair<PlayMakerFSM, GameObject>> jobs;
+                try { jobs = Jobs(car, parts); }
+                catch (System.Exception e)
+                {
+                    ModConsole.Warning($"[MSC Duo] montagem: {e.Message}");
+                    break;
+                }
                 var before = installed;
                 foreach (var job in jobs)
                 {
+                    if (job.Key == null || job.Value == null || !Waiting(job.Key)) continue;
                     var done = false;
                     var routine = Fit(job.Key, job.Value, hand, ok => done = ok);
-                    while (routine.MoveNext()) yield return routine.Current;
+                    while (true)
+                    {
+                        bool more;
+                        try { more = routine.MoveNext(); }
+                        catch (System.Exception e)
+                        {
+                            ModConsole.Warning($"[MSC Duo] montagem de '{job.Value.name}': {e.Message}");
+                            break;
+                        }
+                        if (!more) break;
+                        yield return routine.Current;
+                    }
                     if (!done) continue;
                     installed++;
                     if (installed % 10 == 0) ModConsole.Print($"<color=orange>[MSC Duo]</color> {installed} peças montadas...");
@@ -65,7 +83,9 @@ namespace MscDuo.Tools
 
                 for (int step = 0; step < TightenSteps; step++)
                 {
-                    var bolts = Tighten(car, parts);
+                    var bolts = 0;
+                    try { bolts = Tighten(car, parts); }
+                    catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] parafusos: {e.Message}"); }
                     if (step == 0) tightened = Mathf.Max(tightened, bolts);
                     yield return new WaitForSeconds(0.1f);
                 }
@@ -115,7 +135,7 @@ namespace MscDuo.Tools
             var kinematic = body != null && body.isKinematic;
             if (body != null) body.isKinematic = true;
             part.transform.parent = hand;
-            part.transform.localPosition = Vector3.zero;
+            part.transform.position = fsm.transform.position;
 
             fsm.SendEvent(TriggerEnter);
             yield return null;
@@ -126,6 +146,11 @@ namespace MscDuo.Tools
             while (part != null && part.CompareTag("PART") && Time.time < timeout) yield return null;
 
             var ok = part == null || !part.CompareTag("PART");
+            if (ok && part != null)
+            {
+                body = part.GetComponent<Rigidbody>();
+                if (body != null) body.isKinematic = kinematic;
+            }
             if (!ok)
             {
                 part.transform.parent = parent;
