@@ -40,7 +40,7 @@ namespace MscDuo.Duplication
                 pieces += removed;
             }
 
-            foreach (var col in foliage.GetComponentsInChildren<Collider>(true))
+            foreach (var col in TreeColliders())
             {
                 var mc = col as MeshCollider;
                 if (mc != null && mc.sharedMesh != null)
@@ -62,6 +62,28 @@ namespace MscDuo.Duplication
             }
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> árvores: {pieces} removidas de {meshes} malhas, {colliders} colisões removidas, {unreadable} malhas sem leitura.");
+        }
+
+        static IEnumerable<Collider> TreeColliders()
+        {
+            var map = GameObject.Find("MAP");
+            if (map == null) yield break;
+            foreach (var col in map.GetComponentsInChildren<Collider>(true))
+            {
+                if (col.isTrigger) continue;
+                if (IsTreePath(col.transform)) yield return col;
+            }
+        }
+
+        static bool IsTreePath(Transform t)
+        {
+            for (; t != null; t = t.parent)
+            {
+                var name = t.name.ToUpperInvariant();
+                if (name.StartsWith("TREE") || name == "FOLIAGE" || name.StartsWith("BUSHES")) return true;
+                if (name == "MAP") return false;
+            }
+            return false;
         }
 
         static void Restore()
