@@ -80,6 +80,7 @@ namespace MscDuo.Tools
             {
                 ModConsole.Print($"casa 1: {HouseCloner.Format(HouseCloner.Original.transform.position)} yaw {HouseCloner.OriginalYaw:0.#}");
                 ModConsole.Print($"casa 2: {HouseCloner.Format(pos)} yaw relativo {yaw:0.#}");
+                ModConsole.Print($"consumo de luz: casa 1 {HutongGames.PlayMaker.FsmVariables.GlobalVariables.GetFsmFloat("HouseElectricityKWH").Value:0.###} kWh, casa 2 {House2Power.Kwh:0.###} kWh");
                 return;
             }
 

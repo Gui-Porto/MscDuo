@@ -28,6 +28,7 @@ namespace MscDuo
             SetupFunction(Setup.PostLoad, OnPostLoad);
             SetupFunction(Setup.Update, OnUpdate);
             SetupFunction(Setup.OnGUI, OnGui);
+            SetupFunction(Setup.OnSave, OnSave);
         }
 
         void ModSettings()
@@ -45,7 +46,13 @@ namespace MscDuo
         void OnPostLoad()
         {
             HouseCloner.Spawn();
+            House2Power.Load();
             PlayerContext.Init();
+        }
+
+        void OnSave()
+        {
+            House2Power.Save();
         }
 
         void OnGui()

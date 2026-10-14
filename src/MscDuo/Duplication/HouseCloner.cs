@@ -52,6 +52,7 @@ namespace MscDuo.Duplication
 
             Strip(Clone, stats);
             FixStaticBatching(Original, Clone, stats);
+            KeptSystems.Prepare(Clone);
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2 criada em {Format(Position)} yaw {Yaw:0.#} em {clock.ElapsedMilliseconds} ms. {stats}");
             TreeClearer.Apply(Clone);
