@@ -27,8 +27,7 @@ namespace MscDuo.Duplication
             var local = LocalFootprint(house);
             var toHouse = house.transform.worldToLocalMatrix;
             var groundY = house.transform.position.y - PivotAboveGround - Sink;
-            int moved = 0, flat = 0, meshes = 0;
-            var spacing = 0f;
+            int moved = 0, flat = 0, meshes = 0, nearRoad = 0;
 
             foreach (var path in TerrainPaths)
             {
@@ -54,6 +53,7 @@ namespace MscDuo.Duplication
                     var distance = Mathf.Sqrt(dx * dx + dz * dz);
                     if (distance >= BlendWidth) continue;
 
+                    if (NearRoad(world)) { nearRoad++; continue; }
                     var t = distance <= 0f ? 1f : Smooth(1f - distance / BlendWidth);
                     var y = Mathf.Lerp(world.y, groundY, t);
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
@@ -81,10 +81,9 @@ namespace MscDuo.Duplication
                     collider.sharedMesh = mesh;
                 }
                 meshes++;
-                spacing = EstimateSpacing(source);
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, espaçamento médio ~{spacing:0.#} m, nível {groundY:0.##}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} preservados perto de estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}.");
         }
 
         static void Restore()
@@ -100,22 +99,28 @@ namespace MscDuo.Duplication
             originalColliders.Clear();
         }
 
+        static readonly string[] StructurePrefixes = { "house_wall", "house_base", "house_floor" };
+        static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
+        const float RoadClearance = 3f;
+
         static Bounds LocalFootprint(GameObject house)
         {
             var toLocal = house.transform.worldToLocalMatrix;
             var first = true;
             var bounds = new Bounds();
-            foreach (var r in house.GetComponentsInChildren<Renderer>())
+            foreach (var filter in house.GetComponentsInChildren<MeshFilter>())
             {
-                if (!r.enabled) continue;
-                var b = r.bounds;
+                var r = filter.GetComponent<Renderer>();
+                if (r == null || !r.enabled || filter.sharedMesh == null || !IsStructure(filter.transform)) continue;
+                var b = filter.sharedMesh.bounds;
+                var toHouse = toLocal * filter.transform.localToWorldMatrix;
                 for (int i = 0; i < 8; i++)
                 {
                     var corner = new Vector3(
                         (i & 1) == 0 ? b.min.x : b.max.x,
                         (i & 2) == 0 ? b.min.y : b.max.y,
                         (i & 4) == 0 ? b.min.z : b.max.z);
-                    var p = toLocal.MultiplyPoint3x4(corner);
+                    var p = toHouse.MultiplyPoint3x4(corner);
                     if (first) { bounds = new Bounds(p, Vector3.zero); first = false; }
                     else bounds.Encapsulate(p);
                 }
@@ -123,12 +128,26 @@ namespace MscDuo.Duplication
             return bounds;
         }
 
-        static float Smooth(float x) => x * x * (3f - 2f * x);
-
-        static float EstimateSpacing(Mesh mesh)
+        static bool IsStructure(Transform t)
         {
-            var size = mesh.bounds.size;
-            return Mathf.Sqrt(size.x * size.z / Mathf.Max(1, mesh.vertexCount));
+            var name = t.name.EndsWith("_mesh") && t.parent != null ? t.parent.name : t.name;
+            foreach (var prefix in StructurePrefixes)
+                if (name.StartsWith(prefix)) return true;
+            return false;
         }
+
+        static bool NearRoad(Vector3 world)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                var offset = i == 0 ? Vector3.zero : Quaternion.Euler(0f, 90f * i, 0f) * new Vector3(RoadClearance, 0f, 0f);
+                foreach (var hit in Physics.RaycastAll(new Vector3(world.x, world.y + 50f, world.z) + offset, Vector3.down, 100f))
+                    foreach (var road in RoadNames)
+                        if (hit.collider.name == road) return true;
+            }
+            return false;
+        }
+
+        static float Smooth(float x) => x * x * (3f - 2f * x);
     }
 }
