@@ -68,7 +68,7 @@ namespace MscDuo.Tools
     internal class HouseCommand : ConsoleCommand
     {
         public override string Name => "duo_house";
-        public override string Help => "duo_house [x z [yaw] | here | y <altura> | yaw <graus> | face1 | info]  posiciona a casa 2";
+        public override string Help => "duo_house [x z [yaw] | here | y <altura> | yaw <graus> | face1 | bill | cutoff | info]  posiciona e testa a casa 2";
 
         public override void Run(string[] args)
         {
@@ -81,6 +81,12 @@ namespace MscDuo.Tools
                 ModConsole.Print($"casa 1: {HouseCloner.Format(HouseCloner.Original.transform.position)} yaw {HouseCloner.OriginalYaw:0.#}");
                 ModConsole.Print($"casa 2: {HouseCloner.Format(pos)} yaw relativo {yaw:0.#}");
                 ModConsole.Print($"consumo de luz: casa 1 {HutongGames.PlayMaker.FsmVariables.GlobalVariables.GetFsmFloat("HouseElectricityKWH").Value:0.###} kWh, casa 2 {House2Power.Kwh:0.###} kWh");
+                return;
+            }
+
+            if (args[0] == "bill" || args[0] == "cutoff")
+            {
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> {House2Bills.ForceBill(args[0] == "cutoff")}");
                 return;
             }
 

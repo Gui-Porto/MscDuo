@@ -57,6 +57,7 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2 criada em {Format(Position)} yaw {Yaw:0.#} em {clock.ElapsedMilliseconds} ms. {stats}");
             Step("árvores", () => TreeClearer.Apply(Clone));
             Step("terreno", () => TerrainFlattener.Apply(Clone));
+            Step("contas", () => House2Bills.Setup(Clone));
         }
 
         static void Step(string name, System.Action action)

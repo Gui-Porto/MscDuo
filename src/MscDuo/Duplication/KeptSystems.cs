@@ -47,6 +47,7 @@ namespace MscDuo.Duplication
             {
                 if (!IsLamp(light.transform)) continue;
                 light.gameObject.SetActive(true);
+                light.gameObject.AddComponent<LampPower>();
                 lamps++;
             }
 
@@ -183,24 +184,45 @@ namespace MscDuo.Duplication
 
         void Update()
         {
-            House2Power.Kwh += rate * Time.deltaTime;
+            if (House2Power.On) House2Power.Kwh += rate * Time.deltaTime;
         }
     }
 
     internal static class House2Power
     {
-        const string SaveKey = "House2Kwh";
+        static FsmFloat kwh;
+        static FsmBool power;
+        static float fallback;
 
-        internal static float Kwh;
-
-        internal static void Load()
+        internal static void Attach(FsmFloat kwhVariable, FsmBool powerVariable)
         {
-            Kwh = SaveLoad.ValueExists(MscDuo.Instance, SaveKey) ? SaveLoad.ReadValue<float>(MscDuo.Instance, SaveKey) : 0f;
+            kwh = kwhVariable;
+            power = powerVariable;
+            kwh.Value += fallback;
+            fallback = 0f;
         }
 
-        internal static void Save()
+        internal static float Kwh
         {
-            SaveLoad.WriteValue(MscDuo.Instance, SaveKey, Kwh);
+            get => kwh != null ? kwh.Value : fallback;
+            set { if (kwh != null) kwh.Value = value; else fallback = value; }
+        }
+
+        internal static bool On => power == null || power.Value;
+    }
+
+    internal class LampPower : MonoBehaviour
+    {
+        Light lamp;
+
+        void Awake()
+        {
+            lamp = GetComponent<Light>();
+        }
+
+        void Update()
+        {
+            if (lamp != null && lamp.enabled != House2Power.On) lamp.enabled = House2Power.On;
         }
     }
 }
