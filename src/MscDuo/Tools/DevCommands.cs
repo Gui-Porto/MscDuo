@@ -20,6 +20,7 @@ namespace MscDuo.Tools
             ConsoleCommand.Add(new ShotsCommand());
             ConsoleCommand.Add(new ProbeCommand());
             ConsoleCommand.Add(new NetCommand());
+            ConsoleCommand.Add(new PlayerCommand());
         }
 
         internal static bool TryFloat(string s, out float value) =>

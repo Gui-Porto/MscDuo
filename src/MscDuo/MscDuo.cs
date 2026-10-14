@@ -1,6 +1,7 @@
 using MSCLoader;
 using MscDuo.Duplication;
 using MscDuo.Net;
+using MscDuo.Player;
 using MscDuo.Tools;
 using UnityEngine;
 
@@ -38,17 +39,19 @@ namespace MscDuo
         {
             DevCommands.Register();
             SteamInvites.Listen();
-            ModConsole.Print("<color=orange>[MSC Duo]</color> carregado. Comandos: duo_net, duo_house, duo_tp, duo_dump, duo_map, duo_shots, duo_probe.");
+            ModConsole.Print("<color=orange>[MSC Duo]</color> carregado. Comandos: duo_player, duo_net, duo_house, duo_tp, duo_dump, duo_map, duo_shots, duo_probe.");
         }
 
         void OnPostLoad()
         {
             HouseCloner.Spawn();
+            PlayerContext.Init();
         }
 
         void OnGui()
         {
             NetHud.Draw();
+            PlayerHud.Draw();
         }
 
         void OnUpdate()
@@ -62,6 +65,7 @@ namespace MscDuo
                 ModConsole.Error($"[MSC Duo] erro na rede, sessão encerrada: {e}");
                 NetSession.Stop();
             }
+            PlayerContext.Tick();
             if (dumpKey != null && dumpKey.GetKeybindDown())
                 SceneDumper.DumpDefault();
         }
