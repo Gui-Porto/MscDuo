@@ -35,7 +35,7 @@ namespace MscDuo
         void OnGameLoad()
         {
             DevCommands.Register();
-            ModConsole.Print("<color=orange>[MSC Duo]</color> carregado. Comandos: duo_dump, duo_map, duo_shots, duo_house, duo_tp.");
+            ModConsole.Print("<color=orange>[MSC Duo]</color> carregado. Comandos: duo_dump, duo_map, duo_shots, duo_probe, duo_house, duo_tp.");
         }
 
         void OnPostLoad()
