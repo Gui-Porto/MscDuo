@@ -24,8 +24,8 @@ namespace MscDuo.Duplication
         {
             Restore();
 
-            var local = LocalFootprint(house);
-            var toHouse = house.transform.worldToLocalMatrix;
+            var toHouse = FlatFrame(house.transform);
+            var local = LocalFootprint(house, toHouse);
             var groundY = house.transform.position.y - PivotAboveGround - Sink;
             int moved = 0, flat = 0, meshes = 0, nearRoad = 0;
 
@@ -103,9 +103,16 @@ namespace MscDuo.Duplication
         static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
         const float RoadClearance = 3f;
 
-        static Bounds LocalFootprint(GameObject house)
+        static Matrix4x4 FlatFrame(Transform house)
         {
-            var toLocal = house.transform.worldToLocalMatrix;
+            var right = house.right;
+            right.y = 0f;
+            var heading = Mathf.Atan2(right.x, right.z) * Mathf.Rad2Deg - 90f;
+            return Matrix4x4.TRS(house.position, Quaternion.Euler(0f, heading, 0f), Vector3.one).inverse;
+        }
+
+        static Bounds LocalFootprint(GameObject house, Matrix4x4 toLocal)
+        {
             var first = true;
             var bounds = new Bounds();
             foreach (var filter in house.GetComponentsInChildren<MeshFilter>())
