@@ -22,6 +22,7 @@ namespace MscDuo.Tools
             ConsoleCommand.Add(new NetCommand());
             ConsoleCommand.Add(new PlayerCommand());
             ConsoleCommand.Add(new CarCommand());
+            ConsoleCommand.Add(new BuildCommand());
         }
 
         internal static bool TryFloat(string s, out float value) =>
