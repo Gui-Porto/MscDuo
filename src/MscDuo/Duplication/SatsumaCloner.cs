@@ -15,11 +15,16 @@ namespace MscDuo.Duplication
         const string CarName = "SATSUMA(557kg, 248)";
 
         static readonly string[] DatabaseParts = { "DatabaseBody", "DatabaseMechanics", "DatabaseMotor", "DatabaseWiring", "PartsStatus" };
-        static readonly HashSet<string> CarFsmsKept = new HashSet<string> { "Assembly", "Removal", "BoltCheck", "Screw", "Paint" };
+        static readonly string[] CarGlobals =
+        {
+            "RPM", "SpeedKMH", "EngineTemp", "CarVelocity", "CarMass", "ClutchWear", "Fuel",
+            "EnginePower", "EnginePowerMultiplier", "EnginePowerPerCylinder", "EngineTorqPerCylinder", "EngineTorqueRPM",
+        };
 
         internal static GameObject Clone { get; private set; }
         internal static GameObject Parts { get; private set; }
         internal static GameObject Database { get; private set; }
+        internal static Dictionary<string, NamedVariable> Variables { get; private set; }
 
         internal static void Spawn(GameObject house1, GameObject house2)
         {
@@ -48,9 +53,8 @@ namespace MscDuo.Duplication
             }
 
             var lift = SnapToGround();
-            var stripped = StripCarSystems(Clone);
-            var carRef = new FsmGameObject("MscDuoTheCar") { Value = Clone };
-            int fsms = 0, remapped = 0, saves = 0, failed = 0;
+            var locals = Variables = CarLocals();
+            int fsms = 0, remapped = 0, saves = 0, failed = 0, separated = 0, confined = 0;
             foreach (var root in new[] { Clone, Parts, Database })
             {
                 foreach (var fsm in root.GetComponentsInChildren<PlayMakerFSM>(true))
@@ -60,7 +64,8 @@ namespace MscDuo.Duplication
                         FsmTools.EnsureLoaded(fsm);
                         remapped += Remap(fsm, map);
                         saves += RedirectSaves(fsm);
-                        FsmTools.RedirectGlobal(fsm, "TheCar", carRef);
+                        foreach (var pair in locals) separated += FsmTools.RedirectGlobal(fsm, pair.Key, pair.Value);
+                        if (root == Clone) confined += FsmTools.ConfineBroadcasts(fsm, Clone);
                         fsms++;
                     }
                     catch (System.Exception e)
@@ -73,7 +78,7 @@ namespace MscDuo.Duplication
                 saves += RedirectAutoSaves(root);
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {stripped} sistemas do carro desligados, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
         }
 
         static float SnapToGround()
@@ -136,31 +141,24 @@ namespace MscDuo.Duplication
                 MapHierarchy(a.GetChild(i), b.GetChild(i), map);
         }
 
-        static int StripCarSystems(GameObject car)
+        static Dictionary<string, NamedVariable> CarLocals()
         {
-            var removed = 0;
-            foreach (var fsm in car.GetComponentsInChildren<PlayMakerFSM>(true))
+            var locals = new Dictionary<string, NamedVariable> { { "TheCar", new FsmGameObject("MscDuoTheCar") { Value = Clone } } };
+            foreach (var name in CarGlobals)
             {
-                if (CarFsmsKept.Contains(fsm.FsmName)) continue;
-                Object.DestroyImmediate(fsm);
-                removed++;
+                var global = FsmVariables.GlobalVariables.FindVariable(name);
+                if (global == null)
+                {
+                    ModConsole.Warning($"[MSC Duo] Satsuma 2: variável global '{name}' não encontrada.");
+                    continue;
+                }
+                var type = global.GetType();
+                var local = (NamedVariable)System.Activator.CreateInstance(type, "MscDuo" + name);
+                var value = type.GetProperty("Value");
+                if (value != null) value.SetValue(local, value.GetValue(global, null), null);
+                locals[name] = local;
             }
-            foreach (var behaviour in car.GetComponentsInChildren<MonoBehaviour>(true))
-            {
-                if (behaviour == null) continue;
-                var type = behaviour.GetType().Name;
-                if (type.StartsWith("PlayMaker") || type == "ES2Auto") continue;
-                Object.DestroyImmediate(behaviour);
-                removed++;
-            }
-            foreach (var source in car.GetComponentsInChildren<AudioSource>(true))
-            {
-                Object.DestroyImmediate(source);
-                removed++;
-            }
-            var body = car.GetComponent<Rigidbody>();
-            if (body != null) body.isKinematic = true;
-            return removed;
+            return locals;
         }
 
         static int Remap(PlayMakerFSM fsm, Dictionary<Object, Object> map)
@@ -191,6 +189,9 @@ namespace MscDuo.Duplication
                             case FsmEventTarget target:
                                 if (target.gameObject != null && target.gameObject.OwnerOption == OwnerDefaultOption.SpecifyGameObject && target.gameObject.GameObject != null && !target.gameObject.GameObject.UseVariable)
                                     count += Swap(target.gameObject.GameObject, map);
+                                break;
+                            case FsmProperty property:
+                                if (property.TargetObject != null && !property.TargetObject.UseVariable) count += Swap(property.TargetObject, map);
                                 break;
                             case FsmGameObject[] array:
                                 foreach (var item in array) if (item != null && !item.UseVariable) count += Swap(item, map);

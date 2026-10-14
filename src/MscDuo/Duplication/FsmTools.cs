@@ -12,36 +12,48 @@ namespace MscDuo.Duplication
                 if (!state.ActionsLoaded) state.LoadActions();
         }
 
-        internal static int RedirectGlobal<T>(PlayMakerFSM fsm, string globalName, T replacement) where T : NamedVariable
+        internal static int RedirectGlobal<T>(PlayMakerFSM fsm, string globalName, T replacement) where T : NamedVariable =>
+            RedirectGlobal(fsm, globalName, (NamedVariable)replacement);
+
+        internal static int RedirectGlobal(PlayMakerFSM fsm, string globalName, NamedVariable replacement)
         {
             EnsureLoaded(fsm);
+            if (fsm.FsmVariables.FindVariable(globalName) != null) return 0;
             var count = 0;
             foreach (var state in fsm.FsmStates)
-            {
                 foreach (var action in state.Actions)
+                    if (action != null) count += RedirectFields(action, globalName, replacement);
+            return count;
+        }
+
+        static int RedirectFields(object owner, string globalName, NamedVariable replacement)
+        {
+            var count = 0;
+            var type = replacement.GetType();
+            foreach (var field in owner.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (field.FieldType == type)
                 {
-                    if (action == null) continue;
-                    foreach (var field in action.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+                    var value = field.GetValue(owner) as NamedVariable;
+                    if (value == null || !value.UseVariable || value.Name != globalName) continue;
+                    field.SetValue(owner, replacement);
+                    count++;
+                }
+                else if (field.FieldType.IsArray && field.FieldType.GetElementType() == type)
+                {
+                    var array = field.GetValue(owner) as NamedVariable[];
+                    if (array == null) continue;
+                    for (int i = 0; i < array.Length; i++)
                     {
-                        if (field.FieldType == typeof(T))
-                        {
-                            var value = field.GetValue(action) as T;
-                            if (value == null || !value.UseVariable || value.Name != globalName) continue;
-                            field.SetValue(action, replacement);
-                            count++;
-                        }
-                        else if (field.FieldType == typeof(T[]))
-                        {
-                            var array = field.GetValue(action) as T[];
-                            if (array == null) continue;
-                            for (int i = 0; i < array.Length; i++)
-                            {
-                                if (array[i] == null || !array[i].UseVariable || array[i].Name != globalName) continue;
-                                array[i] = replacement;
-                                count++;
-                            }
-                        }
+                        if (array[i] == null || !array[i].UseVariable || array[i].Name != globalName) continue;
+                        array.SetValue(replacement, i);
+                        count++;
                     }
+                }
+                else if (field.FieldType == typeof(FsmProperty))
+                {
+                    var property = field.GetValue(owner);
+                    if (property != null) count += RedirectFields(property, globalName, replacement);
                 }
             }
             return count;
