@@ -16,11 +16,11 @@ namespace MscDuo.Duplication
 
         static readonly HashSet<string> KeptSubtrees = new HashSet<string>
         {
-            "Shower", "KitchenWaterTap", "Sauna", "GarageDoors", "StoveBuzz", "FireSauna",
+            "Shower", "KitchenWaterTap", "Sauna", "GarageDoors", "StoveBuzz", "FireSauna", "Fridge", "RefrigeratorHum",
         };
 
         internal static bool Keeps(Transform t) =>
-            IsDoorPart(t) || IsLightSwitch(t) || IsLamp(t) || t.name == Appliances || InKeptSubtree(t);
+            t.name != "FridgePoint" && (IsDoorPart(t) || IsLightSwitch(t) || IsLamp(t) || t.name == Appliances || InKeptSubtree(t));
 
         internal static void Prepare(GameObject clone)
         {
@@ -51,6 +51,11 @@ namespace MscDuo.Duplication
 
             foreach (var t in clone.GetComponentsInChildren<Transform>(true))
             {
+                if (t.name == "ChillArea")
+                {
+                    t.localPosition = Vector3.zero;
+                    House2Fridge.Point = t;
+                }
                 if (t.name == Appliances) t.gameObject.SetActive(true);
                 if (t.parent != null && t.parent.name == Appliances && LightConsumption.RateFor(t.name) > 0f)
                     t.gameObject.AddComponent<LightConsumption>();

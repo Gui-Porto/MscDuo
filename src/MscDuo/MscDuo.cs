@@ -45,6 +45,7 @@ namespace MscDuo
 
         void OnPostLoad()
         {
+            House2Fridge.Patch();
             HouseCloner.Spawn();
             House2Power.Load();
             PlayerContext.Init();
