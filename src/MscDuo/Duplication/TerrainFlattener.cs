@@ -48,19 +48,27 @@ namespace MscDuo.Duplication
                 {
                     var world = toWorld.MultiplyPoint3x4(vertices[i]);
                     var h = toHouse.MultiplyPoint3x4(world);
-                    var dx = Mathf.Max(0f, Mathf.Max(local.min.x - FlatMargin - h.x, h.x - local.max.x - FlatMargin));
-                    var dz = Mathf.Max(0f, Mathf.Max(local.min.z - FlatMargin - h.z, h.z - local.max.z - FlatMargin));
+                    var dx = Mathf.Max(0f, Mathf.Max(local.min.x - h.x, h.x - local.max.x));
+                    var dz = Mathf.Max(0f, Mathf.Max(local.min.z - h.z, h.z - local.max.z));
                     var distance = Mathf.Sqrt(dx * dx + dz * dz);
-                    if (distance >= BlendWidth) continue;
+                    if (distance >= FlatMargin + BlendWidth) continue;
 
-                    if (distance > 0f && NearRoad(world)) { nearRoad++; continue; }
-                    var t = distance <= 0f ? 1f : Smooth(1f - distance / BlendWidth);
+                    var t = distance <= FlatMargin ? 1f : Smooth(1f - (distance - FlatMargin) / BlendWidth);
+                    if (distance > 0f)
+                    {
+                        var road = RoadDistance(world);
+                        if (road < RoadRamp)
+                        {
+                            t *= Smooth(road / RoadRamp);
+                            nearRoad++;
+                        }
+                    }
                     var y = Mathf.Lerp(world.y, groundY, t);
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
                     world.y = y;
                     vertices[i] = toMesh.MultiplyPoint3x4(world);
                     moved++;
-                    if (distance <= 0f) flat++;
+                    if (distance <= FlatMargin) flat++;
                     changed = true;
                 }
                 if (!changed) continue;
@@ -83,7 +91,7 @@ namespace MscDuo.Duplication
                 meshes++;
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} preservados perto de estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}.");
         }
 
         static void Restore()
@@ -101,7 +109,8 @@ namespace MscDuo.Duplication
 
         static readonly string[] StructurePrefixes = { "house_wall", "house_base", "house_floor" };
         static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
-        const float RoadClearance = 3f;
+        const float RoadRamp = 8f;
+        const float RoadStep = 1f;
 
         static Matrix4x4 FlatFrame(Transform house)
         {
@@ -143,15 +152,24 @@ namespace MscDuo.Duplication
             return false;
         }
 
-        static bool NearRoad(Vector3 world)
+        static float RoadDistance(Vector3 world)
         {
-            for (int i = 0; i < 5; i++)
-            {
-                var offset = i == 0 ? Vector3.zero : Quaternion.Euler(0f, 90f * i, 0f) * new Vector3(RoadClearance, 0f, 0f);
-                foreach (var hit in Physics.RaycastAll(new Vector3(world.x, world.y + 50f, world.z) + offset, Vector3.down, 100f))
-                    foreach (var road in RoadNames)
-                        if (hit.collider.name == road) return true;
-            }
+            if (OnRoad(world.x, world.z, world.y)) return 0f;
+            for (var radius = RoadStep; radius <= RoadRamp; radius += RoadStep)
+                for (int k = 0; k < 8; k++)
+                {
+                    var angle = k * Mathf.PI / 4f;
+                    if (OnRoad(world.x + Mathf.Cos(angle) * radius, world.z + Mathf.Sin(angle) * radius, world.y))
+                        return radius;
+                }
+            return RoadRamp;
+        }
+
+        static bool OnRoad(float x, float z, float y)
+        {
+            foreach (var hit in Physics.RaycastAll(new Vector3(x, y + 50f, z), Vector3.down, 100f))
+                foreach (var road in RoadNames)
+                    if (hit.collider.name == road) return true;
             return false;
         }
 
