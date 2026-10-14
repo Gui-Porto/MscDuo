@@ -23,6 +23,8 @@ namespace MscDuo.Tools
                 text.Append($"\n  {pair.Key}: {Value(global)} | {Value(pair.Value)}");
             }
             var car1 = GameObject.Find("SATSUMA(557kg, 248)");
+            var current = CurrentVehicle.Current == 0 ? "nenhuma Satsuma" : "Satsuma " + CurrentVehicle.Current;
+            text.Append($"\n  veículo atual: {current} (jogo diz '{CurrentVehicle.GlobalValue}')");
             text.Append($"\n  massa física: {Mass(car1)} | {Mass(SatsumaCloner.Clone)}");
             text.Append($"\n  física: {Physics(car1)} | {Physics(SatsumaCloner.Clone)}");
             ModConsole.Print(text.ToString());

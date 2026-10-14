@@ -80,6 +80,7 @@ namespace MscDuo.Duplication
             }
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
+            CurrentVehicle.Setup(car1, parts1, Clone, Parts);
         }
 
         static float SnapToGround()
