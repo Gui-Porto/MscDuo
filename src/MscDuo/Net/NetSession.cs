@@ -17,6 +17,7 @@ namespace MscDuo.Net
         readonly ITransport transport;
         readonly Dictionary<ulong, PeerState> peers = new Dictionary<ulong, PeerState>();
         readonly List<Packet> inbox = new List<Packet>();
+        readonly HashSet<ulong> knownPeers = new HashSet<ulong>();
         readonly Vector3 ghostOffset;
         float nextSend;
         float nextPing;
@@ -40,7 +41,6 @@ namespace MscDuo.Net
         {
             Stop();
             Current = new NetSession(transport, ghostOffset);
-            foreach (var id in transport.Peers) Current.Send(id, MessageType.Hello, w => w.Write(Protocol.Version), Channel.Reliable);
             ModConsole.Print($"<color=orange>[MSC Duo]</color> sessão iniciada ({transport.Name}).");
         }
 
@@ -56,6 +56,7 @@ namespace MscDuo.Net
         internal void Tick()
         {
             var now = Time.realtimeSinceStartup;
+            SyncPeers();
             Receive(now);
 
             if (now >= nextSend)
@@ -79,6 +80,31 @@ namespace MscDuo.Net
                 BytesOutPerSecond = bytesCounter;
                 sentCounter = receivedCounter = bytesCounter = 0;
                 counterWindow = 0f;
+            }
+        }
+
+        void SyncPeers()
+        {
+            var current = new HashSet<ulong>(transport.Peers);
+            foreach (var id in current)
+            {
+                if (knownPeers.Contains(id)) continue;
+                knownPeers.Add(id);
+                Peer(id);
+                Send(id, MessageType.Hello, w => w.Write(Protocol.Version), Channel.Reliable);
+            }
+
+            var gone = new List<ulong>();
+            foreach (var id in knownPeers) if (!current.Contains(id)) gone.Add(id);
+            foreach (var id in gone)
+            {
+                knownPeers.Remove(id);
+                PeerState peer;
+                if (peers.TryGetValue(id, out peer))
+                {
+                    peer.Player.Dispose();
+                    peers.Remove(id);
+                }
             }
         }
 
@@ -143,8 +169,9 @@ namespace MscDuo.Net
             PeerState peer;
             if (!peers.TryGetValue(id, out peer))
             {
-                var offset = transport is LoopbackTransport ? ghostOffset : Vector3.zero;
-                peer = new PeerState(id, new RemotePlayer($"Jogador {id}", offset));
+                var loopback = transport is LoopbackTransport;
+                var name = loopback ? $"Jogador {id}" : SteamTransport.PersonaName(id);
+                peer = new PeerState(id, new RemotePlayer(name, loopback ? ghostOffset : Vector3.zero));
                 peers.Add(id, peer);
             }
             return peer;

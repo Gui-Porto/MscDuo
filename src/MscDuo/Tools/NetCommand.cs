@@ -7,7 +7,7 @@ namespace MscDuo.Tools
     internal class NetCommand : ConsoleCommand
     {
         public override string Name => "duo_net";
-        public override string Help => "duo_net loopback [ping=80] [jitter=10] [perda%=2] [distância=3] | lag <ping> <jitter> <perda%> | off | hud";
+        public override string Help => "duo_net host | invite | join <código> | loopback [ping=80] [jitter=10] [perda%=2] [distância=3] | lag <ping> <jitter> <perda%> | off | hud";
 
         public override void Run(string[] args)
         {
@@ -15,6 +15,21 @@ namespace MscDuo.Tools
 
             switch (args[0])
             {
+                case "host":
+                    Guarded(() => NetSession.Start(SteamTransport.Host(), Vector3.zero));
+                    NetHud.Visible = true;
+                    break;
+                case "join":
+                    ulong lobby;
+                    if (args.Length < 2 || !ulong.TryParse(args[1], out lobby)) { ModConsole.Error("uso: duo_net join <código do lobby>"); return; }
+                    Guarded(() => NetSession.Start(SteamTransport.Join(lobby), Vector3.zero));
+                    NetHud.Visible = true;
+                    break;
+                case "invite":
+                    var steam = NetSession.Current?.Transport as SteamTransport;
+                    if (steam == null) { ModConsole.Error("[MSC Duo] crie um lobby antes com 'duo_net host'"); return; }
+                    steam.OpenInviteOverlay();
+                    break;
                 case "loopback":
                     var ping = Arg(args, 1, 80f);
                     var jitter = Arg(args, 2, 10f);
@@ -41,6 +56,12 @@ namespace MscDuo.Tools
                     ModConsole.Error(Help);
                     break;
             }
+        }
+
+        static void Guarded(System.Action start)
+        {
+            try { start(); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] não foi possível iniciar a sessão Steam: {e.Message}"); }
         }
 
         static float Arg(string[] args, int index, float fallback)
