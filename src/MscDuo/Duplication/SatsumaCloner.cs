@@ -201,6 +201,8 @@ namespace MscDuo.Duplication
                                 break;
                             case FsmProperty property:
                                 if (property.TargetObject != null && !property.TargetObject.UseVariable) count += Swap(property.TargetObject, map);
+                                if (property.ObjectParameter != null && !property.ObjectParameter.UseVariable) count += Swap(property.ObjectParameter, map);
+                                if (property.GameObjectParameter != null && !property.GameObjectParameter.UseVariable) count += Swap(property.GameObjectParameter, map);
                                 break;
                             case FsmGameObject[] array:
                                 foreach (var item in array) if (item != null && !item.UseVariable) count += Swap(item, map);

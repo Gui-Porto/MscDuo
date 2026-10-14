@@ -19,9 +19,9 @@ namespace MscDuo.Duplication
                 yield return new WaitForSeconds(at - elapsed);
                 elapsed = at;
                 foreach (var root in Roots)
-                    if (root != null) removed += Dedupe(root);
+                    if (root != null) removed += Dedupe(root) + Reconnect(root);
             }
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {removed} travas duplicadas removidas.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {removed} travas duplicadas removidas ou religadas.");
         }
 
         static int Dedupe(GameObject root)
@@ -33,6 +33,23 @@ namespace MscDuo.Duplication
                 removed += Keep<HingeJoint>(t.gameObject);
             }
             return removed;
+        }
+
+        static int Reconnect(GameObject root)
+        {
+            var map = SatsumaCloner.Map;
+            if (map == null) return 0;
+            var fixedCount = 0;
+            foreach (var joint in root.GetComponentsInChildren<Joint>(true))
+            {
+                var body = joint.connectedBody;
+                Object mapped;
+                if (body == null || !map.TryGetValue(body, out mapped)) continue;
+                joint.connectedBody = (Rigidbody)mapped;
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: junta de '{joint.name}' estava presa em '{body.name}' da Satsuma 1; religada à Satsuma 2.");
+                fixedCount++;
+            }
+            return fixedCount;
         }
 
         static int Keep<T>(GameObject go) where T : Joint
