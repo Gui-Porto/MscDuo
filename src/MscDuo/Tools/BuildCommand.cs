@@ -15,7 +15,7 @@ namespace MscDuo.Tools
         const int MaxCandidates = 5;
         const int TightenSteps = 10;
         const int MaxPasses = 12;
-        const float AssembleTimeout = 3f;
+        const float AssembleTimeout = 6f;
 
         static bool running;
 
@@ -131,9 +131,6 @@ namespace MscDuo.Tools
             var parent = part.transform.parent;
             var position = part.transform.position;
             var rotation = part.transform.rotation;
-            var body = part.GetComponent<Rigidbody>();
-            var kinematic = body != null && body.isKinematic;
-            if (body != null) body.isKinematic = true;
             part.transform.parent = hand;
             part.transform.position = fsm.transform.position;
 
@@ -143,20 +140,14 @@ namespace MscDuo.Tools
             if (HasTransition(fsm, Assemble)) fsm.SendEvent(Assemble);
 
             var timeout = Time.time + AssembleTimeout;
-            while (part != null && part.CompareTag("PART") && Time.time < timeout) yield return null;
+            while (part != null && part.transform.parent == hand && Time.time < timeout) yield return null;
 
-            var ok = part == null || !part.CompareTag("PART");
-            if (ok && part != null)
-            {
-                body = part.GetComponent<Rigidbody>();
-                if (body != null) body.isKinematic = kinematic;
-            }
+            var ok = part == null || part.transform.parent != hand;
             if (!ok)
             {
                 part.transform.parent = parent;
                 part.transform.position = position;
                 part.transform.rotation = rotation;
-                if (body != null) body.isKinematic = kinematic;
             }
             result(ok);
         }
