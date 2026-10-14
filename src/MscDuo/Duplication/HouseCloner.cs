@@ -54,6 +54,7 @@ namespace MscDuo.Duplication
             FixStaticBatching(Original, Clone, stats);
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2 criada em {Format(Position)} yaw {Yaw:0.#} em {clock.ElapsedMilliseconds} ms. {stats}");
+            TreeClearer.Apply(Clone);
         }
 
         internal static void Move(Vector3 position, float yaw)
@@ -64,6 +65,48 @@ namespace MscDuo.Duplication
             if (Clone == null) return;
             Clone.transform.position = position;
             Clone.transform.rotation = RotationFor(yaw);
+            TreeClearer.Apply(Clone);
+        }
+
+        internal static bool FaceTowards(Vector3 target)
+        {
+            if (Clone == null) return false;
+            var door = FindDeep(Clone.transform, "DoorFront");
+            if (door == null) return false;
+
+            var yaw = Yaw;
+            for (int i = 0; i < 4; i++)
+            {
+                Clone.transform.rotation = RotationFor(yaw);
+                var center = Center(Clone);
+                var delta = Mathf.DeltaAngle(Heading(door.position - center), Heading(target - center));
+                if (Mathf.Abs(delta) < 0.1f) break;
+                yaw += delta;
+            }
+            Move(Position, Mathf.Repeat(yaw, 360f));
+            return true;
+        }
+
+        static float Heading(Vector3 v) => Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg;
+
+        static Vector3 Center(GameObject go)
+        {
+            var colliders = go.GetComponentsInChildren<Collider>();
+            if (colliders.Length == 0) return go.transform.position;
+            var b = colliders[0].bounds;
+            foreach (var c in colliders) b.Encapsulate(c.bounds);
+            return b.center;
+        }
+
+        static Transform FindDeep(Transform t, string name)
+        {
+            if (t.name == name) return t;
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var found = FindDeep(t.GetChild(i), name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         internal static Quaternion RotationFor(float yaw) =>

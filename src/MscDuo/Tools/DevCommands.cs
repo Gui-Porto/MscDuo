@@ -66,7 +66,7 @@ namespace MscDuo.Tools
     internal class HouseCommand : ConsoleCommand
     {
         public override string Name => "duo_house";
-        public override string Help => "duo_house [x z [yaw] | here | y <altura> | yaw <graus> | info]  posiciona a casa 2";
+        public override string Help => "duo_house [x z [yaw] | here | y <altura> | yaw <graus> | face1 | info]  posiciona a casa 2";
 
         public override void Run(string[] args)
         {
@@ -78,6 +78,15 @@ namespace MscDuo.Tools
             {
                 ModConsole.Print($"casa 1: {HouseCloner.Format(HouseCloner.Original.transform.position)} yaw {HouseCloner.OriginalYaw:0.#}");
                 ModConsole.Print($"casa 2: {HouseCloner.Format(pos)} yaw relativo {yaw:0.#}");
+                return;
+            }
+
+            if (args[0] == "face1")
+            {
+                if (HouseCloner.FaceTowards(HouseCloner.Original.transform.position))
+                    ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2 virada para a casa 1 (yaw {HouseCloner.Yaw:0.#}, salvo)");
+                else
+                    ModConsole.Error("[MSC Duo] porta da frente da casa 2 não encontrada");
                 return;
             }
 

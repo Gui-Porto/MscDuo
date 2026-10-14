@@ -54,7 +54,7 @@ namespace MscDuo.Tools
         {
             var dx = Mathf.Max(0f, Mathf.Abs(center.x - b.center.x) - b.extents.x);
             var dz = Mathf.Max(0f, Mathf.Abs(center.z - b.center.z) - b.extents.z);
-            return dx * dx + dz * dz <= radius * radius && b.size.magnitude < 5000f;
+            return dx * dx + dz * dz <= radius * radius;
         }
 
         static void Append(StringBuilder sb, string kind, GameObject go, Bounds b, Vector3 center, bool batched, Mesh mesh)
