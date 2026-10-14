@@ -27,7 +27,9 @@ namespace MscDuo.Duplication
             var toHouse = FlatFrame(house.transform);
             var local = LocalFootprint(house, toHouse);
             var groundY = house.transform.position.y - PivotAboveGround - Sink;
-            int moved = 0, flat = 0, meshes = 0, nearRoad = 0;
+            var top = house.transform.position.y + PitProbe;
+            var pit = FindPit(house, toHouse, local, groundY, top);
+            int moved = 0, flat = 0, meshes = 0, nearRoad = 0, cut = 0, uncut = 0;
 
             foreach (var path in TerrainPaths)
             {
@@ -44,9 +46,11 @@ namespace MscDuo.Duplication
                 var toWorld = go.transform.localToWorldMatrix;
                 var toMesh = go.transform.worldToLocalMatrix;
                 var changed = false;
+                var worlds = new Vector3[vertices.Length];
                 for (int i = 0; i < vertices.Length; i++)
                 {
                     var world = toWorld.MultiplyPoint3x4(vertices[i]);
+                    worlds[i] = world;
                     var h = toHouse.MultiplyPoint3x4(world);
                     var dx = Mathf.Max(0f, Mathf.Max(local.min.x - h.x, h.x - local.max.x));
                     var dz = Mathf.Max(0f, Mathf.Max(local.min.z - h.z, h.z - local.max.z));
@@ -66,16 +70,26 @@ namespace MscDuo.Duplication
                     var y = Mathf.Lerp(world.y, groundY, t);
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
                     world.y = y;
+                    worlds[i] = world;
                     vertices[i] = toMesh.MultiplyPoint3x4(world);
                     moved++;
                     if (distance <= FlatMargin) flat++;
                     changed = true;
+                }
+                var triangles = new int[source.subMeshCount][];
+                for (int s = 0; s < triangles.Length; s++)
+                {
+                    var before = source.GetTriangles(s);
+                    triangles[s] = CutPit(before, worlds, pit, house, top, ref uncut);
+                    cut += (before.Length - triangles[s].Length) / 3;
+                    if (triangles[s].Length != before.Length) changed = true;
                 }
                 if (!changed) continue;
 
                 var mesh = Object.Instantiate(source);
                 mesh.name = source.name + "_flat";
                 mesh.vertices = vertices;
+                for (int s = 0; s < triangles.Length; s++) mesh.SetTriangles(triangles[s], s);
                 mesh.RecalculateNormals();
                 mesh.RecalculateBounds();
                 originalMeshes[filter] = source;
@@ -91,7 +105,7 @@ namespace MscDuo.Duplication
                 meshes++;
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} triângulos abertos ({uncut} na borda mantidos).");
         }
 
         static void Restore()
@@ -172,6 +186,73 @@ namespace MscDuo.Duplication
                     if (hit.collider.name == road) return true;
             return false;
         }
+
+        const float PitProbe = 0.5f;
+        const float PitStep = 0.4f;
+        const float PitDepth = 0.3f;
+
+        static List<Vector2> FindPit(GameObject house, Matrix4x4 toHouse, Bounds local, float groundY, float top)
+        {
+            var cells = new List<Vector2>();
+            var toWorld = toHouse.inverse;
+            for (var x = local.min.x; x <= local.max.x; x += PitStep)
+                for (var z = local.min.z; z <= local.max.z; z += PitStep)
+                {
+                    var p = toWorld.MultiplyPoint3x4(new Vector3(x, 0f, z));
+                    float y;
+                    if (HouseFloor(house, p.x, p.z, top, out y) && y < groundY - PitDepth) cells.Add(new Vector2(p.x, p.z));
+                }
+            return cells;
+        }
+
+        static bool HouseFloor(GameObject house, float x, float z, float top, out float y)
+        {
+            y = float.MinValue;
+            foreach (var hit in Physics.RaycastAll(new Vector3(x, top, z), Vector3.down, 10f))
+            {
+                if (hit.collider.isTrigger || !hit.collider.transform.IsChildOf(house.transform)) continue;
+                if (hit.point.y > y) y = hit.point.y;
+            }
+            return y > float.MinValue;
+        }
+
+        static int[] CutPit(int[] triangles, Vector3[] worlds, List<Vector2> pit, GameObject house, float top, ref int uncut)
+        {
+            if (pit.Count == 0) return triangles;
+            var kept = new List<int>(triangles.Length);
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                var a = worlds[triangles[i]];
+                var b = worlds[triangles[i + 1]];
+                var c = worlds[triangles[i + 2]];
+                if (OverPit(a, b, c, pit))
+                {
+                    float y;
+                    if (HouseFloor(house, a.x, a.z, top, out y) && HouseFloor(house, b.x, b.z, top, out y) && HouseFloor(house, c.x, c.z, top, out y)) continue;
+                    uncut++;
+                }
+                kept.Add(triangles[i]);
+                kept.Add(triangles[i + 1]);
+                kept.Add(triangles[i + 2]);
+            }
+            return kept.ToArray();
+        }
+
+        static bool OverPit(Vector3 a, Vector3 b, Vector3 c, List<Vector2> pit)
+        {
+            foreach (var p in pit)
+            {
+                var d1 = Side(p, a, b);
+                var d2 = Side(p, b, c);
+                var d3 = Side(p, c, a);
+                var negative = d1 < 0f || d2 < 0f || d3 < 0f;
+                var positive = d1 > 0f || d2 > 0f || d3 > 0f;
+                if (!(negative && positive)) return true;
+            }
+            return false;
+        }
+
+        static float Side(Vector2 p, Vector3 a, Vector3 b) => (p.x - b.x) * (a.z - b.z) - (a.x - b.x) * (p.y - b.z);
 
         static float Smooth(float x) => x * x * (3f - 2f * x);
     }
