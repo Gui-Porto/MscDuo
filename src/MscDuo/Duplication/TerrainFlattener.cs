@@ -53,7 +53,7 @@ namespace MscDuo.Duplication
                     var distance = Mathf.Sqrt(dx * dx + dz * dz);
                     if (distance >= BlendWidth) continue;
 
-                    if (NearRoad(world)) { nearRoad++; continue; }
+                    if (distance > 0f && NearRoad(world)) { nearRoad++; continue; }
                     var t = distance <= 0f ? 1f : Smooth(1f - distance / BlendWidth);
                     var y = Mathf.Lerp(world.y, groundY, t);
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
