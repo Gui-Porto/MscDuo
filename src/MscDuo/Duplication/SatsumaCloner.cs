@@ -69,6 +69,9 @@ namespace MscDuo.Duplication
 
         internal static void Spawn(GameObject house1, GameObject house2)
         {
+            try { SatsumaSave.Seed(SaveFile); }
+            catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] Satsuma 2: save próprio não criado: {e.Message}"); }
+
             var car1 = FindRoot(CarName);
             var parts1 = FindRoot("CARPARTS");
             var db1 = FindRoot("Database");
