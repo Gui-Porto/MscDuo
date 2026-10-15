@@ -154,6 +154,26 @@ namespace MscDuo.Tools
                 joints++;
             }
 
+            text.AppendLine("# scripts da Satsuma 2 (rodas, suspensão, motor...) com valores ou referências diferentes da Satsuma 1");
+            var scripts = 0;
+            foreach (var b2 in car2.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (b2 == null) continue;
+                var type = b2.GetType();
+                if (type.Name.StartsWith("PlayMaker") || type.Namespace == "MscDuo.Duplication" || Rel(b2.transform, car2.transform).Contains("PLAYER")) continue;
+                Object o1;
+                if (!reverse.TryGetValue(b2, out o1) || o1 == null) continue;
+                foreach (var field in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                {
+                    var v1 = field.GetValue(o1);
+                    var v2 = field.GetValue(b2);
+                    var issue = Compare(v1, v2, car1.transform, car2.transform, map);
+                    if (issue == null) continue;
+                    text.AppendLine($"SCRIPT: {Rel(b2.transform, car2.transform)} {type.Name}.{field.Name}: {issue}");
+                    scripts++;
+                }
+            }
+
             text.AppendLine("# colisores da Satsuma 2 enfiados em algo de fora do carro agora");
             foreach (var c2 in car2.GetComponentsInChildren<Collider>())
             {
@@ -170,7 +190,37 @@ namespace MscDuo.Tools
                 }
             }
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {embedded} enfiados no mapa agora.";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora.";
+        }
+
+        static string Compare(object v1, object v2, Transform car1, Transform car2, Dictionary<Object, Object> map)
+        {
+            if (v2 is System.Collections.IEnumerable list && !(v2 is string))
+            {
+                var index = 0;
+                foreach (var item in list)
+                {
+                    var element = item as Object;
+                    var et = element is Component ? ((Component)element).transform : element is GameObject ? ((GameObject)element).transform : null;
+                    if (et != null && et.IsChildOf(car1)) return $"item {index} APONTA PARA A SATSUMA 1 ({element.name})";
+                    index++;
+                }
+                return null;
+            }
+            var o2 = v2 as Object;
+            if (o2 != null || v2 is Object)
+            {
+                if (o2 == null) return v1 as Object != null ? "referência sumiu na 2" : null;
+                var t2 = o2 is Component ? ((Component)o2).transform : o2 is GameObject ? ((GameObject)o2).transform : null;
+                if (t2 != null && t2.IsChildOf(car1)) return $"APONTA PARA A SATSUMA 1 ({o2.name})";
+                var o1 = v1 as Object;
+                if (o1 != null && map.TryGetValue(o1, out var expected) && expected != o2) return $"referência diferente ({o1.name} -> {o2.name})";
+                return null;
+            }
+            if (v1 is float f1 && v2 is float f2) return Mathf.Abs(f1 - f2) > Mathf.Max(0.01f, Mathf.Abs(f1) * 0.05f) ? $"{f1:0.###} / {f2:0.###}" : null;
+            if (v1 is bool || v1 is int || v1 is string || (v1 != null && v1.GetType().IsEnum)) return Equals(v1, v2) ? null : $"{v1} / {v2}";
+            if (v1 is Vector3 a && v2 is Vector3 b) return (a - b).magnitude > 0.02f ? $"{a} / {b}" : null;
+            return null;
         }
 
         static string Describe(Collider c, Transform root)
