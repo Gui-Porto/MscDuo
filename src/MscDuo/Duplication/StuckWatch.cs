@@ -82,6 +82,29 @@ namespace MscDuo.Duplication
             text.Append("\n  carroceria tocando:");
             if (lastContacts.Count == 0) text.Append(" nada");
             foreach (var pair in lastContacts) text.Append($"\n    {pair.Key} ({pair.Value:0}x)");
+            text.Append("
+  o que está logo abaixo de cada corpo físico (até 30 cm):");
+            var supports = 0;
+            foreach (var rb in GetComponentsInChildren<Rigidbody>())
+            {
+                if (Path(rb.transform).Contains("PLAYER")) continue;
+                foreach (var hit in rb.SweepTestAll(Vector3.down, 0.3f))
+                {
+                    if (hit.collider.transform.IsChildOf(transform) || hit.collider.isTrigger) continue;
+                    text.Append($"
+    {(rb.transform == transform ? "carroceria" : Path(rb.transform).Substring(Path(transform).Length + 1))} -> {Path(hit.collider.transform)} a {hit.distance:0.00} m");
+                    supports++;
+                }
+            }
+            foreach (var c in Physics.OverlapSphere(transform.position, 4f))
+            {
+                if (c.isTrigger || c.transform.IsChildOf(transform) || c.attachedRigidbody == null || c.attachedRigidbody.isKinematic) continue;
+                var root = c.transform.root.name;
+                if (root == "PLAYER") continue;
+                text.Append($"
+    corpo solto perto: {Path(c.transform)} ({c.attachedRigidbody.mass:0} kg)");
+            }
+            if (supports == 0) text.Append(" nada");
             var player = GameObject.Find("PLAYER");
             if (player != null)
             {
