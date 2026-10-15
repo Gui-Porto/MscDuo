@@ -22,6 +22,8 @@ namespace MscDuo.Duplication
         const float ClearHeight = 2.5f;
         const float TerrainGap = 0.08f;
         const float RoadCover = 0.03f;
+        const float Berm = 3f;
+        const float BermSlope = 0.25f;
 
         static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
         static readonly string[] KeptRoots = { "MSCDUO", "PLAYER", "SATSUMA", "CARPARTS", "Database", "ITEMS", "STORE", "Systems", "Sheets", "GUI" };
@@ -150,7 +152,7 @@ namespace MscDuo.Duplication
                     if (road > float.MinValue) p.y = Mathf.Max(p.y, road + RoadCover);
                     grid[i, j] = vertices.Count;
                     vertices.Add(p);
-                    uv.Add(new Vector2(p.x * 0.5f, p.z * 0.5f));
+                    uv.Add(UvAt(p));
                 }
             for (int i = 0; i < Steps; i++)
                 for (int j = 0; j < Steps; j++)
@@ -313,7 +315,20 @@ namespace MscDuo.Duplication
                 for (int i = 0; i < vertices.Length; i++)
                 {
                     var w = toWorld.MultiplyPoint3x4(vertices[i]);
-                    if (!Inside(corners, w, 0.6f)) continue;
+                    if (!Inside(corners, w, 0.6f))
+                    {
+                        var edge = EdgeDistance(corners, w);
+                        if (edge > Berm) continue;
+                        RaycastHit rim;
+                        if (!NearestSurface(surface, w, out rim)) continue;
+                        var rise = rim.point.y - 0.03f - edge * BermSlope;
+                        if (w.y >= rise) continue;
+                        w.y = rise;
+                        vertices[i] = toMesh.MultiplyPoint3x4(w);
+                        lowered++;
+                        changed = true;
+                        continue;
+                    }
                     RaycastHit hit;
                     if (!surface.Raycast(new Ray(new Vector3(w.x, w.y + 20f, w.z), Vector3.down), out hit, 40f) && !NearestSurface(surface, w, out hit)) continue;
                     var target = hit.point.y - TerrainGap;
@@ -335,6 +350,22 @@ namespace MscDuo.Duplication
                 }
             }
             return lowered;
+        }
+
+        static float EdgeDistance(Vector3[] c, Vector3 p)
+        {
+            var poly = new[] { c[0], c[1], c[3], c[2] };
+            var best = float.MaxValue;
+            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+            {
+                var a = new Vector2(poly[j].x, poly[j].z);
+                var b = new Vector2(poly[i].x, poly[i].z);
+                var q = new Vector2(p.x, p.z);
+                var ab = b - a;
+                var t = Mathf.Clamp01(Vector2.Dot(q - a, ab) / ab.sqrMagnitude);
+                best = Mathf.Min(best, (a + ab * t - q).magnitude);
+            }
+            return best;
         }
 
         static bool NearestSurface(Collider surface, Vector3 w, out RaycastHit hit)
@@ -380,11 +411,51 @@ namespace MscDuo.Duplication
         }
 
         static Material concrete;
+        static Vector3[] uvMap;
+
+        static Vector3[] FitUv(List<KeyValuePair<Vector3, Vector2>> pairs)
+        {
+            var m = new float[3, 3];
+            var bu = new float[3];
+            var bv = new float[3];
+            foreach (var pair in pairs)
+            {
+                var row = new[] { pair.Key.x, pair.Key.z, 1f };
+                for (int a = 0; a < 3; a++)
+                {
+                    for (int b = 0; b < 3; b++) m[a, b] += row[a] * row[b];
+                    bu[a] += row[a] * pair.Value.x;
+                    bv[a] += row[a] * pair.Value.y;
+                }
+            }
+            var u = Solve(m, bu);
+            var v = Solve(m, bv);
+            return u == null || v == null ? null : new[] { u.Value, v.Value };
+        }
+
+        static Vector3? Solve(float[,] m, float[] b)
+        {
+            var det = Det(m[0, 0], m[0, 1], m[0, 2], m[1, 0], m[1, 1], m[1, 2], m[2, 0], m[2, 1], m[2, 2]);
+            if (Mathf.Abs(det) < 1e-9f) return null;
+            var x = Det(b[0], m[0, 1], m[0, 2], b[1], m[1, 1], m[1, 2], b[2], m[2, 1], m[2, 2]) / det;
+            var y = Det(m[0, 0], b[0], m[0, 2], m[1, 0], b[1], m[1, 2], m[2, 0], b[2], m[2, 2]) / det;
+            var z = Det(m[0, 0], m[0, 1], b[0], m[1, 0], m[1, 1], b[1], m[2, 0], m[2, 1], b[2]) / det;
+            return new Vector3(x, y, z);
+        }
+
+        static float Det(float a, float b, float c, float d, float e, float f, float g, float h, float i) =>
+            a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+
+        static Vector2 UvAt(Vector3 p) =>
+            uvMap == null
+                ? new Vector2(p.x * 0.5f, p.z * 0.5f)
+                : new Vector2(uvMap[0].x * p.x + uvMap[0].y * p.z + uvMap[0].z, uvMap[1].x * p.x + uvMap[1].y * p.z + uvMap[1].z);
 
         static Material ConcreteFrom(GameObject house, Vector3[] corners, Vector3 inward, float slabY)
         {
             if (concrete != null) return concrete;
             MeshRenderer bestRenderer = null;
+            List<KeyValuePair<Vector3, Vector2>> bestPairs = null;
             Vector2 min = Vector2.zero, max = Vector2.zero;
             var samples = 0;
             foreach (var renderer in house.GetComponentsInChildren<MeshRenderer>())
@@ -395,6 +466,7 @@ namespace MscDuo.Duplication
                 if (b.min.y > slabY + 0.1f || b.max.y < slabY - 0.1f) continue;
                 Vector2 lo = Vector2.one * float.MaxValue, hi = Vector2.one * float.MinValue;
                 var count = 0;
+                var pairs = new List<KeyValuePair<Vector3, Vector2>>();
                 var collider = renderer.gameObject.AddComponent<MeshCollider>();
                 try
                 {
@@ -408,6 +480,7 @@ namespace MscDuo.Duplication
                             if (hit.normal.y < 0.9f || Mathf.Abs(hit.point.y - slabY) > 0.1f) continue;
                             lo = Vector2.Min(lo, hit.textureCoord);
                             hi = Vector2.Max(hi, hit.textureCoord);
+                            pairs.Add(new KeyValuePair<Vector3, Vector2>(hit.point, hit.textureCoord));
                             count++;
                         }
                 }
@@ -416,6 +489,7 @@ namespace MscDuo.Duplication
                 if (count <= samples) continue;
                 samples = count;
                 bestRenderer = renderer;
+                bestPairs = pairs;
                 min = lo;
                 max = hi;
             }
@@ -428,29 +502,9 @@ namespace MscDuo.Duplication
             var texture = source.mainTexture;
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: cimento da laje é '{bestRenderer.name}' ({source.name}).");
 
-            var unlit = Shader.Find("Unlit/Texture");
-            if (unlit == null)
-            {
-                ModConsole.Warning("[MSC Duo] casa 2: shader Unlit/Texture indisponível; extensão fica cinza.");
-                return null;
-            }
-            var size = max - min;
-            var rt = RenderTexture.GetTemporary(256, 256, 0);
-            var active = RenderTexture.active;
-            var cropper = new Material(unlit) { mainTexture = texture, mainTextureScale = size, mainTextureOffset = min };
-            Graphics.Blit(texture, rt, cropper);
-            Object.Destroy(cropper);
-            RenderTexture.active = rt;
-            var patch = new Texture2D(256, 256, TextureFormat.RGB24, true);
-            patch.ReadPixels(new Rect(0, 0, 256, 256), 0, 0);
-            patch.Apply(true);
-            patch.wrapMode = TextureWrapMode.Repeat;
-            RenderTexture.active = active;
-            RenderTexture.ReleaseTemporary(rt);
-
-            var shader = Shader.Find("Legacy Shaders/Diffuse") ?? Shader.Find("Diffuse") ?? source.shader;
-            concrete = new Material(shader) { name = "MscDuoApronConcrete", mainTexture = patch };
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: cimento recortado do atlas em {min} a {max} ({samples} amostras).");
+            uvMap = FitUv(bestPairs);
+            if (uvMap == null) return null;
+            concrete = source;
             return concrete;
         }
 
