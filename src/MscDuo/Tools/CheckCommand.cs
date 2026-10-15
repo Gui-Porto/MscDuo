@@ -174,11 +174,29 @@ namespace MscDuo.Tools
                 }
             }
 
+            text.AppendLine("# juntas que prendem a Satsuma 2 ao mundo ou a algo de fora");
+            var anchors = 0;
+            foreach (var joint in Object.FindObjectsOfType<Joint>())
+            {
+                var inside = joint.transform.IsChildOf(car2.transform);
+                var body = joint.connectedBody;
+                var target = body == null ? null : body.transform;
+                var targetInside = target != null && target.IsChildOf(car2.transform);
+                if (inside && targetInside) continue;
+                if (!inside && !targetInside) continue;
+                if (inside && Rel(joint.transform, car2.transform).Contains("PLAYER")) continue;
+                if (!inside && joint.transform.root.name == "PLAYER") continue;
+                var from = inside ? Rel(joint.transform, car2.transform) : FullPath(joint.transform);
+                var to = target == null ? "MUNDO" : targetInside ? Rel(target, car2.transform) : FullPath(target);
+                text.AppendLine($"ÂNCORA: {joint.GetType().Name} de {from} -> {to} (quebra {joint.breakForce:0})");
+                anchors++;
+            }
+
             text.AppendLine("# colisores enfiados em algo de fora do carro agora (as duas Satsumas)");
             embedded = Embedded(car2, SatsumaCloner.Parts, "2", text);
             var embedded1 = Embedded(car1, GameObject.Find("CARPARTS"), "1", text);
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
         }
 
         static string Compare(object v1, object v2, Transform car1, Transform car2, Dictionary<Object, Object> map)
