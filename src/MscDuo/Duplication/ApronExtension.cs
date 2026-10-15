@@ -21,6 +21,7 @@ namespace MscDuo.Duplication
         const float Skirt = 0.8f;
         const float ClearHeight = 2.5f;
         const float TerrainGap = 0.08f;
+        const float RoadCover = 0.03f;
 
         static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
         static readonly string[] KeptRoots = { "MSCDUO", "PLAYER", "SATSUMA", "CARPARTS", "Database", "ITEMS", "STORE", "Systems", "Sheets", "GUI" };
@@ -96,17 +97,12 @@ namespace MscDuo.Duplication
             heights.Sort();
             var y = heights[heights.Count / 2];
 
-            var center = (corners[0] + corners[1]) * 0.5f + inward * 1.5f;
-            var best = 0f;
-            foreach (var r in house.GetComponentsInChildren<Renderer>())
+            foreach (var r in house.GetComponentsInChildren<MeshRenderer>(true))
             {
-                var b = r.bounds;
-                if (r.sharedMaterial == null || Mathf.Abs(b.max.y - y) > 0.25f) continue;
-                if (center.x < b.min.x || center.x > b.max.x || center.z < b.min.z || center.z > b.max.z) continue;
-                var area = b.size.x * b.size.z;
-                if (area <= best) continue;
-                best = area;
+                var name = r.name.EndsWith("_mesh") && r.transform.parent != null ? r.transform.parent.name : r.name;
+                if (name != "house_base_concrete" || r.sharedMaterial == null) continue;
                 material = r.sharedMaterial;
+                break;
             }
             return y;
         }
@@ -122,6 +118,14 @@ namespace MscDuo.Duplication
                 else if (Path(hit.collider.transform).StartsWith("MAP/MESH/TERRAIN_OBJ")) ground = Mathf.Max(ground, hit.point.y);
             }
             return road > float.MinValue ? road : ground > float.MinValue ? ground : p.y - 1f;
+        }
+
+        static float RoadOnly(Vector3 p)
+        {
+            var road = float.MinValue;
+            foreach (var hit in Physics.RaycastAll(new Vector3(p.x, p.y + 20f, p.z), Vector3.down, 40f))
+                if (!hit.collider.isTrigger && IsRoad(hit.collider)) road = Mathf.Max(road, hit.point.y);
+            return road;
         }
 
         static float SurfaceHeight(Vector3[] c, float[] h, float u, float v) =>
@@ -148,6 +152,8 @@ namespace MscDuo.Duplication
                     var u = i / (float)Steps;
                     var v = Mathf.Lerp(-0.03f, 1.03f, j / (float)Steps);
                     var p = SurfacePoint(c, h, u, v);
+                    var road = RoadOnly(p);
+                    if (road > float.MinValue) p.y = Mathf.Max(p.y, road + RoadCover);
                     grid[i, j] = vertices.Count;
                     vertices.Add(p);
                     uv.Add(new Vector2(p.x * 0.5f, p.z * 0.5f));
