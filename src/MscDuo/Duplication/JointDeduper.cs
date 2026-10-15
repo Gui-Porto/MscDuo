@@ -23,7 +23,6 @@ namespace MscDuo.Duplication
                 foreach (var root in Roots)
                     if (root != null) removed += Dedupe(root) + Reconnect(root) + ReconnectLoose(root);
             }
-            MatchMass();
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {removed} travas duplicadas removidas ou religadas.");
             while (true)
             {

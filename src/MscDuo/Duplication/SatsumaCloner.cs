@@ -91,7 +91,7 @@ namespace MscDuo.Duplication
 
         static void Spawn(Matrix4x4 move, Quaternion turn, bool snap)
         {
-            try { SatsumaSave.Seed(SaveFile, move, turn); }
+            try { SatsumaSave.Seed(SaveFile); }
             catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] Satsuma 2: save próprio não criado: {e.Message}"); }
 
             var car1 = FindRoot(CarName);
@@ -149,7 +149,6 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, {bodies} juntas apontadas para a Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
             Clone.AddComponent<JointDeduper>().Roots = new[] { Clone, Parts };
-            Clone.AddComponent<LateItems>();
             Clone.AddComponent<StuckWatch>();
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: vigia em {PartWatch.Attach(Clone)} peças móveis.");
         }
