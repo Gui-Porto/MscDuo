@@ -101,7 +101,7 @@ namespace MscDuo.Duplication
             {
                 var name = r.name.EndsWith("_mesh") && r.transform.parent != null ? r.transform.parent.name : r.name;
                 if (name != "house_base_concrete" || r.sharedMaterial == null) continue;
-                material = r.sharedMaterial;
+                material = ConcreteFrom(r, corners, inward);
                 break;
             }
             return y;
@@ -383,6 +383,65 @@ namespace MscDuo.Duplication
             foreach (var name in RoadNames)
                 if (c.name == name) return true;
             return false;
+        }
+
+        static Material concrete;
+
+        static Material ConcreteFrom(MeshRenderer renderer, Vector3[] corners, Vector3 inward)
+        {
+            if (concrete != null) return concrete;
+            var filter = renderer.GetComponent<MeshFilter>();
+            var source = renderer.sharedMaterial;
+            var texture = source.mainTexture;
+            if (filter == null || filter.sharedMesh == null || texture == null) return null;
+
+            var probe = new GameObject("MscDuo_ConcreteProbe");
+            probe.transform.position = renderer.transform.position;
+            probe.transform.rotation = renderer.transform.rotation;
+            probe.transform.localScale = renderer.transform.lossyScale;
+            var collider = probe.AddComponent<MeshCollider>();
+            Vector2 min = Vector2.one * float.MaxValue, max = Vector2.one * float.MinValue;
+            var samples = 0;
+            try
+            {
+                collider.sharedMesh = filter.sharedMesh;
+                for (int i = 0; i <= 6; i++)
+                    for (int k = 1; k <= 4; k++)
+                    {
+                        var p = Vector3.Lerp(corners[0], corners[1], i / 6f) + inward * (0.6f * k);
+                        RaycastHit hit;
+                        if (!collider.Raycast(new Ray(new Vector3(p.x, p.y + 5f, p.z), Vector3.down), out hit, 10f)) continue;
+                        if (hit.normal.y < 0.9f) continue;
+                        min = Vector2.Min(min, hit.textureCoord);
+                        max = Vector2.Max(max, hit.textureCoord);
+                        samples++;
+                    }
+            }
+            finally { Object.Destroy(probe); }
+            if (samples < 3 || (max - min).magnitude < 0.0005f)
+            {
+                ModConsole.Warning($"[MSC Duo] casa 2: região do cimento no atlas não encontrada ({samples} amostras).");
+                return null;
+            }
+
+            var size = max - min;
+            var rt = RenderTexture.GetTemporary(256, 256, 0);
+            var active = RenderTexture.active;
+            var cropper = new Material(Shader.Find("Unlit/Texture")) { mainTexture = texture, mainTextureScale = size, mainTextureOffset = min };
+            Graphics.Blit(texture, rt, cropper);
+            Object.Destroy(cropper);
+            RenderTexture.active = rt;
+            var patch = new Texture2D(256, 256, TextureFormat.RGB24, true);
+            patch.ReadPixels(new Rect(0, 0, 256, 256), 0, 0);
+            patch.Apply(true);
+            patch.wrapMode = TextureWrapMode.Repeat;
+            RenderTexture.active = active;
+            RenderTexture.ReleaseTemporary(rt);
+
+            var shader = Shader.Find("Legacy Shaders/Diffuse") ?? Shader.Find("Diffuse") ?? source.shader;
+            concrete = new Material(shader) { name = "MscDuoApronConcrete", mainTexture = patch };
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: cimento recortado do atlas em {min} a {max} ({samples} amostras).");
+            return concrete;
         }
 
         static Material fallback;
