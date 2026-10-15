@@ -56,10 +56,16 @@ namespace MscDuo.Duplication
             ramp.layer = slab != null ? slab.gameObject.layer : house.layer;
             ramp.AddComponent<MeshFilter>().sharedMesh = mesh;
             ramp.AddComponent<MeshRenderer>().sharedMaterial = ConcreteMaterial();
-            ramp.AddComponent<MeshCollider>().sharedMesh = mesh;
+            var collider = ramp.AddComponent<MeshCollider>();
+            collider.sharedMesh = mesh;
+            if (slab != null)
+            {
+                collider.sharedMaterial = slab.sharedMaterial;
+                ramp.tag = slab.gameObject.tag;
+            }
 
             var extra = unreadable.Count > 0 ? $" Sem leitura (ficaram): {string.Join(", ", unreadable.ToArray())}." : "";
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos, {painted} pontos de terra viraram grama.{extra}");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos, {painted} pontos de terra viraram grama, superfície copiada de '{(slab != null ? slab.name : "-")}' (material {(slab != null && slab.sharedMaterial != null ? slab.sharedMaterial.name : "nenhum")}, tag {ramp.tag}).{extra}");
         }
 
         static List<Vector2> FindApron(GameObject house, out float slabY, out Collider slab)
