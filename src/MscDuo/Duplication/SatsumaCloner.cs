@@ -129,6 +129,7 @@ namespace MscDuo.Duplication
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
             Clone.AddComponent<JointDeduper>().Roots = new[] { Clone, Parts };
             Clone.AddComponent<LateItems>();
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: vigia em {PartWatch.Attach(Clone)} peças móveis.");
         }
 
         static float SnapToGround()
