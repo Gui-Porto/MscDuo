@@ -34,7 +34,7 @@ namespace MscDuo.Duplication
             var hinges = left != null && right != null ? right.position - left.position : door.right;
             hinges.y = 0f;
             var dir = Vector3.Cross(Vector3.up, hinges).normalized;
-            if (Covered(house, door.position + dir * 1.5f) && !Covered(house, door.position - dir * 1.5f)) dir = -dir;
+            if (Inside(house, door.position, dir) && !Inside(house, door.position, -dir)) dir = -dir;
             var across = Vector3.Cross(Vector3.up, dir);
 
             float slabY = 0f, edge = -1f;
@@ -179,9 +179,12 @@ namespace MscDuo.Duplication
             return found && width > 1.5f && width < 8f ? width : DefaultWidth;
         }
 
-        static bool Covered(GameObject house, Vector3 point)
+        static bool Inside(GameObject house, Vector3 door, Vector3 dir)
         {
-            foreach (var hit in Physics.RaycastAll(point + Vector3.down * 0.5f, Vector3.up, 8f))
+            var start = door + dir * 0.8f;
+            foreach (var hit in Physics.RaycastAll(start, dir, 8f))
+                if (!hit.collider.isTrigger && hit.collider.transform.IsChildOf(house.transform) && !hit.collider.transform.IsChildOf(Find(house.transform, "GarageDoors"))) return true;
+            foreach (var hit in Physics.RaycastAll(start + Vector3.down * 0.5f, Vector3.up, 8f))
                 if (!hit.collider.isTrigger && hit.collider.transform.IsChildOf(house.transform)) return true;
             return false;
         }
