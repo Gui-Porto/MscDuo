@@ -97,13 +97,7 @@ namespace MscDuo.Duplication
             heights.Sort();
             var y = heights[heights.Count / 2];
 
-            foreach (var r in house.GetComponentsInChildren<MeshRenderer>(true))
-            {
-                var name = r.name.EndsWith("_mesh") && r.transform.parent != null ? r.transform.parent.name : r.name;
-                if (name != "house_base_concrete" || r.sharedMaterial == null) continue;
-                material = ConcreteFrom(r, corners, inward);
-                break;
-            }
+            material = ConcreteFrom(house, corners, inward, y);
             return y;
         }
 
@@ -150,7 +144,7 @@ namespace MscDuo.Duplication
                 for (int j = 0; j <= Steps; j++)
                 {
                     var u = i / (float)Steps;
-                    var v = Mathf.Lerp(-0.03f, 1.03f, j / (float)Steps);
+                    var v = Mathf.Lerp(-0.12f, 1.03f, j / (float)Steps);
                     var p = SurfacePoint(c, h, u, v);
                     var road = RoadOnly(p);
                     if (road > float.MinValue) p.y = Mathf.Max(p.y, road + RoadCover);
@@ -387,42 +381,52 @@ namespace MscDuo.Duplication
 
         static Material concrete;
 
-        static Material ConcreteFrom(MeshRenderer renderer, Vector3[] corners, Vector3 inward)
+        static Material ConcreteFrom(GameObject house, Vector3[] corners, Vector3 inward, float slabY)
         {
             if (concrete != null) return concrete;
-            var filter = renderer.GetComponent<MeshFilter>();
-            var source = renderer.sharedMaterial;
-            var texture = source.mainTexture;
-            if (filter == null || filter.sharedMesh == null || texture == null) return null;
-
-            var probe = new GameObject("MscDuo_ConcreteProbe");
-            probe.transform.position = renderer.transform.position;
-            probe.transform.rotation = renderer.transform.rotation;
-            probe.transform.localScale = renderer.transform.lossyScale;
-            var collider = probe.AddComponent<MeshCollider>();
-            Vector2 min = Vector2.one * float.MaxValue, max = Vector2.one * float.MinValue;
+            MeshRenderer bestRenderer = null;
+            Vector2 min = Vector2.zero, max = Vector2.zero;
             var samples = 0;
-            try
+            foreach (var renderer in house.GetComponentsInChildren<MeshRenderer>())
             {
-                collider.sharedMesh = filter.sharedMesh;
-                for (int i = 0; i <= 6; i++)
-                    for (int k = 1; k <= 4; k++)
-                    {
-                        var p = Vector3.Lerp(corners[0], corners[1], i / 6f) + inward * (0.6f * k);
-                        RaycastHit hit;
-                        if (!collider.Raycast(new Ray(new Vector3(p.x, p.y + 5f, p.z), Vector3.down), out hit, 10f)) continue;
-                        if (hit.normal.y < 0.9f) continue;
-                        min = Vector2.Min(min, hit.textureCoord);
-                        max = Vector2.Max(max, hit.textureCoord);
-                        samples++;
-                    }
+                var filter = renderer.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null || renderer.sharedMaterial == null || renderer.sharedMaterial.mainTexture == null) continue;
+                var b = renderer.bounds;
+                if (b.min.y > slabY + 0.1f || b.max.y < slabY - 0.1f) continue;
+                Vector2 lo = Vector2.one * float.MaxValue, hi = Vector2.one * float.MinValue;
+                var count = 0;
+                var collider = renderer.gameObject.AddComponent<MeshCollider>();
+                try
+                {
+                    collider.sharedMesh = filter.sharedMesh;
+                    for (int i = 0; i <= 6; i++)
+                        for (int k = 1; k <= 4; k++)
+                        {
+                            var p = Vector3.Lerp(corners[0], corners[1], i / 6f) + inward * (0.6f * k);
+                            RaycastHit hit;
+                            if (!collider.Raycast(new Ray(new Vector3(p.x, slabY + 2f, p.z), Vector3.down), out hit, 4f)) continue;
+                            if (hit.normal.y < 0.9f || Mathf.Abs(hit.point.y - slabY) > 0.1f) continue;
+                            lo = Vector2.Min(lo, hit.textureCoord);
+                            hi = Vector2.Max(hi, hit.textureCoord);
+                            count++;
+                        }
+                }
+                catch { count = 0; }
+                finally { Object.DestroyImmediate(collider); }
+                if (count <= samples) continue;
+                samples = count;
+                bestRenderer = renderer;
+                min = lo;
+                max = hi;
             }
-            finally { Object.Destroy(probe); }
-            if (samples < 3 || (max - min).magnitude < 0.0005f)
+            if (bestRenderer == null || samples < 3 || (max - min).magnitude < 0.0005f)
             {
-                ModConsole.Warning($"[MSC Duo] casa 2: região do cimento no atlas não encontrada ({samples} amostras).");
+                ModConsole.Warning($"[MSC Duo] casa 2: superfície de cimento da laje não encontrada ({samples} amostras).");
                 return null;
             }
+            var source = bestRenderer.sharedMaterial;
+            var texture = source.mainTexture;
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: cimento da laje é '{bestRenderer.name}' ({source.name}).");
 
             var unlit = Shader.Find("Unlit/Texture");
             if (unlit == null)

@@ -6,7 +6,7 @@ namespace MscDuo.Duplication
 {
     internal static class SatsumaSave
     {
-        const string Marker = "MscDuoNewGame1";
+        const string Marker = "MscDuoNewGame2";
 
         internal static void Seed(string saveFile)
         {
