@@ -18,6 +18,8 @@ namespace MscDuo.Duplication
         static readonly string[] KeptRoots = { "MSCDUO", "PLAYER", "SATSUMA", "CARPARTS", "Database", "ITEMS", "STORE", "Systems", "Sheets", "GUI" };
         static readonly string[] KeptPaths = { "MAP/MESH/TERRAIN_OBJ", "MAP/MESH/FOLIAGE" };
 
+        static readonly string[] TerrainPaths = { "MAP/MESH/TERRAIN_OBJ/Grass1", "MAP/MESH/TERRAIN_OBJ/Grass2" };
+
         static GameObject ramp;
         static readonly Dictionary<MeshFilter, Mesh> cutMeshes = new Dictionary<MeshFilter, Mesh>();
         static readonly Dictionary<MeshCollider, Mesh> cutColliders = new Dictionary<MeshCollider, Mesh>();
@@ -41,6 +43,7 @@ namespace MscDuo.Duplication
             int cutTriangles, removed;
             var unreadable = ClearArea(house, apron, slabY, out cutTriangles, out removed);
 
+            var painted = RepaintGround(apron);
             var mesh = BuildRamp(house, apron, area, slabY);
             if (mesh == null)
             {
@@ -52,13 +55,11 @@ namespace MscDuo.Duplication
             ramp.transform.parent = house.transform.parent;
             ramp.layer = slab != null ? slab.gameObject.layer : house.layer;
             ramp.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var renderer = ramp.AddComponent<MeshRenderer>();
-            var material = Concrete(house, slab);
-            if (material != null) renderer.sharedMaterial = material;
+            ramp.AddComponent<MeshRenderer>().sharedMaterial = ConcreteMaterial();
             ramp.AddComponent<MeshCollider>().sharedMesh = mesh;
 
             var extra = unreadable.Count > 0 ? $" Sem leitura (ficaram): {string.Join(", ", unreadable.ToArray())}." : "";
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos.{extra}");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos, {painted} pontos de terra viraram grama.{extra}");
         }
 
         static List<Vector2> FindApron(GameObject house, out float slabY, out Collider slab)
@@ -108,7 +109,115 @@ namespace MscDuo.Duplication
                 if (slab == null) slab = s.Value.collider;
             }
             slabY = sum / apron.Count;
-            return apron;
+            return LargestPatch(apron);
+        }
+
+        static List<Vector2> LargestPatch(List<Vector2> cells)
+        {
+            var grid = new HashSet<long>();
+            var origin = cells[0];
+            foreach (var c in cells) grid.Add(Key(c, origin));
+
+            var core = new HashSet<long>();
+            foreach (var k in grid)
+            {
+                int x = (int)(k >> 32), z = (int)(k & 0xffffffff);
+                var solid = true;
+                for (int dx = -1; dx <= 1 && solid; dx++)
+                    for (int dz = -1; dz <= 1 && solid; dz++)
+                        if (!grid.Contains(Pack(x + dx, z + dz))) solid = false;
+                if (solid) core.Add(k);
+            }
+
+            var best = new List<long>();
+            var seen = new HashSet<long>();
+            foreach (var start in core)
+            {
+                if (seen.Contains(start)) continue;
+                var patch = new List<long>();
+                var queue = new Queue<long>();
+                queue.Enqueue(start);
+                seen.Add(start);
+                while (queue.Count > 0)
+                {
+                    var k = queue.Dequeue();
+                    patch.Add(k);
+                    int x = (int)(k >> 32), z = (int)(k & 0xffffffff);
+                    foreach (var n in new[] { Pack(x + 1, z), Pack(x - 1, z), Pack(x, z + 1), Pack(x, z - 1) })
+                        if (core.Contains(n) && seen.Add(n)) queue.Enqueue(n);
+                }
+                if (patch.Count > best.Count) best = patch;
+            }
+
+            var result = new HashSet<long>();
+            foreach (var k in best)
+            {
+                int x = (int)(k >> 32), z = (int)(k & 0xffffffff);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                    {
+                        var n = Pack(x + dx, z + dz);
+                        if (grid.Contains(n)) result.Add(n);
+                    }
+            }
+            var list = new List<Vector2>();
+            foreach (var k in result)
+                list.Add(new Vector2(origin.x + (int)(k >> 32) * ApronCell, origin.y + (int)(k & 0xffffffff) * ApronCell));
+            return list;
+        }
+
+        static long Key(Vector2 c, Vector2 origin) =>
+            Pack(Mathf.RoundToInt((c.x - origin.x) / ApronCell), Mathf.RoundToInt((c.y - origin.y) / ApronCell));
+
+        static long Pack(int x, int z) => ((long)x << 32) | (uint)z;
+
+        static int RepaintGround(List<Vector2> apron)
+        {
+            var area = ApronBounds(apron);
+            area.Expand(new Vector3(MaxRun * 2f + 8f, 0f, MaxRun * 2f + 8f));
+            var painted = 0;
+            foreach (var path in TerrainPaths)
+            {
+                var go = GameObject.Find(path);
+                var filter = go != null ? go.GetComponent<MeshFilter>() : null;
+                if (filter == null || filter.sharedMesh == null || !filter.sharedMesh.name.EndsWith("_flat")) continue;
+                var mesh = filter.sharedMesh;
+                var vertices = mesh.vertices;
+                var colors = mesh.colors;
+                if (colors == null || colors.Length != vertices.Length) continue;
+
+                var toWorld = go.transform.localToWorldMatrix;
+                var distances = new float[vertices.Length];
+                var counts = new Dictionary<int, int>();
+                var samples = new Dictionary<int, Color>();
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    distances[i] = float.MaxValue;
+                    var w = toWorld.MultiplyPoint3x4(vertices[i]);
+                    if (w.x < area.min.x || w.x > area.max.x || w.z < area.min.z || w.z > area.max.z) continue;
+                    distances[i] = Distance(apron, w.x, w.z);
+                    if (distances[i] < MaxRun + 4f || distances[i] > MaxRun + 12f) continue;
+                    var c = colors[i];
+                    var key = Mathf.RoundToInt(c.r * 10f) * 10000 + Mathf.RoundToInt(c.g * 10f) * 100 + Mathf.RoundToInt(c.b * 10f);
+                    counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
+                    samples[key] = c;
+                }
+                var bestKey = -1;
+                var bestCount = 0;
+                foreach (var pair in counts) if (pair.Value > bestCount) { bestKey = pair.Key; bestCount = pair.Value; }
+                if (bestCount == 0) continue;
+                var grass = samples[bestKey];
+
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    if (distances[i] > MaxRun + 3f) continue;
+                    var weight = distances[i] <= MaxRun ? 1f : 1f - (distances[i] - MaxRun) / 3f;
+                    colors[i] = Color.Lerp(colors[i], grass, weight);
+                    painted++;
+                }
+                mesh.colors = colors;
+            }
+            return painted;
         }
 
         static Mesh BuildRamp(GameObject house, List<Vector2> apron, Bounds area, float slabY)
@@ -345,21 +454,15 @@ namespace MscDuo.Duplication
             return bounds;
         }
 
-        static Material Concrete(GameObject house, Collider slab)
+        static Material concrete;
+
+        static Material ConcreteMaterial()
         {
-            if (slab != null)
-            {
-                var r = slab.GetComponent<Renderer>();
-                if (r != null && r.sharedMaterial != null) return r.sharedMaterial;
-            }
-            Material fallback = null;
-            foreach (var r in house.GetComponentsInChildren<Renderer>(true))
-            {
-                var name = r.name.EndsWith("_mesh") && r.transform.parent != null ? r.transform.parent.name : r.name;
-                if (name.StartsWith("house_base_concrete")) return r.sharedMaterial;
-                if (fallback == null && name.StartsWith("house_base")) fallback = r.sharedMaterial;
-            }
-            return fallback;
+            if (concrete != null) return concrete;
+            var shader = Shader.Find("Standard") ?? Shader.Find("Diffuse");
+            concrete = new Material(shader) { name = "MscDuoConcrete", color = new Color(0.56f, 0.55f, 0.52f) };
+            if (concrete.HasProperty("_Glossiness")) concrete.SetFloat("_Glossiness", 0.05f);
+            return concrete;
         }
     }
 }
