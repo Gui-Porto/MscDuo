@@ -162,8 +162,8 @@ namespace MscDuo.Duplication
                 for (int j = 0; j < Steps; j++)
                 {
                     int a = grid[i, j], b = grid[i + 1, j], d = grid[i, j + 1], e = grid[i + 1, j + 1];
-                    DoubleSided(triangles, a, b, e);
-                    DoubleSided(triangles, a, e, d);
+                    Upward(triangles, vertices, a, b, e);
+                    Upward(triangles, vertices, a, e, d);
                 }
             for (int k = 0; k < Steps; k++)
             {
@@ -181,21 +181,33 @@ namespace MscDuo.Duplication
             return mesh;
         }
 
-        static void DoubleSided(List<int> t, int a, int b, int c)
-        {
-            t.Add(a); t.Add(c); t.Add(b);
-            t.Add(a); t.Add(b); t.Add(c);
-        }
-
         static void SkirtEdge(Vector3 a, Vector3 b, List<Vector3> vertices, List<Vector2> uv, List<int> triangles)
         {
             var c = new Vector3(b.x, b.y - Skirt, b.z);
             var d = new Vector3(a.x, a.y - Skirt, a.z);
-            var k = vertices.Count;
-            vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
-            foreach (var p in new[] { a, b, c, d }) uv.Add(new Vector2((p.x + p.z) * 0.5f, p.y * 0.5f));
-            DoubleSided(triangles, k, k + 1, k + 2);
-            DoubleSided(triangles, k, k + 2, k + 3);
+            for (int side = 0; side < 2; side++)
+            {
+                var k = vertices.Count;
+                vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
+                foreach (var p in new[] { a, b, c, d }) uv.Add(new Vector2((p.x + p.z) * 0.5f, p.y * 0.5f));
+                if (side == 0)
+                {
+                    triangles.Add(k); triangles.Add(k + 1); triangles.Add(k + 2);
+                    triangles.Add(k); triangles.Add(k + 2); triangles.Add(k + 3);
+                }
+                else
+                {
+                    triangles.Add(k); triangles.Add(k + 2); triangles.Add(k + 1);
+                    triangles.Add(k); triangles.Add(k + 3); triangles.Add(k + 2);
+                }
+            }
+        }
+
+        static void Upward(List<int> t, List<Vector3> v, int a, int b, int c)
+        {
+            var normal = Vector3.Cross(v[b] - v[a], v[c] - v[a]);
+            if (normal.y >= 0f) { t.Add(a); t.Add(b); t.Add(c); }
+            else { t.Add(a); t.Add(c); t.Add(b); }
         }
 
         static bool Inside(Vector3[] c, Vector3 p, float margin)
