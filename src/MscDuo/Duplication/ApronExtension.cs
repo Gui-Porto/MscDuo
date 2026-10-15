@@ -424,10 +424,16 @@ namespace MscDuo.Duplication
                 return null;
             }
 
+            var unlit = Shader.Find("Unlit/Texture");
+            if (unlit == null)
+            {
+                ModConsole.Warning("[MSC Duo] casa 2: shader Unlit/Texture indisponível; extensão fica cinza.");
+                return null;
+            }
             var size = max - min;
             var rt = RenderTexture.GetTemporary(256, 256, 0);
             var active = RenderTexture.active;
-            var cropper = new Material(Shader.Find("Unlit/Texture")) { mainTexture = texture, mainTextureScale = size, mainTextureOffset = min };
+            var cropper = new Material(unlit) { mainTexture = texture, mainTextureScale = size, mainTextureOffset = min };
             Graphics.Blit(texture, rt, cropper);
             Object.Destroy(cropper);
             RenderTexture.active = rt;
