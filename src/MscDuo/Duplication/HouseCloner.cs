@@ -57,6 +57,7 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2 criada em {Format(Position)} yaw {Yaw:0.#} em {clock.ElapsedMilliseconds} ms. {stats}");
             Step("árvores", () => TreeClearer.Apply(Clone));
             Step("terreno", () => TerrainFlattener.Apply(Clone));
+            Step("rampa", () => GarageRamp.Apply(Clone));
             Step("contas", () => House2Bills.Setup(Clone));
             Step("satsuma", () => SatsumaCloner.Spawn(Original, Clone));
         }
@@ -77,6 +78,7 @@ namespace MscDuo.Duplication
             Clone.transform.rotation = RotationFor(yaw);
             Step("árvores", () => TreeClearer.Apply(Clone));
             Step("terreno", () => TerrainFlattener.Apply(Clone));
+            Step("rampa", () => GarageRamp.Apply(Clone));
         }
 
         internal static bool FaceTowards(Vector3 target)
