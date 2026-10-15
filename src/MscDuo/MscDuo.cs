@@ -24,7 +24,6 @@ namespace MscDuo
         {
             Instance = this;
             SetupFunction(Setup.ModSettings, ModSettings);
-            SetupFunction(Setup.OnMenuLoad, EarlyHook.Install);
             SetupFunction(Setup.OnLoad, OnGameLoad);
             SetupFunction(Setup.PostLoad, OnPostLoad);
             SetupFunction(Setup.Update, OnUpdate);

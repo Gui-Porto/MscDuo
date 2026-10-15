@@ -70,72 +70,8 @@ namespace MscDuo.Duplication
         internal static void Spawn(GameObject house1, GameObject house2) =>
             Spawn(house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix, house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation), true);
 
-        internal static void SpawnEarly()
-        {
-            if (Clone != null) return;
-            Matrix4x4 move;
-            Quaternion turn;
-            if (!HouseCloner.PlannedMove(out move, out turn))
-            {
-                ModConsole.Warning("[MSC Duo] Satsuma 2: casa 1 não encontrada na hora do carregamento; ela será criada depois.");
-                return;
-            }
-            var car1 = FindRoot(CarName);
-            PlayMakerFSM setup = null;
-            if (car1 != null)
-                foreach (var fsm in car1.GetComponents<PlayMakerFSM>())
-                    if (fsm.FsmName == "Setup") setup = fsm;
-            var spawner = new GameObject("MscDuo_PartsArranger").AddComponent<Spawner>();
-            spawner.StartCoroutine(ArrangeWhenReady(setup, spawner.gameObject));
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: clonando a Satsuma 1 ainda de fábrica (sistema dela: '{(setup != null && setup.Fsm.Initialized ? setup.ActiveStateName : "não iniciado")}').");
-            Spawn(move, turn, false);
-        }
-
-        static Matrix4x4 lastMove;
-        static Quaternion lastTurn;
-
-        static IEnumerator ArrangeWhenReady(PlayMakerFSM setup, GameObject runner)
-        {
-            var started = Time.realtimeSinceStartup;
-            while (setup != null && !Settled(setup) && Time.realtimeSinceStartup - started < ReadyTimeout)
-                yield return new WaitForSeconds(0.5f);
-            yield return new WaitForSeconds(3f);
-            try { ArrangeLooseParts(); }
-            catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] Satsuma 2: peças avulsas não reposicionadas: {e.Message}"); }
-            Object.Destroy(runner);
-        }
-
-        static void ArrangeLooseParts()
-        {
-            var parts1 = FindRoot("CARPARTS");
-            if (parts1 == null || Parts == null || Map == null) return;
-            var moved = 0;
-            foreach (var body1 in parts1.GetComponentsInChildren<Rigidbody>())
-            {
-                if (!body1.CompareTag("PART") || !body1.gameObject.activeInHierarchy) continue;
-                Object mapped;
-                if (!Map.TryGetValue(body1.gameObject, out mapped) || mapped == null) continue;
-                var part2 = (GameObject)mapped;
-                if (!part2.CompareTag("PART") || !part2.transform.IsChildOf(Parts.transform)) continue;
-                part2.transform.position = lastMove.MultiplyPoint3x4(body1.transform.position);
-                part2.transform.rotation = lastTurn * body1.transform.rotation;
-                var body2 = part2.GetComponent<Rigidbody>();
-                if (body2 != null)
-                {
-                    body2.velocity = Vector3.zero;
-                    body2.angularVelocity = Vector3.zero;
-                }
-                moved++;
-            }
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {moved} peças avulsas colocadas na casa 2 nos mesmos lugares das peças da casa 1.");
-        }
-
         static void Spawn(Matrix4x4 move, Quaternion turn, bool snap)
         {
-            lastMove = move;
-            lastTurn = turn;
-            try { SatsumaSave.Seed(SaveFile); }
-            catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] Satsuma 2: save próprio não criado: {e.Message}"); }
 
             var car1 = FindRoot(CarName);
             var parts1 = FindRoot("CARPARTS");
@@ -191,9 +127,6 @@ namespace MscDuo.Duplication
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, {bodies} juntas apontadas para a Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
-            Clone.AddComponent<JointDeduper>().Roots = new[] { Clone, Parts };
-            Clone.AddComponent<StuckWatch>();
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: vigia em {PartWatch.Attach(Clone)} peças móveis.");
         }
 
         static float SnapToGround()
