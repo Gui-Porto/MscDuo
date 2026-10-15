@@ -29,15 +29,12 @@ namespace MscDuo.Duplication
                 return;
             }
 
-            var center = Center(house);
             var left = door.Find("ContactPivotLeft");
             var right = door.Find("ContactPivotRight");
             var hinges = left != null && right != null ? right.position - left.position : door.right;
             hinges.y = 0f;
             var dir = Vector3.Cross(Vector3.up, hinges).normalized;
-            var outward = door.position - center;
-            outward.y = 0f;
-            if (Vector3.Dot(dir, outward) < 0f) dir = -dir;
+            if (Covered(house, door.position + dir * 1.5f) && !Covered(house, door.position - dir * 1.5f)) dir = -dir;
             var across = Vector3.Cross(Vector3.up, dir);
 
             float slabY = 0f, edge = -1f;
@@ -180,6 +177,13 @@ namespace MscDuo.Duplication
             }
             var width = max - min;
             return found && width > 1.5f && width < 8f ? width : DefaultWidth;
+        }
+
+        static bool Covered(GameObject house, Vector3 point)
+        {
+            foreach (var hit in Physics.RaycastAll(point + Vector3.down * 0.5f, Vector3.up, 8f))
+                if (!hit.collider.isTrigger && hit.collider.transform.IsChildOf(house.transform)) return true;
+            return false;
         }
 
         static Vector3 Center(GameObject house)
