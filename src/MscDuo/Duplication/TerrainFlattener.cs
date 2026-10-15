@@ -111,7 +111,7 @@ namespace MscDuo.Duplication
         }
 
         static readonly string[] StructurePrefixes = { "house_wall", "house_base", "house_floor" };
-        static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
+        internal static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
         const float RoadRamp = 8f;
         const float RoadStep = 1f;
 

@@ -9,11 +9,14 @@ namespace MscDuo.Duplication
         const float Slope = 0.15f;
         const float MaxRun = 8f;
         const float ApronCell = 0.25f;
-        const float RampCell = 0.5f;
+        const float RampCell = 0.25f;
         const float SlabTolerance = 0.08f;
         const float Sink = 0.05f;
         const float SeamReach = 0.6f;
         const float ClearHeight = 2.5f;
+        const float CorridorReach = 8f;
+        const float CorridorSlack = 3f;
+        const float MaxCorridor = 14f;
 
         static readonly string[] KeptRoots = { "MSCDUO", "PLAYER", "SATSUMA", "CARPARTS", "Database", "ITEMS", "STORE", "Systems", "Sheets", "GUI" };
         static readonly string[] KeptPaths = { "MAP/MESH/TERRAIN_OBJ", "MAP/MESH/FOLIAGE" };
@@ -39,7 +42,7 @@ namespace MscDuo.Duplication
             }
 
             var area = ApronBounds(apron);
-            area.Expand(new Vector3(MaxRun * 2f, 0f, MaxRun * 2f));
+            area.Expand(new Vector3((MaxRun + CorridorReach) * 2f, 0f, (MaxRun + CorridorReach) * 2f));
             int cutTriangles, removed;
             var unreadable = ClearArea(house, apron, slabY, out cutTriangles, out removed);
 
@@ -55,7 +58,7 @@ namespace MscDuo.Duplication
             ramp.transform.parent = house.transform.parent;
             ramp.layer = slab != null ? slab.gameObject.layer : house.layer;
             ramp.AddComponent<MeshFilter>().sharedMesh = mesh;
-            ramp.AddComponent<MeshRenderer>().sharedMaterial = ConcreteMaterial();
+            ramp.AddComponent<MeshRenderer>().sharedMaterial = roadMaterial ?? ConcreteMaterial();
             var collider = ramp.AddComponent<MeshCollider>();
             collider.sharedMesh = mesh;
             if (slab != null)
@@ -65,7 +68,7 @@ namespace MscDuo.Duplication
             }
 
             var extra = unreadable.Count > 0 ? $" Sem leitura (ficaram): {string.Join(", ", unreadable.ToArray())}." : "";
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos, {painted} pontos de terra viraram grama, superfície copiada de '{(slab != null ? slab.name : "-")}' (material {(slab != null && slab.sharedMaterial != null ? slab.sharedMaterial.name : "nenhum")}, tag {ramp.tag}).{extra}");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos, material {(roadMaterial != null ? roadMaterial.name : "concreto")}, {painted} pontos de terra viraram grama, superfície copiada de '{(slab != null ? slab.name : "-")}' (material {(slab != null && slab.sharedMaterial != null ? slab.sharedMaterial.name : "nenhum")}, tag {ramp.tag}).{extra}");
         }
 
         static List<Vector2> FindApron(GameObject house, out float slabY, out Collider slab)
@@ -226,6 +229,8 @@ namespace MscDuo.Duplication
             return painted;
         }
 
+        static Material roadMaterial;
+
         static Mesh BuildRamp(GameObject house, List<Vector2> apron, Bounds area, float slabY)
         {
             var nx = Mathf.CeilToInt(area.size.x / RampCell) + 1;
@@ -233,25 +238,53 @@ namespace MscDuo.Duplication
             var heights = new float[nx, nz];
             var above = new bool[nx, nz];
             var valid = new bool[nx, nz];
+            var apronDistance = new float[nx, nz];
+            var grounds = new float[nx, nz];
             var top = slabY + 6f;
+            var roads = new List<Vector2>();
+            roadMaterial = null;
 
             for (int i = 0; i < nx; i++)
                 for (int j = 0; j < nz; j++)
                 {
                     var x = area.min.x + i * RampCell;
                     var z = area.min.z + j * RampCell;
-                    var distance = Distance(apron, x, z);
-                    if (distance > MaxRun) continue;
+                    apronDistance[i, j] = Distance(apron, x, z);
+                    if (apronDistance[i, j] > MaxRun + CorridorReach) continue;
                     RaycastHit hit;
-                    var onHouse = TopHit(house, x, z, top, out hit);
-                    if (onHouse && distance > SeamReach) continue;
-
-                    float ground;
-                    if (!Ground.TryHeight(new Vector3(x, slabY, z), 3f, out ground, house)) ground = slabY - 2f;
-                    var rampY = onHouse ? slabY - 0.02f : slabY - distance * Slope;
-                    above[i, j] = rampY > ground + 0.01f;
-                    heights[i, j] = above[i, j] ? rampY : ground - Sink;
+                    if (TopHit(house, x, z, top, out hit) && apronDistance[i, j] > SeamReach) continue;
+                    if (!Ground.TryHeight(new Vector3(x, slabY, z), 3f, out grounds[i, j], house)) grounds[i, j] = slabY - 2f;
                     valid[i, j] = true;
+                    Collider road;
+                    if (RoadAt(x, z, slabY, out road))
+                    {
+                        roads.Add(new Vector2(x, z));
+                        if (roadMaterial == null) roadMaterial = MaterialOf(road);
+                    }
+                }
+
+            var roadDistance = new float[nx, nz];
+            var corridor = float.MaxValue;
+            for (int i = 0; i < nx; i++)
+                for (int j = 0; j < nz; j++)
+                {
+                    if (!valid[i, j]) continue;
+                    roadDistance[i, j] = roads.Count == 0 ? float.MaxValue : Nearest(roads, area.min.x + i * RampCell, area.min.z + j * RampCell);
+                    corridor = Mathf.Min(corridor, apronDistance[i, j] + roadDistance[i, j]);
+                }
+            var fillLimit = corridor <= MaxCorridor ? corridor + CorridorSlack : -1f;
+
+            for (int i = 0; i < nx; i++)
+                for (int j = 0; j < nz; j++)
+                {
+                    if (!valid[i, j]) continue;
+                    var ground = grounds[i, j];
+                    var distance = apronDistance[i, j];
+                    var rampY = distance <= SeamReach && distance < 0.01f ? slabY - 0.02f : slabY - distance * Slope;
+                    var fill = apronDistance[i, j] + roadDistance[i, j] <= fillLimit;
+                    var raised = distance <= MaxRun && rampY > ground + 0.01f;
+                    above[i, j] = raised || fill;
+                    heights[i, j] = raised ? rampY : fill ? ground + 0.03f : ground - Sink;
                 }
 
             var vertices = new List<Vector3>();
@@ -275,7 +308,12 @@ namespace MscDuo.Duplication
                     triangles.Add(a); triangles.Add(c); triangles.Add(d);
                 }
 
-            if (triangles.Count == 0 || vertices.Count > 64000) return null;
+            if (triangles.Count == 0) return null;
+            if (vertices.Count > 64000)
+            {
+                ModConsole.Warning($"[MSC Duo] casa 2: rampa grande demais ({vertices.Count} vértices).");
+                return null;
+            }
             var mesh = new Mesh { name = "ApronRamp_P2" };
             mesh.vertices = vertices.ToArray();
             mesh.uv = uv.ToArray();
@@ -291,7 +329,7 @@ namespace MscDuo.Duplication
             var p = new Vector3(area.min.x + i * RampCell, heights[i, j], area.min.z + j * RampCell);
             index[i, j] = vertices.Count;
             vertices.Add(p);
-            uv.Add(new Vector2(p.x * 0.5f, p.z * 0.5f));
+            uv.Add(new Vector2(p.x * 0.25f, p.z * 0.25f));
             return index[i, j];
         }
 
@@ -458,6 +496,34 @@ namespace MscDuo.Duplication
                 else bounds.Encapsulate(c.bounds);
             }
             return bounds;
+        }
+
+        static bool RoadAt(float x, float z, float y, out Collider road)
+        {
+            road = null;
+            foreach (var hit in Physics.RaycastAll(new Vector3(x, y + 20f, z), Vector3.down, 40f))
+                foreach (var name in TerrainFlattener.RoadNames)
+                    if (hit.collider.name == name) { road = hit.collider; return true; }
+            return false;
+        }
+
+        static Material MaterialOf(Collider road)
+        {
+            var renderer = road.GetComponent<Renderer>() ?? road.GetComponentInChildren<Renderer>() ?? road.GetComponentInParent<Renderer>();
+            return renderer != null ? renderer.sharedMaterial : null;
+        }
+
+        static float Nearest(List<Vector2> points, float x, float z)
+        {
+            var best = float.MaxValue;
+            foreach (var p in points)
+            {
+                var dx = p.x - x;
+                var dz = p.y - z;
+                var d = dx * dx + dz * dz;
+                if (d < best) best = d;
+            }
+            return Mathf.Sqrt(best);
         }
 
         static Material concrete;
