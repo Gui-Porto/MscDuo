@@ -98,7 +98,41 @@ namespace MscDuo.Duplication
                 dynamics2.SetCenterOfMass(dynamics1.centerOfMass.localPosition);
                 center = dynamics1.centerOfMass.localPosition.ToString();
             }
-            return $"{wheels} rodas com pneus recalculados como na Satsuma 1, centro de massa em {center}.";
+            var colliders = SyncWheelColliders(car1, map);
+            return $"{wheels} rodas com pneus recalculados como na Satsuma 1, centro de massa em {center}, {colliders}";
+        }
+
+        static string SyncWheelColliders(GameObject car1, Dictionary<Object, Object> map)
+        {
+            var changes = new List<string>();
+            foreach (var c1 in car1.GetComponentsInChildren<Collider>(true))
+            {
+                var path = c1.transform.name;
+                var wheel = c1.GetComponentInParent<Wheel>();
+                if (wheel == null) continue;
+                Object mapped;
+                if (!map.TryGetValue(c1, out mapped) || mapped == null) continue;
+                var c2 = (Collider)mapped;
+                var before = Describe(c2);
+                c2.enabled = c1.enabled;
+                c2.isTrigger = c1.isTrigger;
+                c2.sharedMaterial = c1.sharedMaterial;
+                c2.gameObject.layer = c1.gameObject.layer;
+                if (c1 is BoxCollider b1 && c2 is BoxCollider b2) { b2.center = b1.center; b2.size = b1.size; }
+                if (c1 is SphereCollider s1 && c2 is SphereCollider s2) { s2.center = s1.center; s2.radius = s1.radius; }
+                if (c1 is CapsuleCollider p1 && c2 is CapsuleCollider p2) { p2.center = p1.center; p2.radius = p1.radius; p2.height = p1.height; p2.direction = p1.direction; }
+                if (c1 is MeshCollider m1 && c2 is MeshCollider m2 && m2.sharedMesh != m1.sharedMesh) { m2.sharedMesh = null; m2.sharedMesh = m1.sharedMesh; }
+                var after = Describe(c2);
+                if (before != after) changes.Add($"{wheel.name}/{path} {c2.GetType().Name}: {before} -> {after}");
+            }
+            foreach (var change in changes) ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: colisor de roda corrigido {change}");
+            return $"{changes.Count} colisores de roda corrigidos.";
+        }
+
+        static string Describe(Collider c)
+        {
+            var size = c is BoxCollider b ? b.size.ToString() : c is SphereCollider s ? s.radius.ToString("0.###") : c is CapsuleCollider p ? $"{p.radius:0.###}x{p.height:0.###}" : c is MeshCollider m && m.sharedMesh != null ? m.sharedMesh.name : "-";
+            return $"ligado={c.enabled} gatilho={c.isTrigger} camada={c.gameObject.layer} tamanho={size}";
         }
 
         static bool IsItem(Transform t) =>
