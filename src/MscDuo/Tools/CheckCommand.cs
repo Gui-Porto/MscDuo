@@ -214,6 +214,34 @@ namespace MscDuo.Tools
                 var d = (p1 - p2).magnitude;
                 if (d > 0.05f) moved.Add(new KeyValuePair<float, string>(d, $"{d:0.00} m: {rel} 1={Fmt(p1)} 2={Fmt(p2)}"));
             }
+            text.AppendLine("# peças visíveis numa Satsuma e escondidas na outra");
+            var visibility = 0;
+            foreach (var r2 in car2.GetComponentsInChildren<Renderer>(true))
+            {
+                var rel = Rel(r2.transform, car2.transform);
+                if (rel.Contains("PLAYER")) continue;
+                Object o1;
+                if (!reverse.TryGetValue(r2, out o1) || o1 == null) continue;
+                var r1 = (Renderer)o1;
+                var shown1 = r1.enabled && r1.gameObject.activeInHierarchy;
+                var shown2 = r2.enabled && r2.gameObject.activeInHierarchy;
+                if (shown1 == shown2) continue;
+                text.AppendLine($"{(shown2 ? "VISÍVEL SÓ NA 2" : "ESCONDIDA SÓ NA 2")}: {rel} em {Fmt(car2.transform.InverseTransformPoint(r2.bounds.center))}");
+                visibility++;
+            }
+            var activeOnly = 0;
+            foreach (var t2 in car2.GetComponentsInChildren<Transform>(true))
+            {
+                var rel = Rel(t2, car2.transform);
+                if (rel.Contains("PLAYER")) continue;
+                Object o1;
+                if (!reverse.TryGetValue(t2.gameObject, out o1) || o1 == null) continue;
+                var g1 = (GameObject)o1;
+                if (g1.activeSelf == t2.gameObject.activeSelf) continue;
+                text.AppendLine($"{(t2.gameObject.activeSelf ? "LIGADO SÓ NA 2" : "DESLIGADO SÓ NA 2")}: {rel}");
+                activeOnly++;
+            }
+
             moved.Sort((a, b) => b.Key.CompareTo(a.Key));
             foreach (var m in moved) text.AppendLine("FORA DO LUGAR " + m.Value);
 
@@ -239,7 +267,7 @@ namespace MscDuo.Tools
             embedded = Embedded(car2, SatsumaCloner.Parts, "2", text);
             var embedded1 = Embedded(car1, GameObject.Find("CARPARTS"), "1", text);
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {loose} peças soltas ou sem junta, {moved.Count} peças visíveis fora do lugar, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {loose} peças soltas ou sem junta, {moved.Count} peças visíveis fora do lugar, {visibility} peças visíveis só numa delas, {activeOnly} objetos ligados/desligados diferente, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
         }
 
         static string Compare(object v1, object v2, Transform car1, Transform car2, Dictionary<Object, Object> map)
