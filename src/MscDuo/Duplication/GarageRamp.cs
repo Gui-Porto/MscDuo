@@ -30,9 +30,11 @@ namespace MscDuo.Duplication
             }
 
             var center = Center(house);
-            var dir = door.forward;
-            dir.y = 0f;
-            dir.Normalize();
+            var left = door.Find("ContactPivotLeft");
+            var right = door.Find("ContactPivotRight");
+            var hinges = left != null && right != null ? right.position - left.position : door.right;
+            hinges.y = 0f;
+            var dir = Vector3.Cross(Vector3.up, hinges).normalized;
             var outward = door.position - center;
             outward.y = 0f;
             if (Vector3.Dot(dir, outward) < 0f) dir = -dir;
