@@ -58,7 +58,8 @@ namespace MscDuo.Duplication
             ramp.transform.parent = house.transform.parent;
             ramp.layer = slab != null ? slab.gameObject.layer : house.layer;
             ramp.AddComponent<MeshFilter>().sharedMesh = mesh;
-            ramp.AddComponent<MeshRenderer>().sharedMaterial = roadMaterial ?? ConcreteMaterial();
+            var slabMaterial = SlabMaterial(house, apron, slabY);
+            ramp.AddComponent<MeshRenderer>().sharedMaterial = slabMaterial ?? ConcreteMaterial();
             var collider = ramp.AddComponent<MeshCollider>();
             collider.sharedMesh = mesh;
             if (slab != null)
@@ -68,7 +69,7 @@ namespace MscDuo.Duplication
             }
 
             var extra = unreadable.Count > 0 ? $" Sem leitura (ficaram): {string.Join(", ", unreadable.ToArray())}." : "";
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos, material {(roadMaterial != null ? roadMaterial.name : "concreto")}, {painted} pontos de terra viraram grama, superfície copiada de '{(slab != null ? slab.name : "-")}' (material {(slab != null && slab.sharedMaterial != null ? slab.sharedMaterial.name : "nenhum")}, tag {ramp.tag}).{extra}");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa em volta da laje ({apron.Count} pontos de laje, {mesh.vertexCount} vértices), {cutTriangles} triângulos cortados do caminho, {removed} objetos removidos, material {(slabMaterial != null ? slabMaterial.name : "cinza")}, {painted} pontos de terra viraram grama, superfície copiada de '{(slab != null ? slab.name : "-")}' (material {(slab != null && slab.sharedMaterial != null ? slab.sharedMaterial.name : "nenhum")}, tag {ramp.tag}).{extra}");
         }
 
         static List<Vector2> FindApron(GameObject house, out float slabY, out Collider slab)
@@ -229,8 +230,6 @@ namespace MscDuo.Duplication
             return painted;
         }
 
-        static Material roadMaterial;
-
         static Mesh BuildRamp(GameObject house, List<Vector2> apron, Bounds area, float slabY)
         {
             var nx = Mathf.CeilToInt(area.size.x / RampCell) + 1;
@@ -241,8 +240,7 @@ namespace MscDuo.Duplication
             var apronDistance = new float[nx, nz];
             var grounds = new float[nx, nz];
             var top = slabY + 6f;
-            var roads = new List<Vector2>();
-            roadMaterial = null;
+            var roads = new List<Vector3>();
 
             for (int i = 0; i < nx; i++)
                 for (int j = 0; j < nz; j++)
@@ -256,22 +254,20 @@ namespace MscDuo.Duplication
                     if (!SurfaceAt(x, z, slabY, out grounds[i, j])) grounds[i, j] = slabY - 2f;
                     valid[i, j] = true;
                     Collider road;
-                    if (RoadAt(x, z, slabY, out road))
-                    {
-                        roads.Add(new Vector2(x, z));
-                        if (roadMaterial == null) roadMaterial = MaterialOf(road);
-                    }
+                    float roadY;
+                    if (RoadAt(x, z, slabY, out road, out roadY)) roads.Add(new Vector3(x, roadY, z));
                 }
 
             Smooth(grounds, valid, nx, nz, 3);
 
             var roadDistance = new float[nx, nz];
+            var roadHeight = new float[nx, nz];
             var corridor = float.MaxValue;
             for (int i = 0; i < nx; i++)
                 for (int j = 0; j < nz; j++)
                 {
                     if (!valid[i, j]) continue;
-                    roadDistance[i, j] = roads.Count == 0 ? float.MaxValue : Nearest(roads, area.min.x + i * RampCell, area.min.z + j * RampCell);
+                    roadDistance[i, j] = roads.Count == 0 ? float.MaxValue : Nearest(roads, area.min.x + i * RampCell, area.min.z + j * RampCell, out roadHeight[i, j]);
                     corridor = Mathf.Min(corridor, apronDistance[i, j] + roadDistance[i, j]);
                 }
             var fillLimit = corridor <= MaxCorridor ? corridor + CorridorSlack : -1f;
@@ -286,7 +282,10 @@ namespace MscDuo.Duplication
                     var fill = apronDistance[i, j] + roadDistance[i, j] <= fillLimit;
                     var raised = distance <= MaxRun && rampY > ground + 0.01f;
                     above[i, j] = raised || fill;
-                    heights[i, j] = raised ? rampY : fill ? ground + 0.03f : ground - Sink;
+                    var span = distance + roadDistance[i, j];
+                    var straight = span > 0.01f ? Mathf.Lerp(slabY - 0.02f, roadHeight[i, j] + 0.03f, distance / span) : slabY - 0.02f;
+                    heights[i, j] = fill ? straight : raised ? rampY : ground - Sink;
+                    grounds[i, j] = Mathf.Min(grounds[i, j], heights[i, j]);
                 }
 
             var vertices = new List<Vector3>();
@@ -310,6 +309,21 @@ namespace MscDuo.Duplication
                     triangles.Add(a); triangles.Add(c); triangles.Add(d);
                 }
 
+            var included = new bool[nx, nz];
+            for (int i = 0; i < nx - 1; i++)
+                for (int j = 0; j < nz - 1; j++)
+                    included[i, j] = index[i, j] >= 0 && index[i + 1, j] >= 0 && index[i, j + 1] >= 0 && index[i + 1, j + 1] >= 0
+                        && (above[i, j] || above[i + 1, j] || above[i, j + 1] || above[i + 1, j + 1]);
+            for (int i = 0; i < nx - 1; i++)
+                for (int j = 0; j < nz - 1; j++)
+                {
+                    if (!included[i, j]) continue;
+                    if (i == 0 || !included[i - 1, j]) Skirt(i, j, i, j + 1, area, heights, grounds, vertices, uv, triangles);
+                    if (i == nx - 2 || !included[i + 1, j]) Skirt(i + 1, j, i + 1, j + 1, area, heights, grounds, vertices, uv, triangles);
+                    if (j == 0 || !included[i, j - 1]) Skirt(i, j, i + 1, j, area, heights, grounds, vertices, uv, triangles);
+                    if (j == nz - 2 || !included[i, j + 1]) Skirt(i, j + 1, i + 1, j + 1, area, heights, grounds, vertices, uv, triangles);
+                }
+
             if (triangles.Count == 0) return null;
             if (vertices.Count > 64000)
             {
@@ -323,6 +337,25 @@ namespace MscDuo.Duplication
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        static void Skirt(int i0, int j0, int i1, int j1, Bounds area, float[,] heights, float[,] grounds, List<Vector3> vertices, List<Vector2> uv, List<int> triangles)
+        {
+            var bottom = Mathf.Min(grounds[i0, j0], grounds[i1, j1]) - 0.6f;
+            var a = new Vector3(area.min.x + i0 * RampCell, heights[i0, j0], area.min.z + j0 * RampCell);
+            var b = new Vector3(area.min.x + i1 * RampCell, heights[i1, j1], area.min.z + j1 * RampCell);
+            var c = new Vector3(b.x, bottom, b.z);
+            var d = new Vector3(a.x, bottom, a.z);
+            var k = vertices.Count;
+            vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
+            uv.Add(new Vector2((a.x + a.z) * 0.25f, a.y * 0.25f));
+            uv.Add(new Vector2((b.x + b.z) * 0.25f, b.y * 0.25f));
+            uv.Add(new Vector2((c.x + c.z) * 0.25f, c.y * 0.25f));
+            uv.Add(new Vector2((d.x + d.z) * 0.25f, d.y * 0.25f));
+            triangles.Add(k); triangles.Add(k + 1); triangles.Add(k + 2);
+            triangles.Add(k); triangles.Add(k + 2); triangles.Add(k + 3);
+            triangles.Add(k); triangles.Add(k + 2); triangles.Add(k + 1);
+            triangles.Add(k); triangles.Add(k + 3); triangles.Add(k + 2);
         }
 
         static int Vertex(int i, int j, Bounds area, float[,] heights, int[,] index, List<Vector3> vertices, List<Vector2> uv)
@@ -542,30 +575,44 @@ namespace MscDuo.Duplication
             }
         }
 
-        static bool RoadAt(float x, float z, float y, out Collider road)
+        static bool RoadAt(float x, float z, float y, out Collider road, out float height)
         {
             road = null;
+            height = 0f;
             foreach (var hit in Physics.RaycastAll(new Vector3(x, y + 20f, z), Vector3.down, 40f))
                 foreach (var name in TerrainFlattener.RoadNames)
-                    if (hit.collider.name == name) { road = hit.collider; return true; }
+                    if (hit.collider.name == name) { road = hit.collider; height = hit.point.y; return true; }
             return false;
         }
 
-        static Material MaterialOf(Collider road)
+        static Material SlabMaterial(GameObject house, List<Vector2> apron, float slabY)
         {
-            var renderer = road.GetComponent<Renderer>() ?? road.GetComponentInChildren<Renderer>() ?? road.GetComponentInParent<Renderer>();
-            return renderer != null ? renderer.sharedMaterial : null;
+            var center = ApronBounds(apron).center;
+            Material best = null;
+            var bestArea = 0f;
+            foreach (var r in house.GetComponentsInChildren<Renderer>())
+            {
+                var b = r.bounds;
+                if (r.sharedMaterial == null || Mathf.Abs(b.max.y - slabY) > 0.2f) continue;
+                if (center.x < b.min.x || center.x > b.max.x || center.z < b.min.z || center.z > b.max.z) continue;
+                var areaXZ = b.size.x * b.size.z;
+                if (areaXZ <= bestArea) continue;
+                bestArea = areaXZ;
+                best = r.sharedMaterial;
+            }
+            return best;
         }
 
-        static float Nearest(List<Vector2> points, float x, float z)
+        static float Nearest(List<Vector3> points, float x, float z, out float height)
         {
             var best = float.MaxValue;
+            height = 0f;
             foreach (var p in points)
             {
                 var dx = p.x - x;
-                var dz = p.y - z;
+                var dz = p.z - z;
                 var d = dx * dx + dz * dz;
-                if (d < best) best = d;
+                if (d < best) { best = d; height = p.y; }
             }
             return Mathf.Sqrt(best);
         }
