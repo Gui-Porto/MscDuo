@@ -53,7 +53,7 @@ namespace MscDuo.Tools
     internal class MapCommand : ConsoleCommand
     {
         public override string Name => "duo_map";
-        public override string Help => "duo_map [meia largura em metros = 120] [resolução = 2048]  foto aérea + alturas ao redor da casa";
+        public override string Help => "duo_map [meia largura em metros = 120] [resolução = 2048]  foto aérea + alturas ao redor da casa 2";
 
         public override void Run(string[] args)
         {
@@ -62,7 +62,7 @@ namespace MscDuo.Tools
             if (args.Length > 0 && !DevCommands.TryFloat(args[0], out half)) { ModConsole.Error("meia largura inválida"); return; }
             if (args.Length > 1 && !int.TryParse(args[1], out resolution)) { ModConsole.Error("resolução inválida"); return; }
 
-            var house = HouseCloner.Original;
+            var house = HouseCloner.Clone ?? HouseCloner.Original;
             if (house == null) { ModConsole.Error("[MSC Duo] casa original não encontrada"); return; }
             DevCommands.StartRoutine(MapCapture.Capture(house.transform.position, half, resolution));
         }
