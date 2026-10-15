@@ -7,7 +7,7 @@ namespace MscDuo.Duplication
     internal static class SatsumaSave
     {
         const string GameSave = "defaultES2File.txt";
-        const string Marker = "MscDuoSeeded2";
+        const string Marker = "MscDuoSeeded3";
 
         internal static void Seed(string saveFile, Matrix4x4 move, Quaternion turn)
         {
