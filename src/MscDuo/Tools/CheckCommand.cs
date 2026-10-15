@@ -197,6 +197,26 @@ namespace MscDuo.Tools
                 }
             }
 
+            text.AppendLine("# peças visíveis da Satsuma 2 fora do lugar em relação à Satsuma 1 (mais de 5 cm)");
+            var moved = new List<KeyValuePair<float, string>>();
+            foreach (var r2 in car2.GetComponentsInChildren<Renderer>())
+            {
+                var rel = Rel(r2.transform, car2.transform);
+                if (rel.Contains("PLAYER")) continue;
+                Object o1;
+                if (!reverse.TryGetValue(r2.gameObject, out o1) || o1 == null)
+                {
+                    moved.Add(new KeyValuePair<float, string>(99f, $"SEM PAR NA 1: {rel} em {Fmt(car2.transform.InverseTransformPoint(r2.transform.position))}"));
+                    continue;
+                }
+                var p1 = car1.transform.InverseTransformPoint(((GameObject)o1).transform.position);
+                var p2 = car2.transform.InverseTransformPoint(r2.transform.position);
+                var d = (p1 - p2).magnitude;
+                if (d > 0.05f) moved.Add(new KeyValuePair<float, string>(d, $"{d:0.00} m: {rel} 1={Fmt(p1)} 2={Fmt(p2)}"));
+            }
+            moved.Sort((a, b) => b.Key.CompareTo(a.Key));
+            foreach (var m in moved) text.AppendLine("FORA DO LUGAR " + m.Value);
+
             text.AppendLine("# juntas que prendem a Satsuma 2 ao mundo ou a algo de fora");
             var anchors = 0;
             foreach (var joint in Object.FindObjectsOfType<Joint>())
@@ -219,7 +239,7 @@ namespace MscDuo.Tools
             embedded = Embedded(car2, SatsumaCloner.Parts, "2", text);
             var embedded1 = Embedded(car1, GameObject.Find("CARPARTS"), "1", text);
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {loose} peças soltas ou sem junta, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {loose} peças soltas ou sem junta, {moved.Count} peças visíveis fora do lugar, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
         }
 
         static string Compare(object v1, object v2, Transform car1, Transform car2, Dictionary<Object, Object> map)
@@ -273,6 +293,8 @@ namespace MscDuo.Tools
             }
             return count;
         }
+
+        static string Fmt(Vector3 v) => $"({v.x:0.00}, {v.y:0.00}, {v.z:0.00})";
 
         static string Describe(Collider c, Transform root)
         {
