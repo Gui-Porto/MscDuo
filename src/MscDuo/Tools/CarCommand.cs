@@ -9,11 +9,12 @@ namespace MscDuo.Tools
     internal class CarCommand : ConsoleCommand
     {
         public override string Name => "duo_car";
-        public override string Help => "duo_car [saves | fisica | sons | telemetria]  compara as variáveis da Satsuma 1 e da Satsuma 2, ou lista os saves automáticos";
+        public override string Help => "duo_car [agora | saves | fisica | sons | telemetria]  compara as variáveis da Satsuma 1 e da Satsuma 2, ou lista os saves automáticos";
 
         public override void Run(string[] args)
         {
             if (args.Length > 0 && args[0] == "saves") { ListAutoSaves(); return; }
+            if (args.Length > 0 && args[0] == "agora") { ModConsole.Print(StuckWatch.Snapshot()); return; }
             if (args.Length > 0 && args[0] == "telemetria") { ModConsole.Print("<color=orange>[MSC Duo]</color> " + Telemetry.Toggle(System.IO.Path.Combine(MscDuo.Instance.SettingsFolder, "dumps"))); return; }
             if (args.Length > 0 && args[0] == "sons") { ModConsole.Print("<color=orange>[MSC Duo]</color> " + SoundSpy.Toggle()); return; }
             if (args.Length > 0 && args[0] == "fisica") { PhysicsDiff.Run(System.IO.Path.Combine(MscDuo.Instance.SettingsFolder, "dumps")); return; }
