@@ -59,7 +59,7 @@ namespace MscDuo.Duplication
             Step("terreno", () => TerrainFlattener.Apply(Clone));
             Step("rampa", () => ApronRamp.Apply(Clone));
             Step("contas", () => House2Bills.Setup(Clone));
-            Step("satsuma", () => SatsumaCloner.Spawn(Original, Clone));
+            Step("satsuma", () => SatsumaCloner.SpawnWhenReady(Original, Clone));
         }
 
         static void Step(string name, System.Action action)

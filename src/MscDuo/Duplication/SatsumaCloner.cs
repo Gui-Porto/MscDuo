@@ -29,6 +29,44 @@ namespace MscDuo.Duplication
         internal static GameObject Original { get; private set; }
         internal static GameObject OriginalDatabase { get; private set; }
 
+        const float ReadyTimeout = 60f;
+        const float SettleDelay = 5f;
+
+        internal static void SpawnWhenReady(GameObject house1, GameObject house2)
+        {
+            var runner = new GameObject("MscDuo_SatsumaSpawner").AddComponent<Spawner>();
+            runner.StartCoroutine(WaitAndSpawn(house1, house2, runner.gameObject));
+        }
+
+        class Spawner : MonoBehaviour { }
+
+        static IEnumerator WaitAndSpawn(GameObject house1, GameObject house2, GameObject runner)
+        {
+            var started = Time.realtimeSinceStartup;
+            var car = FindRoot(CarName);
+            PlayMakerFSM setup = null;
+            if (car != null)
+                foreach (var fsm in car.GetComponents<PlayMakerFSM>())
+                    if (fsm.FsmName == "Setup") setup = fsm;
+            while (car != null && (setup != null && !Settled(setup) || PlayerInside(car)) && Time.realtimeSinceStartup - started < ReadyTimeout)
+                yield return new WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(SettleDelay);
+            var waited = Time.realtimeSinceStartup - started;
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 1 pronta depois de {waited:0.0} s (estado '{(setup != null ? setup.ActiveStateName : "-")}'); clonando a Satsuma 2.");
+            try { Spawn(house1, house2); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] Satsuma 2 falhou: {e}"); }
+            Object.Destroy(runner);
+        }
+
+        static bool PlayerInside(GameObject car)
+        {
+            var player = GameObject.Find("PLAYER");
+            return player != null && player.transform.IsChildOf(car.transform);
+        }
+
+        static bool Settled(PlayMakerFSM setup) =>
+            setup.ActiveStateName == "Lod ON" || setup.ActiveStateName == "Lod OFF";
+
         internal static void Spawn(GameObject house1, GameObject house2)
         {
             var car1 = FindRoot(CarName);
