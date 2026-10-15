@@ -30,9 +30,12 @@ namespace MscDuo.Duplication
             }
 
             var center = Center(house);
-            var dir = door.position - center;
+            var dir = door.forward;
             dir.y = 0f;
             dir.Normalize();
+            var outward = door.position - center;
+            outward.y = 0f;
+            if (Vector3.Dot(dir, outward) < 0f) dir = -dir;
             var across = Vector3.Cross(Vector3.up, dir);
 
             float slabY = 0f, edge = -1f;
@@ -92,7 +95,7 @@ namespace MscDuo.Duplication
             if (material != null) renderer.sharedMaterial = material;
             ramp.AddComponent<MeshCollider>().sharedMesh = mesh;
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa da garagem com {length:0.0} m de comprimento, {width:0.0} m de largura e {slabY - endGround:0.00} m de desnível.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: rampa da garagem com {length:0.0} m de comprimento, {width:0.0} m de largura e {slabY - endGround:0.00} m de desnível, em {HouseCloner.Format(start)}.");
         }
 
         static Mesh BuildMesh(float width, float length, float endDrop, float bottom)
