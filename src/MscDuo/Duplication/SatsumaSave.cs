@@ -7,7 +7,8 @@ namespace MscDuo.Duplication
     internal static class SatsumaSave
     {
         const string GameSave = "defaultES2File.txt";
-        const string Marker = "MscDuoSeeded3";
+        const string Marker = "MscDuoSeeded4";
+        const string CarPosition = "CarTransform";
 
         internal static void Seed(string saveFile, Matrix4x4 move, Quaternion turn)
         {
@@ -42,6 +43,11 @@ namespace MscDuo.Duplication
                 {
                     if (!tag.ToLowerInvariant().EndsWith("transform")) continue;
                     var id = saveFile + "?tag=" + tag;
+                    if (tag == CarPosition)
+                    {
+                        ES2.Delete(id);
+                        continue;
+                    }
                     try { ES2.Load<Transform>(id, probe); }
                     catch { continue; }
                     probe.position = move.MultiplyPoint3x4(probe.position);
