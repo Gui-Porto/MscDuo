@@ -134,6 +134,26 @@ namespace MscDuo.Tools
                 missing++;
             }
 
+            text.AppendLine("# juntas da Satsuma 2 com ajustes diferentes da Satsuma 1");
+            var joints = 0;
+            foreach (var j2 in car2.GetComponentsInChildren<Joint>(true))
+            {
+                Object o1;
+                if (!reverse.TryGetValue(j2.gameObject, out o1) || o1 == null) continue;
+                var list = ((GameObject)o1).GetComponents(j2.GetType());
+                var same = System.Array.IndexOf(j2.gameObject.GetComponents(j2.GetType()), j2);
+                if (same < 0 || same >= list.Length) { text.AppendLine($"JUNTA SÓ NA 2: {Rel(j2.transform, car2.transform)} {j2.GetType().Name}"); joints++; continue; }
+                var j1 = (Joint)list[same];
+                var issues = new List<string>();
+                if ((j1.anchor - j2.anchor).magnitude > 0.01f) issues.Add($"ponto {j1.anchor} / {j2.anchor}");
+                if ((j1.connectedAnchor - j2.connectedAnchor).magnitude > 0.01f) issues.Add($"ponto ligado {j1.connectedAnchor} / {j2.connectedAnchor}");
+                if ((j1.axis - j2.axis).magnitude > 0.01f) issues.Add($"eixo {j1.axis} / {j2.axis}");
+                if ((j1.connectedBody == null) != (j2.connectedBody == null)) issues.Add($"ligada a {(j1.connectedBody != null ? j1.connectedBody.name : "mundo")} / {(j2.connectedBody != null ? j2.connectedBody.name : "mundo")}");
+                if (issues.Count == 0) continue;
+                text.AppendLine($"JUNTA: {Rel(j2.transform, car2.transform)} {j2.GetType().Name}: {string.Join("; ", issues.ToArray())}");
+                joints++;
+            }
+
             text.AppendLine("# colisores da Satsuma 2 enfiados em algo de fora do carro agora");
             foreach (var c2 in car2.GetComponentsInChildren<Collider>())
             {
@@ -150,14 +170,13 @@ namespace MscDuo.Tools
                 }
             }
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {embedded} enfiados no mapa agora.";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {embedded} enfiados no mapa agora.";
         }
 
         static string Describe(Collider c, Transform root)
         {
-            var size = c.bounds.size;
-            var local = root.InverseTransformPoint(c.bounds.center);
-            return $"{c.GetType().Name} ligado={c.enabled}/{c.gameObject.activeInHierarchy} gatilho={c.isTrigger} camada={c.gameObject.layer} material={(c.sharedMaterial != null ? c.sharedMaterial.name : "-")} tamanho=({size.x:0.00},{size.y:0.00},{size.z:0.00}) centro=({local.x:0.00},{local.y:0.00},{local.z:0.00})";
+            var local = root.InverseTransformPoint(c.transform.position);
+            return $"{c.GetType().Name} ligado={c.enabled}/{c.gameObject.activeInHierarchy} gatilho={c.isTrigger} camada={c.gameObject.layer} material={(c.sharedMaterial != null ? c.sharedMaterial.name : "-")} posição=({local.x:0.00},{local.y:0.00},{local.z:0.00})";
         }
 
         static bool Ignored(Transform t, string only = null)

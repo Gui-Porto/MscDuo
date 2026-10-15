@@ -90,12 +90,31 @@ namespace MscDuo.Duplication
                     Object mapped;
                     if (body1 == null || !map.TryGetValue(body1, out mapped)) continue;
                     joint.connectedBody = (Rigidbody)mapped;
-                    ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: junta de '{joint.name}' estava presa ao mundo; ligada a '{mapped.name}'.");
+                    var copied = CopySettings((Joint)joint1, joint);
+                    ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: junta de '{joint.name}' estava presa ao mundo; ligada a '{mapped.name}' com {copied} ajustes copiados da Satsuma 1.");
                     fixedCount++;
                     break;
                 }
             }
             return fixedCount;
+        }
+
+        static readonly HashSet<string> SkippedProperties = new HashSet<string> { "connectedBody", "name", "tag", "hideFlags" };
+
+        static int CopySettings(Joint from, Joint to)
+        {
+            var copied = 0;
+            foreach (var property in from.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                if (!property.CanRead || !property.CanWrite || SkippedProperties.Contains(property.Name) || property.GetIndexParameters().Length > 0) continue;
+                try
+                {
+                    property.SetValue(to, property.GetValue(from, null), null);
+                    copied++;
+                }
+                catch { }
+            }
+            return copied;
         }
 
         static void MatchMass()
