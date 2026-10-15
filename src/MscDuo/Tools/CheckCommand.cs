@@ -174,6 +174,29 @@ namespace MscDuo.Tools
                 }
             }
 
+            text.AppendLine("# peças montadas na Satsuma 1 que estão soltas ou sem junta na Satsuma 2");
+            var loose = 0;
+            foreach (var body1 in car1.GetComponentsInChildren<Rigidbody>())
+            {
+                if (body1.transform == car1.transform || Rel(body1.transform, car1.transform).Contains("PLAYER")) continue;
+                Object mapped;
+                if (!map.TryGetValue(body1.gameObject, out mapped) || mapped == null) continue;
+                var go2 = (GameObject)mapped;
+                if (!go2.transform.IsChildOf(car2.transform))
+                {
+                    text.AppendLine($"PEÇA SOLTA: {Rel(body1.transform, car1.transform)} está fora da Satsuma 2 em {HouseCloner.Format(go2.transform.position)}");
+                    loose++;
+                    continue;
+                }
+                var count1 = body1.GetComponents<Joint>().Length;
+                var count2 = go2.GetComponents<Joint>().Length;
+                if (count1 > count2)
+                {
+                    text.AppendLine($"JUNTA FALTANDO: {Rel(go2.transform, car2.transform)} tem {count2} juntas, na Satsuma 1 tem {count1}");
+                    loose++;
+                }
+            }
+
             text.AppendLine("# juntas que prendem a Satsuma 2 ao mundo ou a algo de fora");
             var anchors = 0;
             foreach (var joint in Object.FindObjectsOfType<Joint>())
@@ -196,7 +219,7 @@ namespace MscDuo.Tools
             embedded = Embedded(car2, SatsumaCloner.Parts, "2", text);
             var embedded1 = Embedded(car1, GameObject.Find("CARPARTS"), "1", text);
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {loose} peças soltas ou sem junta, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
         }
 
         static string Compare(object v1, object v2, Transform car1, Transform car2, Dictionary<Object, Object> map)
