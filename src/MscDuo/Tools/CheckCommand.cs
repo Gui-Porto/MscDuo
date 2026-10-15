@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using HutongGames.PlayMaker;
 using MSCLoader;
 using MscDuo.Duplication;
 using UnityEngine;
@@ -245,6 +246,36 @@ namespace MscDuo.Tools
             moved.Sort((a, b) => b.Key.CompareTo(a.Key));
             foreach (var m in moved) text.AppendLine("FORA DO LUGAR " + m.Value);
 
+            text.AppendLine("# fichas e apertos diferentes entre as duas Satsumas (montada, apertada, danificada, aperto)");
+            var records = 0;
+            var roots1 = new List<GameObject> { car1, SatsumaCloner.OriginalDatabase, GameObject.Find("CARPARTS") };
+            foreach (var root1 in roots1)
+            {
+                if (root1 == null) continue;
+                foreach (var fsm1 in root1.GetComponentsInChildren<PlayMakerFSM>(true))
+                {
+                    if (fsm1.FsmName != "Data" && fsm1.FsmName != "BoltCheck") continue;
+                    Object mapped;
+                    if (!map.TryGetValue(fsm1, out mapped) || mapped == null) continue;
+                    var fsm2 = (PlayMakerFSM)mapped;
+                    var issues = new List<string>();
+                    foreach (var v1 in fsm1.FsmVariables.BoolVariables)
+                    {
+                        var v2 = fsm2.FsmVariables.FindFsmBool(v1.Name);
+                        if (v2 != null && v2.Value != v1.Value) issues.Add($"{v1.Name} {v1.Value}/{v2.Value}");
+                    }
+                    foreach (var v1 in fsm1.FsmVariables.FloatVariables)
+                    {
+                        if (!v1.Name.Contains("Tightness") && !v1.Name.Contains("Bolted") && !v1.Name.Contains("Wear") && !v1.Name.Contains("Level") && !v1.Name.Contains("Fluid")) continue;
+                        var v2 = fsm2.FsmVariables.FindFsmFloat(v1.Name);
+                        if (v2 != null && Mathf.Abs(v2.Value - v1.Value) > 0.01f) issues.Add($"{v1.Name} {v1.Value:0.##}/{v2.Value:0.##}");
+                    }
+                    if (issues.Count == 0) continue;
+                    text.AppendLine($"FICHA: {FullPath(fsm1.transform)} [{fsm1.FsmName}] {string.Join("; ", issues.ToArray())}");
+                    records++;
+                }
+            }
+
             text.AppendLine("# juntas que prendem a Satsuma 2 ao mundo ou a algo de fora");
             var anchors = 0;
             foreach (var joint in Object.FindObjectsOfType<Joint>())
@@ -267,7 +298,7 @@ namespace MscDuo.Tools
             embedded = Embedded(car2, SatsumaCloner.Parts, "2", text);
             var embedded1 = Embedded(car1, GameObject.Find("CARPARTS"), "1", text);
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {loose} peças soltas ou sem junta, {moved.Count} peças visíveis fora do lugar, {visibility} peças visíveis só numa delas, {activeOnly} objetos ligados/desligados diferente, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {anchors} juntas prendendo a Satsuma 2 a algo de fora, {loose} peças soltas ou sem junta, {records} fichas ou apertos diferentes, {moved.Count} peças visíveis fora do lugar, {visibility} peças visíveis só numa delas, {activeOnly} objetos ligados/desligados diferente, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
         }
 
         static string Compare(object v1, object v2, Transform car1, Transform car2, Dictionary<Object, Object> map)
