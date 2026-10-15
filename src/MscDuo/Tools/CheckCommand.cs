@@ -1,0 +1,198 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using MSCLoader;
+using MscDuo.Duplication;
+using UnityEngine;
+
+namespace MscDuo.Tools
+{
+    internal class CheckCommand : ConsoleCommand
+    {
+        const float Radius = 35f;
+        const float Cell = 0.25f;
+        const float StepLimit = 0.2f;
+        const float StackLimit = 0.4f;
+
+        static readonly string[] IgnoredRoots = { "SATSUMA", "CARPARTS", "PLAYER", "ITEMS" };
+
+        public override string Name => "duo_check";
+        public override string Help => "duo_check  procura degraus, espetos e colisões estranhas no mapa da casa 2 e compara os colisores das duas Satsumas";
+
+        public override void Run(string[] args)
+        {
+            var folder = Path.Combine(MscDuo.Instance.SettingsFolder, "dumps");
+            Directory.CreateDirectory(folder);
+            var map = CheckMap(folder);
+            var car = CheckCar(folder);
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> verificação: {map}\n{car}\nArquivos em {folder} (map_check.txt, car_check.txt).");
+        }
+
+        static string CheckMap(string folder)
+        {
+            var house = HouseCloner.Clone;
+            if (house == null) return "mapa: casa 2 não existe";
+            var center = house.transform.position;
+            var n = Mathf.CeilToInt(Radius * 2f / Cell);
+            var heights = new float[n, n];
+            var owners = new Collider[n, n];
+            var stacks = new Dictionary<string, Hazard>();
+
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    var x = center.x - Radius + i * Cell;
+                    var z = center.z - Radius + j * Cell;
+                    heights[i, j] = float.MinValue;
+                    var hits = new List<RaycastHit>();
+                    foreach (var hit in Physics.RaycastAll(new Vector3(x, center.y + 30f, z), Vector3.down, 60f))
+                        if (!hit.collider.isTrigger && !Ignored(hit.collider.transform)) hits.Add(hit);
+                    hits.Sort((a, b) => b.point.y.CompareTo(a.point.y));
+                    if (hits.Count == 0) continue;
+                    heights[i, j] = hits[0].point.y;
+                    owners[i, j] = hits[0].collider;
+                    for (int k = 1; k < hits.Count; k++)
+                    {
+                        var gap = hits[0].point.y - hits[k].point.y;
+                        if (gap < 0.01f || gap > StackLimit || hits[k].collider == hits[0].collider) continue;
+                        Add(stacks, $"empilhado: {Label(hits[0].collider)} sobre {Label(hits[k].collider)}", hits[0].point, gap);
+                    }
+                }
+
+            var steps = new Dictionary<string, Hazard>();
+            for (int i = 0; i < n - 1; i++)
+                for (int j = 0; j < n - 1; j++)
+                {
+                    if (owners[i, j] == null) continue;
+                    for (int side = 0; side < 2; side++)
+                    {
+                        var a = side == 0 ? i + 1 : i;
+                        var b = side == 0 ? j : j + 1;
+                        if (owners[a, b] == null) continue;
+                        var dh = Mathf.Abs(heights[a, b] - heights[i, j]);
+                        if (dh < StepLimit) continue;
+                        var c1 = owners[i, j];
+                        var c2 = owners[a, b];
+                        if (InHouse(c1, house) && InHouse(c2, house)) continue;
+                        var low = heights[i, j] < heights[a, b] ? c1 : c2;
+                        var high = low == c1 ? c2 : c1;
+                        var point = new Vector3(center.x - Radius + i * Cell, Mathf.Max(heights[i, j], heights[a, b]), center.z - Radius + j * Cell);
+                        Add(steps, $"degrau: {Label(low)} -> {Label(high)}", point, dh);
+                    }
+                }
+
+            var text = new StringBuilder();
+            text.AppendLine($"# verificação do mapa em volta da casa 2 {HouseCloner.Format(center)}, raio {Radius} m, grade {Cell} m");
+            text.AppendLine("# degraus (diferença de altura entre vizinhos maior que " + StepLimit + " m), sem contar os da própria casa");
+            foreach (var h in steps.Values.OrderByDescending(h => h.Count)) text.AppendLine(h.ToString());
+            text.AppendLine("# superfícies empilhadas (duas superfícies separadas por menos de " + StackLimit + " m)");
+            foreach (var h in stacks.Values.OrderByDescending(h => h.Count)) text.AppendLine(h.ToString());
+            File.WriteAllText(Path.Combine(folder, "map_check.txt"), text.ToString());
+
+            var top = steps.Values.OrderByDescending(h => h.Count).Take(5).Select(h => $"  {h.Name} ({h.Count}x, até {h.Max:0.00} m, ex. {HouseCloner.Format(h.Example)})");
+            return $"mapa: {steps.Count} tipos de degrau, {stacks.Count} tipos de superfície empilhada.\n" + string.Join("\n", top.ToArray());
+        }
+
+        static string CheckCar(string folder)
+        {
+            var car1 = SatsumaCloner.Original;
+            var car2 = SatsumaCloner.Clone;
+            var map = SatsumaCloner.Map;
+            if (car1 == null || car2 == null || map == null) return "carro: Satsuma 2 não existe";
+
+            var text = new StringBuilder();
+            text.AppendLine("# colisores da Satsuma 2 comparados com a Satsuma 1");
+            int differences = 0, extra = 0, missing = 0, embedded = 0;
+            var reverse = new Dictionary<Object, Object>();
+            foreach (var pair in map) if (pair.Value != null) reverse[pair.Value] = pair.Key;
+
+            foreach (var c2 in car2.GetComponentsInChildren<Collider>(true))
+            {
+                if (Ignored(c2.transform, "PLAYER")) continue;
+                Object o1;
+                if (!reverse.TryGetValue(c2, out o1) || o1 == null)
+                {
+                    text.AppendLine($"SÓ NA 2: {Rel(c2.transform, car2.transform)} {Describe(c2, car2.transform)}");
+                    extra++;
+                    continue;
+                }
+                var c1 = (Collider)o1;
+                var d1 = Describe(c1, car1.transform);
+                var d2 = Describe(c2, car2.transform);
+                if (d1 != d2)
+                {
+                    text.AppendLine($"{Rel(c2.transform, car2.transform)}\n   1: {d1}\n   2: {d2}");
+                    differences++;
+                }
+            }
+            foreach (var c1 in car1.GetComponentsInChildren<Collider>(true))
+            {
+                if (map.ContainsKey(c1) || c1.transform.GetComponentInParent<Rigidbody>() == null) continue;
+                if (c1.transform.root.name == "PLAYER" || Rel(c1.transform, car1.transform).Contains("PLAYER")) continue;
+                text.AppendLine($"SÓ NA 1: {Rel(c1.transform, car1.transform)} {Describe(c1, car1.transform)}");
+                missing++;
+            }
+
+            text.AppendLine("# colisores da Satsuma 2 enfiados em algo de fora do carro agora");
+            foreach (var c2 in car2.GetComponentsInChildren<Collider>())
+            {
+                if (!c2.enabled || c2.isTrigger || Rel(c2.transform, car2.transform).Contains("PLAYER")) continue;
+                var b = c2.bounds;
+                var radius = Mathf.Min(b.extents.x, Mathf.Min(b.extents.y, b.extents.z)) * 0.8f;
+                if (radius < 0.02f) continue;
+                foreach (var other in Physics.OverlapSphere(b.center, radius))
+                {
+                    if (other.isTrigger || other.transform.IsChildOf(car2.transform) || Ignored(other.transform, "PLAYER")) continue;
+                    if (SatsumaCloner.Parts != null && other.transform.IsChildOf(SatsumaCloner.Parts.transform)) continue;
+                    text.AppendLine($"ENFIADO: {Rel(c2.transform, car2.transform)} em {Label(other)} {HouseCloner.Format(b.center)}");
+                    embedded++;
+                }
+            }
+            File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {embedded} enfiados no mapa agora.";
+        }
+
+        static string Describe(Collider c, Transform root)
+        {
+            var size = c.bounds.size;
+            var local = root.InverseTransformPoint(c.bounds.center);
+            return $"{c.GetType().Name} ligado={c.enabled}/{c.gameObject.activeInHierarchy} gatilho={c.isTrigger} camada={c.gameObject.layer} material={(c.sharedMaterial != null ? c.sharedMaterial.name : "-")} tamanho=({size.x:0.00},{size.y:0.00},{size.z:0.00}) centro=({local.x:0.00},{local.y:0.00},{local.z:0.00})";
+        }
+
+        static bool Ignored(Transform t, string only = null)
+        {
+            var root = t.root.name;
+            if (only != null) return root.StartsWith(only);
+            foreach (var ignored in IgnoredRoots)
+                if (root.StartsWith(ignored)) return true;
+            return false;
+        }
+
+        static bool InHouse(Collider c, GameObject house) => c.transform.IsChildOf(house.transform);
+
+        static string Label(Collider c) => $"{FullPath(c.transform)} [{c.GetType().Name}, camada {c.gameObject.layer}]";
+
+        static string FullPath(Transform t) => t.parent == null ? t.name : FullPath(t.parent) + "/" + t.name;
+
+        static string Rel(Transform t, Transform root) => t == root || t.parent == null ? t.name : Rel(t.parent, root) + "/" + t.name;
+
+        static void Add(Dictionary<string, Hazard> hazards, string name, Vector3 point, float size)
+        {
+            Hazard h;
+            if (!hazards.TryGetValue(name, out h)) hazards[name] = h = new Hazard { Name = name, Example = point };
+            h.Count++;
+            if (size > h.Max) { h.Max = size; h.Example = point; }
+        }
+
+        class Hazard
+        {
+            internal string Name;
+            internal int Count;
+            internal float Max;
+            internal Vector3 Example;
+
+            public override string ToString() => $"{Count}x até {Max:0.00} m, pior em {HouseCloner.Format(Example)}: {Name}";
+        }
+    }
+}

@@ -253,7 +253,7 @@ namespace MscDuo.Duplication
                     if (apronDistance[i, j] > MaxRun + CorridorReach) continue;
                     RaycastHit hit;
                     if (TopHit(house, x, z, top, out hit) && apronDistance[i, j] > SeamReach) continue;
-                    if (!Ground.TryHeight(new Vector3(x, slabY, z), 3f, out grounds[i, j], house)) grounds[i, j] = slabY - 2f;
+                    if (!SurfaceAt(x, z, slabY, out grounds[i, j])) grounds[i, j] = slabY - 2f;
                     valid[i, j] = true;
                     Collider road;
                     if (RoadAt(x, z, slabY, out road))
@@ -262,6 +262,8 @@ namespace MscDuo.Duplication
                         if (roadMaterial == null) roadMaterial = MaterialOf(road);
                     }
                 }
+
+            Smooth(grounds, valid, nx, nz, 3);
 
             var roadDistance = new float[nx, nz];
             var corridor = float.MaxValue;
@@ -496,6 +498,48 @@ namespace MscDuo.Duplication
                 else bounds.Encapsulate(c.bounds);
             }
             return bounds;
+        }
+
+        internal static bool SurfaceAt(float x, float z, float y, out float height)
+        {
+            height = float.MinValue;
+            foreach (var hit in Physics.RaycastAll(new Vector3(x, y + 20f, z), Vector3.down, 40f))
+            {
+                if (hit.collider.isTrigger || !IsDrivable(hit.collider)) continue;
+                if (hit.point.y > height) height = hit.point.y;
+            }
+            return height > float.MinValue;
+        }
+
+        internal static bool IsDrivable(Collider c)
+        {
+            foreach (var name in TerrainFlattener.RoadNames)
+                if (c.name == name) return true;
+            return Path(c.transform).StartsWith("MAP/MESH/TERRAIN_OBJ");
+        }
+
+        static void Smooth(float[,] heights, bool[,] valid, int nx, int nz, int passes)
+        {
+            for (int pass = 0; pass < passes; pass++)
+            {
+                var next = (float[,])heights.Clone();
+                for (int i = 1; i < nx - 1; i++)
+                    for (int j = 1; j < nz - 1; j++)
+                    {
+                        if (!valid[i, j]) continue;
+                        float sum = 0f;
+                        var count = 0;
+                        for (int di = -1; di <= 1; di++)
+                            for (int dj = -1; dj <= 1; dj++)
+                            {
+                                if (!valid[i + di, j + dj]) continue;
+                                sum += heights[i + di, j + dj];
+                                count++;
+                            }
+                        next[i, j] = sum / count;
+                    }
+                System.Array.Copy(next, heights, heights.Length);
+            }
         }
 
         static bool RoadAt(float x, float z, float y, out Collider road)
