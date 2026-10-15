@@ -25,6 +25,12 @@ namespace MscDuo.Duplication
             }
             MatchMass();
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {removed} travas duplicadas removidas ou religadas.");
+            while (true)
+            {
+                yield return new WaitForSeconds(1f);
+                foreach (var root in Roots)
+                    if (root != null) { Dedupe(root); Reconnect(root); ReconnectLoose(root); }
+            }
         }
 
         static int Dedupe(GameObject root)

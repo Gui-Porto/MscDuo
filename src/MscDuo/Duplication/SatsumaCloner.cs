@@ -101,7 +101,7 @@ namespace MscDuo.Duplication
 
             var lift = SnapToGround();
             var locals = Variables = CarLocals();
-            int fsms = 0, remapped = 0, saves = 0, failed = 0, separated = 0, confined = 0;
+            int fsms = 0, remapped = 0, saves = 0, failed = 0, separated = 0, confined = 0, bodies = 0;
             foreach (var root in new[] { Clone, Parts, Database })
             {
                 foreach (var fsm in root.GetComponentsInChildren<PlayMakerFSM>(true))
@@ -112,6 +112,7 @@ namespace MscDuo.Duplication
                         remapped += Remap(fsm, map);
                         saves += RedirectSaves(fsm);
                         foreach (var pair in locals) separated += FsmTools.RedirectGlobal(fsm, pair.Key, pair.Value);
+                        bodies += PointJointsAtClone(fsm, car1);
                         if (root == Clone) confined += FsmTools.ConfineBroadcasts(fsm, Clone);
                         fsms++;
                     }
@@ -125,7 +126,7 @@ namespace MscDuo.Duplication
                 saves += RedirectAutoSaves(root);
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, {bodies} juntas apontadas para a Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
             Clone.AddComponent<JointDeduper>().Roots = new[] { Clone, Parts };
             Clone.AddComponent<LateItems>();
@@ -191,6 +192,37 @@ namespace MscDuo.Duplication
                 if (ca[i] != null && cb[i] != null) map[ca[i]] = cb[i];
             for (int i = 0; i < a.childCount && i < b.childCount; i++)
                 MapHierarchy(a.GetChild(i), b.GetChild(i), map);
+        }
+
+        static int PointJointsAtClone(PlayMakerFSM fsm, GameObject car1)
+        {
+            var count = 0;
+            foreach (var state in fsm.FsmStates)
+                foreach (var action in state.Actions)
+                {
+                    if (action == null || !action.GetType().Name.Contains("Joint")) continue;
+                    foreach (var field in action.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (!field.Name.ToLowerInvariant().Contains("connectedbody") && !field.Name.ToLowerInvariant().Contains("rigidbody")) continue;
+                        var value = field.GetValue(action);
+                        if (value is FsmGameObject go && !go.UseVariable && go.Value != null && (go.Value == car1 || go.Value.name == car1.name))
+                        {
+                            go.Value = Clone;
+                            count++;
+                        }
+                        else if (value is FsmObject obj && !obj.UseVariable && obj.Value != null && (obj.Value == car1 || obj.Value == car1.GetComponent<Rigidbody>() || obj.Value.name == car1.name))
+                        {
+                            obj.Value = Clone.GetComponent<Rigidbody>();
+                            count++;
+                        }
+                        else if (value is GameObject raw && (raw == car1 || raw.name == car1.name))
+                        {
+                            field.SetValue(action, Clone);
+                            count++;
+                        }
+                    }
+                }
+            return count;
         }
 
         static Dictionary<string, NamedVariable> CarLocals()
