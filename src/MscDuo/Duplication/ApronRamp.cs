@@ -76,13 +76,21 @@ namespace MscDuo.Duplication
                 }
 
             var heights = new Dictionary<int, int>();
-            var low = bounds.min.y + 1.5f;
+            var flat = new List<KeyValuePair<Vector2, RaycastHit>>();
+            int steep = 0, high = 0;
             foreach (var s in samples)
             {
-                if (s.Value.point.y > low) continue;
+                if (s.Value.normal.y < 0.95f) { steep++; continue; }
+                float ground;
+                if (!Ground.TryHeight(new Vector3(s.Key.x, s.Value.point.y, s.Key.y), 0.5f, out ground, house)) continue;
+                var lift = s.Value.point.y - ground;
+                if (lift < -0.3f || lift > 1.5f) { high++; continue; }
+                flat.Add(s);
                 var key = Mathf.RoundToInt(s.Value.point.y * 20f);
                 heights[key] = heights.TryGetValue(key, out var n) ? n + 1 : 1;
             }
+            samples = flat;
+            if (flat.Count == 0) ModConsole.Warning($"[MSC Duo] casa 2: laje: {flat.Count + steep + high} pontos da casa vistos de cima, {steep} inclinados, {high} longe do chão.");
             var best = int.MinValue;
             var bestCount = 0;
             foreach (var pair in heights)
