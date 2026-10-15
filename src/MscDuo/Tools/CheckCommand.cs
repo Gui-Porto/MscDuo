@@ -174,23 +174,11 @@ namespace MscDuo.Tools
                 }
             }
 
-            text.AppendLine("# colisores da Satsuma 2 enfiados em algo de fora do carro agora");
-            foreach (var c2 in car2.GetComponentsInChildren<Collider>())
-            {
-                if (!c2.enabled || c2.isTrigger || Rel(c2.transform, car2.transform).Contains("PLAYER")) continue;
-                var b = c2.bounds;
-                var radius = Mathf.Min(b.extents.x, Mathf.Min(b.extents.y, b.extents.z)) * 0.8f;
-                if (radius < 0.02f) continue;
-                foreach (var other in Physics.OverlapSphere(b.center, radius))
-                {
-                    if (other.isTrigger || other.transform.IsChildOf(car2.transform) || Ignored(other.transform, "PLAYER")) continue;
-                    if (SatsumaCloner.Parts != null && other.transform.IsChildOf(SatsumaCloner.Parts.transform)) continue;
-                    text.AppendLine($"ENFIADO: {Rel(c2.transform, car2.transform)} em {Label(other)} {HouseCloner.Format(b.center)}");
-                    embedded++;
-                }
-            }
+            text.AppendLine("# colisores enfiados em algo de fora do carro agora (as duas Satsumas)");
+            embedded = Embedded(car2, SatsumaCloner.Parts, "2", text);
+            var embedded1 = Embedded(car1, GameObject.Find("CARPARTS"), "1", text);
             File.WriteAllText(Path.Combine(folder, "car_check.txt"), text.ToString());
-            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora.";
+            return $"carro: {differences} colisores diferentes da Satsuma 1, {extra} só na 2, {missing} só na 1, {joints} juntas com ajuste diferente, {scripts} valores de script diferentes, {embedded} enfiados no mapa agora (Satsuma 1: {embedded1}).";
         }
 
         static string Compare(object v1, object v2, Transform car1, Transform car2, Dictionary<Object, Object> map)
@@ -221,6 +209,27 @@ namespace MscDuo.Tools
             if (v1 is bool || v1 is int || v1 is string || (v1 != null && v1.GetType().IsEnum)) return Equals(v1, v2) ? null : $"{v1} / {v2}";
             if (v1 is Vector3 a && v2 is Vector3 b) return (a - b).magnitude > 0.02f ? $"{a} / {b}" : null;
             return null;
+        }
+
+        static int Embedded(GameObject car, GameObject parts, string label, StringBuilder text)
+        {
+            var count = 0;
+            foreach (var c in car.GetComponentsInChildren<Collider>())
+            {
+                if (!c.enabled || c.isTrigger || Rel(c.transform, car.transform).Contains("PLAYER")) continue;
+                var b = c.bounds;
+                var radius = Mathf.Min(b.extents.x, Mathf.Min(b.extents.y, b.extents.z)) * 0.8f;
+                if (radius < 0.02f) continue;
+                foreach (var other in Physics.OverlapSphere(b.center, radius))
+                {
+                    if (other.isTrigger || other.transform.IsChildOf(car.transform) || Ignored(other.transform, "PLAYER")) continue;
+                    if (parts != null && other.transform.IsChildOf(parts.transform)) continue;
+                    var collides = !Physics.GetIgnoreLayerCollision(c.gameObject.layer, other.gameObject.layer);
+                    text.AppendLine($"ENFIADO {label}: {Rel(c.transform, car.transform)} (camada {c.gameObject.layer}) em {Label(other)} colidem={collides} {HouseCloner.Format(b.center)}");
+                    count++;
+                }
+            }
+            return count;
         }
 
         static string Describe(Collider c, Transform root)
