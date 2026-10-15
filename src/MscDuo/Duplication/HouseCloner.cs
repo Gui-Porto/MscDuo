@@ -33,6 +33,20 @@ namespace MscDuo.Duplication
             typeof(TextMesh),
         };
 
+        internal static bool PlannedMove(out Matrix4x4 move, out Quaternion turn)
+        {
+            move = Matrix4x4.identity;
+            turn = Quaternion.identity;
+            var original = GameObject.Find(OriginalPath);
+            if (original == null) return false;
+            Original = original;
+            LoadPose();
+            var rotation = RotationFor(Yaw);
+            move = Matrix4x4.TRS(Position, rotation, original.transform.lossyScale) * original.transform.worldToLocalMatrix;
+            turn = rotation * Quaternion.Inverse(original.transform.rotation);
+            return true;
+        }
+
         internal static void Spawn()
         {
             Original = GameObject.Find(OriginalPath);
@@ -59,7 +73,7 @@ namespace MscDuo.Duplication
             Step("terreno", () => TerrainFlattener.Apply(Clone));
             Step("rampa", () => ApronRamp.Apply(Clone));
             Step("contas", () => House2Bills.Setup(Clone));
-            Step("satsuma", () => SatsumaCloner.SpawnWhenReady(Original, Clone));
+            if (SatsumaCloner.Clone == null) Step("satsuma", () => SatsumaCloner.SpawnWhenReady(Original, Clone));
         }
 
         static void Step(string name, System.Action action)

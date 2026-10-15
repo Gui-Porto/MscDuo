@@ -9,7 +9,7 @@ namespace MscDuo.Duplication
 {
     internal class LateItems : MonoBehaviour
     {
-        static readonly float[] Checks = { 4f, 10f, 20f };
+        static readonly float[] Checks = { 5f, 15f, 30f, 60f };
 
         IEnumerator Start()
         {

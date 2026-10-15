@@ -67,9 +67,31 @@ namespace MscDuo.Duplication
         static bool Settled(PlayMakerFSM setup) =>
             setup.ActiveStateName == "Lod ON" || setup.ActiveStateName == "Lod OFF";
 
-        internal static void Spawn(GameObject house1, GameObject house2)
+        internal static void Spawn(GameObject house1, GameObject house2) =>
+            Spawn(house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix, house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation), true);
+
+        internal static void SpawnEarly()
         {
-            try { SatsumaSave.Seed(SaveFile, house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix, house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation)); }
+            if (Clone != null) return;
+            Matrix4x4 move;
+            Quaternion turn;
+            if (!HouseCloner.PlannedMove(out move, out turn))
+            {
+                ModConsole.Warning("[MSC Duo] Satsuma 2: casa 1 não encontrada na hora do carregamento; ela será criada depois.");
+                return;
+            }
+            var car1 = FindRoot(CarName);
+            PlayMakerFSM setup = null;
+            if (car1 != null)
+                foreach (var fsm in car1.GetComponents<PlayMakerFSM>())
+                    if (fsm.FsmName == "Setup") setup = fsm;
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: clonando a Satsuma 1 ainda de fábrica (sistema dela: '{(setup != null && setup.Fsm.Initialized ? setup.ActiveStateName : "não iniciado")}').");
+            Spawn(move, turn, false);
+        }
+
+        static void Spawn(Matrix4x4 move, Quaternion turn, bool snap)
+        {
+            try { SatsumaSave.Seed(SaveFile, move, turn); }
             catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] Satsuma 2: save próprio não criado: {e.Message}"); }
 
             var car1 = FindRoot(CarName);
@@ -81,8 +103,6 @@ namespace MscDuo.Duplication
                 return;
             }
 
-            var move = house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix;
-            var turn = house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation);
             var map = Map = new Dictionary<Object, Object>();
             Original = car1;
             OriginalDatabase = db1;
@@ -99,7 +119,7 @@ namespace MscDuo.Duplication
                 copy.transform.parent = Database.transform;
             }
 
-            var lift = SnapToGround();
+            var lift = snap ? SnapToGround() : 0f;
             var locals = Variables = CarLocals();
             int fsms = 0, remapped = 0, saves = 0, failed = 0, separated = 0, confined = 0, bodies = 0;
             foreach (var root in new[] { Clone, Parts, Database })
