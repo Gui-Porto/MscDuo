@@ -264,9 +264,10 @@ namespace MscDuo.Tools
                 foreach (var other in Physics.OverlapSphere(b.center, radius))
                 {
                     if (other.isTrigger || other.transform.IsChildOf(car.transform) || Ignored(other.transform, "PLAYER")) continue;
-                    if (parts != null && other.transform.IsChildOf(parts.transform)) continue;
+                    var loosePart = parts != null && other.transform.IsChildOf(parts.transform);
+                    if (loosePart && other.attachedRigidbody == null) continue;
                     var collides = !Physics.GetIgnoreLayerCollision(c.gameObject.layer, other.gameObject.layer);
-                    text.AppendLine($"ENFIADO {label}: {Rel(c.transform, car.transform)} (camada {c.gameObject.layer}) em {Label(other)} colidem={collides} {HouseCloner.Format(b.center)}");
+                    text.AppendLine($"ENFIADO {label}: {Rel(c.transform, car.transform)} (camada {c.gameObject.layer}) em {(loosePart ? "PEÇA AVULSA " : "")}{Label(other)} colidem={collides} {HouseCloner.Format(b.center)}");
                     count++;
                 }
             }
