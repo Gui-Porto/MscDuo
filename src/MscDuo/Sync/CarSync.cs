@@ -64,7 +64,7 @@ namespace MscDuo.Sync
                 if (peerDriving) link.LastLocalDriver = false;
 
                 if (link.Owned)
-                    link.Sending = inside || (link.Index == PlayerContext.Active && !peerDriving);
+                    link.Sending = inside || now < link.ForcedUntil || (link.Index == PlayerContext.Active && !peerDriving);
                 else
                 {
                     var moving = link.Moving;
@@ -74,14 +74,14 @@ namespace MscDuo.Sync
                         (player.position - link.Root.position).sqrMagnitude < (remotePlayer.Value - link.Root.position).sqrMagnitude);
                     var receiving = link.Snapshots.Count > 0 && now - link.LastArrival < StateTimeout;
                     var justLeft = link.LastLocalDriver && settling && now - link.LeftAt < MaxSettleAfterLeaving;
-                    link.Sending = inside || (!peerDriving && now >= link.YieldUntil && (justLeft || moving && nearer && !receiving));
+                    link.Sending = inside || now < link.ForcedUntil || (!peerDriving && now >= link.YieldUntil && (justLeft || moving && nearer && !receiving));
                     if (!inside && !justLeft) link.LastLocalDriver = false;
                 }
 
                 if (link.Sending)
                 {
                     link.Release();
-                    if (sendDue) broadcast(link.Capture(now, inside));
+                    if (sendDue) broadcast(link.Capture(now, inside || now < link.ForcedUntil));
                 }
                 else if (link.Snapshots.Count > 0 && now - link.LastArrival < StateTimeout)
                     link.Apply(remoteNow - delay);
@@ -121,6 +121,12 @@ namespace MscDuo.Sync
                 link.LastLocalDriver = false;
                 link.Sending = false;
             }
+        }
+
+        internal static void Claim(CarLink link, float seconds)
+        {
+            link.ForcedUntil = Time.realtimeSinceStartup + seconds;
+            link.Release();
         }
 
         internal static string Describe(CarLink link, float now)
@@ -204,6 +210,7 @@ namespace MscDuo.Sync
             internal float LastMoving = -100f;
             internal bool LastLocalDriver;
             internal float LeftAt;
+            internal float ForcedUntil;
             internal bool Ready;
             internal readonly string CurrentName;
             internal uint LastSequence;

@@ -20,6 +20,7 @@ namespace MscDuo
 
         SettingsKeybind dumpKey;
         internal SettingsKeybind WakeKey { get; private set; }
+        SettingsKeybind adminKey;
 
         public override void ModSetup()
         {
@@ -37,6 +38,7 @@ namespace MscDuo
         {
             dumpKey = Keybind.Add("dump", "Exportar YARD, Satsuma e globais", KeyCode.F8);
             WakeKey = Keybind.Add("wake", "Levantar da cama enquanto espera o outro jogador", KeyCode.F);
+            adminKey = Keybind.Add("admin", "Abrir o painel de admin", KeyCode.F10);
         }
 
         void OnMenuLoad()
@@ -79,12 +81,15 @@ namespace MscDuo
         void OnGui()
         {
             PlayerHud.Draw();
+            AdminPanel.Draw();
             Sync.SleepSync.Draw();
         }
 
         void OnUpdate()
         {
             PlayerContext.Tick();
+            if (adminKey != null && adminKey.GetKeybindDown()) AdminPanel.Toggle();
+            AdminPanel.Tick();
             if (NetSession.Current == null) Sync.SleepSync.Tick(Time.realtimeSinceStartup, false, null);
             if (dumpKey != null && dumpKey.GetKeybindDown())
                 SceneDumper.DumpDefault();
