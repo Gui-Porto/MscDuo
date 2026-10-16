@@ -50,6 +50,7 @@ namespace MscDuo.Net
         {
             if (Current == null) return;
             if (!Current.transport.IsHost) PlayerContext.SaveActive();
+            CarSync.Reset();
             foreach (var peer in Current.peers.Values) peer.Player.Dispose();
             Current.transport.Shutdown();
             Current = null;
@@ -62,11 +63,13 @@ namespace MscDuo.Net
             SyncPeers();
             Receive(now);
 
-            if (now >= nextSend)
+            var sendDue = now >= nextSend;
+            if (sendDue)
             {
                 nextSend = now + 1f / SendRate;
                 SendPlayerState(now);
             }
+            TickCars(now, sendDue);
             if (now >= nextPing)
             {
                 nextPing = now + PingInterval;
@@ -121,6 +124,18 @@ namespace MscDuo.Net
             foreach (var id in transport.Peers) Send(id, MessageType.PlayerState, state.Write, Channel.Unreliable);
         }
 
+        void TickCars(float now, bool sendDue)
+        {
+            PeerState peer = null;
+            foreach (var p in peers.Values) { peer = p; break; }
+            var remoteNow = peer != null ? now + peer.ClockOffset : now;
+            var delay = peer != null ? peer.Player.InterpolationDelay : 0.1f;
+            CarSync.Tick(now, remoteNow, delay, sendDue && Connected, state =>
+            {
+                foreach (var id in transport.Peers) Send(id, MessageType.CarState, state.Write, Channel.Unreliable);
+            });
+        }
+
         void Receive(float now)
         {
             inbox.Clear();
@@ -167,6 +182,9 @@ namespace MscDuo.Net
                     case MessageType.PlayerState:
                         var state = PlayerStateMessage.Read(reader);
                         peer.Player.Push(state, now);
+                        break;
+                    case MessageType.CarState:
+                        CarSync.Receive(CarStateMessage.Read(reader), now);
                         break;
                 }
             }

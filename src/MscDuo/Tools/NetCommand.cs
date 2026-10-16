@@ -1,5 +1,6 @@
 using MSCLoader;
 using MscDuo.Net;
+using MscDuo.Sync;
 using UnityEngine;
 
 namespace MscDuo.Tools
@@ -96,7 +97,10 @@ namespace MscDuo.Tools
                         (p.Extrapolating ? "  <color=yellow>extrapolando</color>" : "");
             }
 
-            var rect = new Rect(Screen.width - 520, 40, 510, 90);
+            foreach (var car in CarSync.Links)
+                text += $"\nSatsuma {car.Index}: " + (car.Sending ? "enviando" : car.Applying ? "seguindo o outro jogador" : "parada");
+
+            var rect = new Rect(Screen.width - 520, 40, 510, 130);
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
             GUI.color = Color.white;
