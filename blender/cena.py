@@ -13,7 +13,16 @@ PLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extensao.obj")
 UNDER_SLAB = 0.6
 EXTRA_ROAD = 0.2
 SINK = 0.0
-ROAD_SINK = 0.03
+ROAD_LIFT = 0.01
+FILL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aterro.obj")
+FILL_AREA = (-13.5, -2.5, -17.5, -8.5)
+FILL_CELL = 0.25
+FILL_LEVEL = -0.96
+FILL_SLOPE = 0.2
+FILL_LIFT = 0.02
+FILL_VERSION = 3
+FILL_UNDER = 0.02
+ROAD_TOLERANCE = 0.04
 CRACK = [(-1.5, -8.6), (-2.6, -8.6), (-4.0, -9.2), (-4.35, -9.9), (-4.3, -11.0)]
 HIDDEN = ("YARD/", "JONNEZ")
 DUMPS = os.path.dirname(RELEVO)
@@ -27,7 +36,7 @@ APRON_RIGHT = (0.96, -15.24)
 SIDE_INSET = 0.05
 DEPTH = 0.6
 EDIT = "EDITAR"
-PLATE_VERSION = 3
+PLATE_VERSION = 4
 APRON_U = (0.03321, -0.03610, 0.24511)
 APRON_V = (0.03610, 0.03320, 0.48602)
 LONGEST = 15.0
@@ -40,6 +49,7 @@ COLORS = {
     "lote": (0.5, 0.5, 0.55, 1.0),
     "outros": (0.6, 0.4, 0.4, 1.0),
     "extensao": (0.85, 0.3, 0.2, 1.0),
+    "aterro": (0.45, 0.6, 0.25, 1.0),
     "chao_estrada": (0.25, 0.35, 0.6, 1.0),
     "chao_outros": (0.6, 0.4, 0.4, 1.0),
     "chao_lote": (0.5, 0.5, 0.55, 1.0),
@@ -176,7 +186,7 @@ def outline(corners):
     return ring
 
 
-def plate(col, corners, top):
+def plate(col, corners, top, road_top):
     tagged = outline(corners)
     if area([p for p, _ in tagged]) < 0:
         tagged.reverse()
@@ -184,7 +194,7 @@ def plate(col, corners, top):
     kinds = [k for _, k in tagged]
     n = len(ring)
     bm = bmesh.new()
-    heights = [top - ROAD_SINK if k == "rua" else top for k in kinds]
+    heights = [road_top if k == "rua" else top for k in kinds]
     upper = [bm.verts.new((p.x, p.y, h)) for p, h in zip(ring, heights)]
     lower = [bm.verts.new((p.x, p.y, top - DEPTH)) for p in ring]
     face = bm.faces.new(upper)
@@ -192,7 +202,7 @@ def plate(col, corners, top):
     sides = []
     for i in range(n):
         j = (i + 1) % n
-        if kinds[i] == "laje" and kinds[j] == "laje":
+        if kinds[i] == kinds[j] and kinds[i] in ("laje", "rua"):
             continue
         sides.append(bm.faces.new((upper[i], lower[i], lower[j], upper[j])))
     bm.normal_update()
@@ -294,6 +304,11 @@ def on_save(*args):
         obj.update_from_editmode()
     refresh_uv(obj)
     write_obj(obj, PLATE)
+    filled = bpy.data.objects.get("Aterro")
+    if filled is not None and filled.type == "MESH":
+        if filled.mode == "EDIT":
+            filled.update_from_editmode()
+        write_plain_obj(filled, FILL)
     print("[MSC Duo] extensao salva em", PLATE)
 
 
@@ -316,6 +331,119 @@ def write_obj(obj, path):
             f.write("vt %.5f %.5f\n" % tuple(layer[loop.index].uv))
         for p in mesh.polygons:
             f.write("f " + " ".join("%d/%d" % (mesh.loops[k].vertex_index + 1, k + 1) for k in p.loop_indices) + "\n")
+
+
+def segment_distance(p, a, b):
+    ab = b - a
+    t = max(0.0, min(1.0, (p - a).dot(ab) / ab.length_squared))
+    return (a + ab * t - p).length
+
+
+def outline_edges(mesh):
+    count = {}
+    for poly in mesh.polygons:
+        if poly.normal.z < 0.5:
+            continue
+        for key in poly.edge_keys:
+            count[key] = count.get(key, 0) + 1
+    edges = []
+    for (a, b), n in count.items():
+        if n == 1:
+            pa, pb = mesh.vertices[a].co, mesh.vertices[b].co
+            edges.append((Vector((pa.x, pa.y)), Vector((pb.x, pb.y))))
+    return edges
+
+
+def inside_edges(edges, p):
+    crossings = 0
+    for a, b in edges:
+        if (a.y > p.y) != (b.y > p.y) and p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x:
+            crossings += 1
+    return crossings % 2 == 1
+
+
+def fill(col, trees, plate_obj):
+    ground = trees.get("chao_terreno") or trees.get("terreno")
+    road = trees.get("chao_estrada")
+    house = trees.get("chao_casa2")
+    if ground is None or road is None or plate_obj is None:
+        return None
+    edges = outline_edges(plate_obj.data)
+    x0, x1, y0, y1 = FILL_AREA
+    nx = int(round((x1 - x0) / FILL_CELL)) + 1
+    ny = int(round((y1 - y0) / FILL_CELL)) + 1
+
+    def probe(tree, x, y):
+        hit = tree.ray_cast(Vector((x, y, 5.0)), Vector((0, 0, -1)), 20.0)[0]
+        return None if hit is None else hit.z
+
+    plate_top = max(v.co.z for v in plate_obj.data.vertices)
+    cells, road_cells = {}, []
+    for i in range(nx):
+        for j in range(ny):
+            p = Vector((x0 + i * FILL_CELL, y0 + j * FILL_CELL))
+            g = probe(ground, p.x, p.y)
+            r = probe(road, p.x, p.y)
+            h = probe(house, p.x, p.y) if house is not None else None
+            base = max(v for v in (g, r) if v is not None) if (g is not None or r is not None) else None
+            if base is None or (h is not None and h > base + 0.05):
+                continue
+            cap = None
+            if inside_edges(edges, p):
+                cap = plate_top - FILL_UNDER
+            elif r is not None and r >= FILL_LEVEL - ROAD_TOLERANCE:
+                road_cells.append(p)
+                cap = r - FILL_UNDER
+            cells[(i, j)] = (p, base, cap)
+
+    heights = {}
+    for key, (p, base, cap) in cells.items():
+        if cap is not None:
+            heights[key] = (cap, cap > base - 0.3)
+            continue
+        d = min(segment_distance(p, a, b) for a, b in edges)
+        for q in road_cells:
+            if abs(q.x - p.x) < d and abs(q.y - p.y) < d:
+                d = min(d, (q - p).length)
+        want = FILL_LEVEL - FILL_SLOPE * d
+        heights[key] = (max(want, base + FILL_LIFT), want > base + FILL_LIFT)
+
+    bm = bmesh.new()
+    verts = {}
+    for i in range(nx - 1):
+        for j in range(ny - 1):
+            quad = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            if any(k not in heights for k in quad) or not any(heights[k][1] for k in quad) or all(cells[k][2] is not None for k in quad):
+                continue
+            face = []
+            for k in quad:
+                if k not in verts:
+                    verts[k] = bm.verts.new((x0 + k[0] * FILL_CELL, y0 + k[1] * FILL_CELL, heights[k][0]))
+                face.append(verts[k])
+            bm.faces.new(face)
+    if not bm.faces:
+        bm.free()
+        return None
+    bm.normal_update()
+    out = bpy.data.meshes.new("Aterro")
+    bm.to_mesh(out)
+    bm.free()
+    obj = bpy.data.objects.new("Aterro", out)
+    obj["versao"] = FILL_VERSION
+    obj.data.materials.append(material("aterro"))
+    col.objects.link(obj)
+    write_plain_obj(obj, FILL)
+    return obj
+
+
+def write_plain_obj(obj, path):
+    mesh = obj.data
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("# MSC Duo aterro: eixos do Blender, coordenadas da casa 2\n")
+        for v in mesh.vertices:
+            f.write("v %.4f %.4f %.4f\n" % tuple(v.co))
+        for p in mesh.polygons:
+            f.write("f " + " ".join(str(i + 1) for i in p.vertices) + "\n")
 
 
 def main():
@@ -352,7 +480,13 @@ def main():
                 bpy.data.objects.remove(editable, do_unlink=True)
                 editable = None
             if editable is None or editable.name not in editing().objects:
-                plate(editing(), corners, min(tops[0], tops[1]) - SINK)
+                plate(editing(), corners, min(tops[0], tops[1]) - SINK, max(tops[2], tops[3]) + ROAD_LIFT)
+            filled = bpy.data.objects.get("Aterro")
+            if filled is not None and filled.get("versao") != FILL_VERSION:
+                bpy.data.objects.remove(filled, do_unlink=True)
+                filled = None
+            if filled is None:
+                fill(editing(), trees, bpy.data.objects.get("Extensao"))
         print("[MSC Duo] relevo:", {k: len(v) for k, v in groups.items()})
     else:
         print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)

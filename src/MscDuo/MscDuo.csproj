@@ -61,6 +61,7 @@
   <ItemGroup>
     <EmbeddedResource Include="../../blender/extensao.obj" LogicalName="MscDuo.extensao.obj" />
     <EmbeddedResource Include="../../blender/extensao.png" LogicalName="MscDuo.extensao.png" />
+    <EmbeddedResource Include="../../blender/aterro.obj" LogicalName="MscDuo.aterro.obj" />
   </ItemGroup>
 
   <Target Name="DeployToMods" AfterTargets="Build">

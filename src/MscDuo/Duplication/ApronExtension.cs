@@ -21,6 +21,7 @@ namespace MscDuo.Duplication
 
         const string ModelResource = "MscDuo.extensao.obj";
         const string TextureResource = "MscDuo.extensao.png";
+        const string FillResource = "MscDuo.aterro.obj";
         const string SlabName = "house_base_concrete_mesh";
         const float ClearHeight = 2.5f;
         const float TerrainGap = 0.08f;
@@ -30,6 +31,8 @@ namespace MscDuo.Duplication
         static readonly string[] TerrainPaths = { "MAP/MESH/TERRAIN_OBJ/Grass1", "MAP/MESH/TERRAIN_OBJ/Grass2" };
 
         static GameObject slab;
+        static GameObject fill;
+        static Mesh fillModel;
         static Mesh model;
         static Vector2[][] outline;
         static float top;
@@ -71,8 +74,9 @@ namespace MscDuo.Duplication
             }
 
             var lowered = LowerTerrain(house, frame);
+            var filled = BuildFill(house, frame);
             var extra = unreadable.Count > 0 ? $" Sem leitura (ficaram): {string.Join(", ", unreadable.ToArray())}." : "";
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: extensão do Blender criada (topo {frame.MultiplyPoint3x4(new Vector3(0f, top, 0f)).y:0.00}, {model.vertexCount} vértices, material {(concrete != null ? concrete.name : "cinza")}), {cut} triângulos e {removed} objetos tirados do caminho, {lowered} pontos de terreno rebaixados.{extra}");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: extensão do Blender criada (topo {frame.MultiplyPoint3x4(new Vector3(0f, top, 0f)).y:0.00}, {model.vertexCount} vértices, material {(concrete != null ? concrete.name : "cinza")}), {cut} triângulos e {removed} objetos tirados do caminho, {lowered} pontos de terreno rebaixados, {filled}.{extra}");
         }
 
         internal static Vector3[] Corners(GameObject house)
@@ -95,6 +99,163 @@ namespace MscDuo.Duplication
                 if (InTriangle(p, t[0], t[1], t[2]) || EdgeDistance(p, t) <= margin) return true;
             return false;
         }
+
+        static Mesh LoadFill()
+        {
+            if (fillModel != null) return fillModel;
+            var text = Resource(FillResource);
+            if (text == null) return null;
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.Trim();
+                var parts = line.Split(' ');
+                if (line.StartsWith("v ")) vertices.Add(new Vector3(F(parts[1]), F(parts[3]), F(parts[2])));
+                else if (line.StartsWith("f "))
+                {
+                    var face = new List<int>();
+                    for (int k = 1; k < parts.Length; k++)
+                        if (parts[k].Length > 0) face.Add(int.Parse(parts[k].Split('/')[0]) - 1);
+                    for (int k = 1; k + 1 < face.Count; k++)
+                    {
+                        triangles.Add(face[0]); triangles.Add(face[k + 1]); triangles.Add(face[k]);
+                    }
+                }
+            }
+            if (triangles.Count == 0) return null;
+            fillModel = new Mesh { name = "ApronFill_P2" };
+            fillModel.vertices = vertices.ToArray();
+            fillModel.triangles = triangles.ToArray();
+            fillModel.RecalculateNormals();
+            fillModel.RecalculateBounds();
+            return fillModel;
+        }
+
+        static string BuildFill(GameObject house, Matrix4x4 frame)
+        {
+            var source = LoadFill();
+            if (source == null) return "sem aterro";
+            var mesh = Object.Instantiate(source);
+            mesh.name = source.name;
+            var vertices = mesh.vertices;
+            var uv = new Vector2[vertices.Length];
+            var colors = new Color[vertices.Length];
+            var found = new bool[vertices.Length];
+            var pairs = new List<KeyValuePair<Vector3, Vector2>>();
+            var votes = new Dictionary<Renderer, int>();
+            var hasColors = false;
+            var cache = new Dictionary<MeshCollider, KeyValuePair<Color[], int[]>>();
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                var w = frame.MultiplyPoint3x4(vertices[i]);
+                foreach (var path in TerrainPaths)
+                {
+                    var go = GameObject.Find(path);
+                    var collider = go != null ? go.GetComponent<MeshCollider>() : null;
+                    if (collider == null || collider.sharedMesh == null) continue;
+                    RaycastHit hit;
+                    if (!collider.Raycast(new Ray(new Vector3(w.x, w.y + 5f, w.z), Vector3.down), out hit, 20f)) continue;
+                    uv[i] = hit.textureCoord;
+                    found[i] = true;
+                    pairs.Add(new KeyValuePair<Vector3, Vector2>(w, hit.textureCoord));
+                    var renderer = go.GetComponent<Renderer>();
+                    if (renderer != null) votes[renderer] = (votes.TryGetValue(renderer, out var n) ? n : 0) + 1;
+                    KeyValuePair<Color[], int[]> data;
+                    if (!cache.TryGetValue(collider, out data))
+                        cache[collider] = data = new KeyValuePair<Color[], int[]>(collider.sharedMesh.colors, collider.sharedMesh.triangles);
+                    var terrainColors = data.Key;
+                    if (terrainColors != null && terrainColors.Length == collider.sharedMesh.vertexCount && hit.triangleIndex >= 0)
+                    {
+                        var tris = data.Value;
+                        var b = hit.barycentricCoordinate;
+                        colors[i] = terrainColors[tris[hit.triangleIndex * 3]] * b.x + terrainColors[tris[hit.triangleIndex * 3 + 1]] * b.y + terrainColors[tris[hit.triangleIndex * 3 + 2]] * b.z;
+                        hasColors = true;
+                    }
+                    break;
+                }
+            }
+            var map = Fit(pairs);
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                if (found[i] || map == null) continue;
+                var w = frame.MultiplyPoint3x4(vertices[i]);
+                uv[i] = new Vector2(map[0].x * w.x + map[0].y * w.z + map[0].z, map[1].x * w.x + map[1].y * w.z + map[1].z);
+                colors[i] = Nearest(vertices, found, colors, i);
+            }
+            mesh.uv = uv;
+            if (hasColors) mesh.colors = colors;
+
+            Renderer best = null;
+            var most = 0;
+            foreach (var pair in votes)
+                if (pair.Value > most) { most = pair.Value; best = pair.Key; }
+
+            fill = new GameObject("ApronFill_P2");
+            fill.transform.parent = house.transform.parent;
+            fill.transform.position = frame.MultiplyPoint3x4(Vector3.zero);
+            fill.transform.rotation = Quaternion.LookRotation(frame.GetColumn(2), frame.GetColumn(1));
+            fill.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var meshRenderer = fill.AddComponent<MeshRenderer>();
+            meshRenderer.sharedMaterials = best != null ? best.sharedMaterials : new[] { Concrete(house) };
+            var fillCollider = fill.AddComponent<MeshCollider>();
+            fillCollider.sharedMesh = mesh;
+            if (best != null)
+            {
+                fill.layer = best.gameObject.layer;
+                fill.tag = best.gameObject.tag;
+                var terrainCollider = best.GetComponent<Collider>();
+                if (terrainCollider != null) fillCollider.sharedMaterial = terrainCollider.sharedMaterial;
+            }
+            return $"aterro com {vertices.Length} pontos ({pairs.Count} alinhados à grama de {(best != null ? best.name : "nenhum terreno")})";
+        }
+
+        static Color Nearest(Vector3[] vertices, bool[] found, Color[] colors, int i)
+        {
+            var best = float.MaxValue;
+            var color = Color.white;
+            for (int k = 0; k < vertices.Length; k++)
+            {
+                if (!found[k]) continue;
+                var d = (vertices[k] - vertices[i]).sqrMagnitude;
+                if (d < best) { best = d; color = colors[k]; }
+            }
+            return color;
+        }
+
+        static Vector3[] Fit(List<KeyValuePair<Vector3, Vector2>> pairs)
+        {
+            if (pairs.Count < 3) return null;
+            var m = new float[3, 3];
+            var bu = new float[3];
+            var bv = new float[3];
+            foreach (var pair in pairs)
+            {
+                var row = new[] { pair.Key.x, pair.Key.z, 1f };
+                for (int a = 0; a < 3; a++)
+                {
+                    for (int b = 0; b < 3; b++) m[a, b] += row[a] * row[b];
+                    bu[a] += row[a] * pair.Value.x;
+                    bv[a] += row[a] * pair.Value.y;
+                }
+            }
+            var u = Solve(m, bu);
+            var v = Solve(m, bv);
+            return u == null || v == null ? null : new[] { u.Value, v.Value };
+        }
+
+        static Vector3? Solve(float[,] m, float[] b)
+        {
+            var det = Det(m[0, 0], m[0, 1], m[0, 2], m[1, 0], m[1, 1], m[1, 2], m[2, 0], m[2, 1], m[2, 2]);
+            if (Mathf.Abs(det) < 1e-9f) return null;
+            var x = Det(b[0], m[0, 1], m[0, 2], b[1], m[1, 1], m[1, 2], b[2], m[2, 1], m[2, 2]) / det;
+            var y = Det(m[0, 0], b[0], m[0, 2], m[1, 0], b[1], m[1, 2], m[2, 0], b[2], m[2, 2]) / det;
+            var z = Det(m[0, 0], m[0, 1], b[0], m[1, 0], m[1, 1], b[1], m[2, 0], m[2, 1], b[2]) / det;
+            return new Vector3(x, y, z);
+        }
+
+        static float Det(float a, float b, float c, float d, float e, float f, float g, float h, float i) =>
+            a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
 
         static bool LoadModel()
         {
@@ -329,6 +490,8 @@ namespace MscDuo.Duplication
         {
             if (slab != null) Object.DestroyImmediate(slab);
             slab = null;
+            if (fill != null) Object.DestroyImmediate(fill);
+            fill = null;
             foreach (var pair in cutMeshes) if (pair.Key != null) pair.Key.sharedMesh = pair.Value;
             foreach (var pair in cutColliders)
             {
@@ -353,7 +516,7 @@ namespace MscDuo.Duplication
 
         static bool Kept(Transform t, GameObject house)
         {
-            if (t.IsChildOf(house.transform) || (slab != null && t.IsChildOf(slab.transform))) return true;
+            if (t.IsChildOf(house.transform) || (slab != null && t.IsChildOf(slab.transform)) || (fill != null && t.IsChildOf(fill.transform))) return true;
             var root = t.root.name;
             foreach (var kept in KeptRoots)
                 if (root.StartsWith(kept)) return true;
