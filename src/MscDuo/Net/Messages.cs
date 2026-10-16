@@ -9,11 +9,22 @@ namespace MscDuo.Net
         Ping = 2,
         Pong = 3,
         PlayerState = 10,
+        CarState = 11,
+        ItemState = 12,
+        ItemRest = 13,
+        ItemsInfo = 14,
+        SleepState = 15,
+        ItemsMatched = 16,
+        SaveRequest = 17,
+        SaveData = 18,
+        Interaction = 19,
+        TimeState = 20,
+        TrafficState = 21,
     }
 
     internal static class Protocol
     {
-        internal const ushort Version = 1;
+        internal const ushort Version = 13;
     }
 
     internal struct PlayerStateMessage
@@ -52,6 +63,100 @@ namespace MscDuo.Net
         static ushort Angle16(float degrees) => (ushort)Mathf.RoundToInt(Mathf.Repeat(degrees, 360f) / 360f * 65535f);
 
         static float FromAngle16(ushort value) => value / 65535f * 360f;
+    }
+
+    internal struct CarStateMessage
+    {
+        internal byte Car;
+        internal uint Sequence;
+        internal float Time;
+        internal Vector3 Position;
+        internal Quaternion Rotation;
+        internal Vector3 Velocity;
+        internal Vector3 AngularVelocity;
+        internal bool Driving;
+        internal float Rpm;
+        internal float Throttle;
+
+        internal void Write(BinaryWriter w)
+        {
+            w.Write(Car);
+            w.Write(Sequence);
+            w.Write(Time);
+            Write(w, Position);
+            w.Write(Rotation.x);
+            w.Write(Rotation.y);
+            w.Write(Rotation.z);
+            w.Write(Rotation.w);
+            Write(w, Velocity);
+            Write(w, AngularVelocity);
+            w.Write(Driving);
+            w.Write(Rpm);
+            w.Write(Throttle);
+        }
+
+        internal static CarStateMessage Read(BinaryReader r) => new CarStateMessage
+        {
+            Car = r.ReadByte(),
+            Sequence = r.ReadUInt32(),
+            Time = r.ReadSingle(),
+            Position = ReadVector(r),
+            Rotation = new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Velocity = ReadVector(r),
+            AngularVelocity = ReadVector(r),
+            Driving = r.ReadBoolean(),
+            Rpm = r.ReadSingle(),
+            Throttle = r.ReadSingle(),
+        };
+
+        static void Write(BinaryWriter w, Vector3 v)
+        {
+            w.Write(v.x);
+            w.Write(v.y);
+            w.Write(v.z);
+        }
+
+        static Vector3 ReadVector(BinaryReader r) => new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+    }
+
+    internal struct ItemStateMessage
+    {
+        internal ushort Id;
+        internal uint Sequence;
+        internal float Time;
+        internal Vector3 Position;
+        internal Quaternion Rotation;
+        internal Vector3 Velocity;
+        internal bool Held;
+
+        internal void Write(BinaryWriter w)
+        {
+            w.Write(Id);
+            w.Write(Sequence);
+            w.Write(Time);
+            w.Write(Position.x);
+            w.Write(Position.y);
+            w.Write(Position.z);
+            w.Write(Rotation.x);
+            w.Write(Rotation.y);
+            w.Write(Rotation.z);
+            w.Write(Rotation.w);
+            w.Write(Velocity.x);
+            w.Write(Velocity.y);
+            w.Write(Velocity.z);
+            w.Write(Held);
+        }
+
+        internal static ItemStateMessage Read(BinaryReader r) => new ItemStateMessage
+        {
+            Id = r.ReadUInt16(),
+            Sequence = r.ReadUInt32(),
+            Time = r.ReadSingle(),
+            Position = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Rotation = new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Velocity = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Held = r.ReadBoolean(),
+        };
     }
 
     internal static class MessageWriter

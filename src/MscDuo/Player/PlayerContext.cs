@@ -28,6 +28,15 @@ namespace MscDuo.Player
             profiles[1] = null;
             profiles[2] = PlayerProfile.Load(Player2Path);
             HookSave();
+            var session = Net.NetSession.Current;
+            if (session != null && !session.Transport.IsHost && session.Connected) JoinAsGuest();
+            GiveHomeKeys();
+        }
+
+        static void GiveHomeKeys()
+        {
+            var van = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmInt("PlayerKeyHayosiko");
+            if (van != null) van.Value = 1;
         }
 
         internal static void Switch(int target)
@@ -43,8 +52,16 @@ namespace MscDuo.Player
             Active = target;
             if (profiles[target].HasPosition) Teleport(profiles[target].Position, profiles[target].Yaw);
 
+            GiveHomeKeys();
             if (Active == 2) profiles[2].Save(Player2Path);
             ModConsole.Print($"<color=orange>[MSC Duo]</color> agora você é o jogador {Active} ({profiles[Active].Get("PlayerName")}), dinheiro {profiles[Active].Get("PlayerMoney")}.");
+        }
+
+        internal static void JoinAsGuest()
+        {
+            if (Active == 2) return;
+            ModConsole.Print("<color=orange>[MSC Duo]</color> conectado ao anfitrião: você joga como jogador 2, na casa 2 com a Satsuma 2.");
+            Switch(2);
         }
 
         internal static void Tick()

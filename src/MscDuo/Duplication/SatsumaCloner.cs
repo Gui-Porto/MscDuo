@@ -168,7 +168,7 @@ namespace MscDuo.Duplication
             return found;
         }
 
-        static GameObject CloneRoot(GameObject original, string name, Matrix4x4 move, Quaternion turn, Dictionary<Object, Object> map)
+        internal static GameObject CloneRoot(GameObject original, string name, Matrix4x4 move, Quaternion turn, Dictionary<Object, Object> map)
         {
             var position = move.MultiplyPoint3x4(original.transform.position);
             var rotation = turn * original.transform.rotation;
@@ -303,7 +303,7 @@ namespace MscDuo.Duplication
             return 1;
         }
 
-        static int RemapLists(GameObject root, Dictionary<Object, Object> map)
+        internal static int RemapLists(GameObject root, Dictionary<Object, Object> map)
         {
             var count = 0;
             foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
@@ -328,7 +328,7 @@ namespace MscDuo.Duplication
             return count;
         }
 
-        static int RedirectSaves(PlayMakerFSM fsm)
+        internal static int RedirectSaves(PlayMakerFSM fsm)
         {
             var count = 0;
             foreach (var s in fsm.FsmVariables.StringVariables)
@@ -349,7 +349,7 @@ namespace MscDuo.Duplication
             return count;
         }
 
-        static int RedirectAutoSaves(GameObject root)
+        internal static int RedirectAutoSaves(GameObject root)
         {
             var count = 0;
             foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
@@ -366,7 +366,7 @@ namespace MscDuo.Duplication
             return count;
         }
 
-        static GameObject FindRoot(string name)
+        internal static GameObject FindRoot(string name)
         {
             foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
                 if (t.parent == null && t.name == name && t.hideFlags == HideFlags.None)

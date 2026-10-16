@@ -22,11 +22,13 @@ namespace MscDuo.Sync
 
         static readonly Dictionary<int, List<Part>> skins = new Dictionary<int, List<Part>>();
 
-        readonly GameObject root;
-        readonly TextMesh label;
+        readonly string name;
         readonly Dictionary<string, Transform> parts = new Dictionary<string, Transform>();
+        GameObject root;
+        TextMesh label;
         GameObject body;
         int skin;
+        int wanted = 1;
         Vector3 lastFeet;
         bool hasLast;
         float phase;
@@ -34,7 +36,14 @@ namespace MscDuo.Sync
 
         internal Avatar(string name)
         {
+            this.name = name;
+        }
+
+        void Build()
+        {
             root = new GameObject("MscDuo_Avatar_" + name);
+            skin = 0;
+            hasLast = false;
 
             var tag = new GameObject("Name");
             tag.transform.parent = root.transform;
@@ -52,7 +61,8 @@ namespace MscDuo.Sync
 
         internal void SetSkin(int value)
         {
-            if (value == skin) return;
+            wanted = value;
+            if (root == null || value == skin) return;
             var model = Load(value);
             if (model == null) return;
             skin = value;
@@ -76,6 +86,11 @@ namespace MscDuo.Sync
 
         internal void Apply(Vector3 pivot, float yaw, float pitch)
         {
+            if (root == null)
+            {
+                Build();
+                SetSkin(wanted);
+            }
             var feet = pivot - Vector3.up * FeetBelowPivot;
             root.transform.position = feet;
             root.transform.rotation = Quaternion.Euler(0f, yaw, 0f);

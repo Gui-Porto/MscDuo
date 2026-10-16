@@ -25,6 +25,7 @@ namespace MscDuo.Net
     internal interface ITransport
     {
         ulong LocalId { get; }
+        bool IsHost { get; }
         IEnumerable<ulong> Peers { get; }
         string Name { get; }
         void Send(ulong to, byte[] data, Channel channel);

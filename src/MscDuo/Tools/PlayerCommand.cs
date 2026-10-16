@@ -1,4 +1,5 @@
 using MSCLoader;
+using MscDuo.Net;
 using MscDuo.Player;
 using UnityEngine;
 
@@ -16,6 +17,11 @@ namespace MscDuo.Tools
                 ModConsole.Print($"ativo: jogador {PlayerContext.Active}");
                 ModConsole.Print(PlayerContext.Describe(1));
                 ModConsole.Print(PlayerContext.Describe(2));
+                return;
+            }
+            if (NetSession.Current != null && NetSession.Current.Connected)
+            {
+                ModConsole.Error("[MSC Duo] online cada um é um jogador fixo: o anfitrião é o 1 e o convidado é o 2.");
                 return;
             }
             if (args[0] == "1") PlayerContext.Switch(1);
