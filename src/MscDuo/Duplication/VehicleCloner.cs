@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using MSCLoader;
 using UnityEngine;
@@ -10,6 +11,8 @@ namespace MscDuo.Duplication
         const float TrailerReach = 15f;
         const float GroundProbe = 3f;
         internal const string HomeFlag = "MscDuo_casa.txt";
+        internal const string CopiesFlag = "MscDuo_copias.txt";
+        const float SettleSeconds = 3f;
 
         internal class Spec
         {
@@ -41,14 +44,41 @@ namespace MscDuo.Duplication
         const string HomeVan = "HAYOSIKO(1500kg, 250)";
 
         internal static bool MovedHomeVan { get; private set; }
+        internal static bool MovedCopies { get; private set; }
 
         static string HomeFlagPath => System.IO.Path.Combine(Application.persistentDataPath, HomeFlag);
+        static string CopiesFlagPath => System.IO.Path.Combine(Application.persistentDataPath, CopiesFlag);
 
         internal static void MarkHomeSaved()
         {
-            if (!MovedHomeVan) return;
-            try { System.IO.File.WriteAllText(HomeFlagPath, "van 1 levada para a casa 1"); }
-            catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] não foi possível gravar {HomeFlag}: {e.Message}"); }
+            Mark(MovedHomeVan, HomeFlagPath, "van 1 levada para a casa 1");
+            Mark(MovedCopies, CopiesFlagPath, "cópias levadas para o lado dos originais");
+        }
+
+        static void Mark(bool done, string path, string text)
+        {
+            if (!done) return;
+            try { System.IO.File.WriteAllText(path, text); }
+            catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] não foi possível gravar {path}: {e.Message}"); }
+        }
+
+        class Runner : MonoBehaviour { }
+
+        static IEnumerator MoveCopiesOnce(Dictionary<string, GameObject> originals, GameObject runner)
+        {
+            yield return new WaitForSeconds(SettleSeconds);
+            var moved = new List<string>();
+            foreach (var spec in Specs)
+            {
+                GameObject original, clone;
+                if (spec.Home || !originals.TryGetValue(spec.Root, out original) || !clones.TryGetValue(spec.Root, out clone) || original == null || clone == null) continue;
+                var player = GameObject.Find("PLAYER");
+                if (player != null && player.transform.IsChildOf(clone.transform)) continue;
+                if (Placement.Beside(clone, original)) moved.Add(clone.name);
+            }
+            MovedCopies = true;
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> cópias levadas para o lado dos originais: {string.Join(", ", moved.ToArray())}. Salve para guardar.");
+            Object.Destroy(runner);
         }
 
         static readonly Dictionary<string, GameObject> clones = new Dictionary<string, GameObject>();
@@ -140,6 +170,12 @@ namespace MscDuo.Duplication
                 CurrentVehicle.Separate(spec.Current, original, clone, new[] { original }, new[] { clone });
             }
 
+            MovedCopies = false;
+            if (!System.IO.File.Exists(CopiesFlagPath))
+            {
+                var runner = new GameObject("MscDuo_CopiesMover");
+                runner.AddComponent<Runner>().StartCoroutine(MoveCopiesOnce(originals, runner));
+            }
             if (fallback.Count > 0) ModConsole.Warning($"[MSC Duo] sem espaço livre ao lado para: {string.Join(", ", fallback.ToArray())}; colocados no lugar aproximado.");
             if (MovedHomeVan) ModConsole.Print("<color=orange>[MSC Duo]</color> van 1 levada para o lado da casa 1 (fica no save quando você salvar).");
             ModConsole.Print($"<color=orange>[MSC Duo]</color> veículos do jogador 2: {clones.Count} cópias ({placedBeside} ao lado do lugar certo), {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SatsumaCloner.SaveFile}, {confined} avisos restritos a cada cópia.");
