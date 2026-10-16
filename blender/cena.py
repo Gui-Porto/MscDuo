@@ -16,6 +16,15 @@ SINK = 0.003
 SKIRT = 0.5
 CRACK = [(-1.5, -8.6), (-2.6, -8.6), (-4.0, -9.2), (-4.35, -9.9), (-4.3, -11.0)]
 HIDDEN = ("YARD/", "JONNEZ")
+DUMPS = os.path.dirname(RELEVO)
+LAJE_OBJ = os.path.join(DUMPS, "laje.obj")
+LAJE_PNG = os.path.join(DUMPS, "laje.png")
+TILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cimento.png")
+APRON_U = (0.03321, -0.03610, 0.24511)
+APRON_V = (0.03610, 0.03320, 0.48602)
+TILE_U0 = 592 / 1024
+TILE_V0 = 1 - 915 / 1024
+TILE_SIZE = 225 / 1024
 LONGEST = 15.0
 
 COLORS = {
@@ -82,7 +91,7 @@ def read_relevo(path):
                 category, path = line[2:].strip().split("|", 1)
                 if path.startswith("MAP/MESH/TERRAIN_OBJ/Road"):
                     category = "estrada"
-                skip = path.startswith(HIDDEN)
+                skip = path.startswith(HIDDEN) or "house_base_concrete" in path
                 current = groups.setdefault(category, [])
             elif line.startswith("f ") and not skip:
                 current.append([int(p.split("/")[0]) - 1 for p in line.split()[1:]])
@@ -159,13 +168,60 @@ def plate(col, corners, top):
         j = (i + 1) % n
         bm.faces.new((upper[i], lower[i], lower[j], upper[j]))
     bm.normal_update()
+    layer = bm.loops.layers.uv.new("UV")
+    for f in bm.faces:
+        for loop in f.loops:
+            loop[layer].uv = tile_uv(loop.vert.co.x, loop.vert.co.y)
     mesh = bpy.data.meshes.new("Extensao")
     bm.to_mesh(mesh)
     bm.free()
     obj = bpy.data.objects.new("Extensao", mesh)
-    obj.data.materials.append(material("extensao"))
+    obj.data.materials.append(textured("extensao_cimento", TILE) if os.path.exists(TILE) else material("extensao"))
     col.objects.link(obj)
     write_obj(obj, PLATE)
+    return obj
+
+
+def tile_uv(x, y):
+    u = APRON_U[0] * x + APRON_U[1] * y + APRON_U[2]
+    v = APRON_V[0] * x + APRON_V[1] * y + APRON_V[2]
+    return ((u - TILE_U0) / TILE_SIZE, (v - TILE_V0) / TILE_SIZE)
+
+
+def textured(name, path):
+    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    bsdf = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
+    image = next((n for n in nodes if n.type == "TEX_IMAGE"), None) or nodes.new("ShaderNodeTexImage")
+    image.image = bpy.data.images.load(path, check_existing=True)
+    image.image.reload()
+    if bsdf is not None:
+        bsdf.inputs["Roughness"].default_value = 0.9
+        mat.node_tree.links.new(image.outputs["Color"], bsdf.inputs["Base Color"])
+    return mat
+
+
+def laje(col):
+    if not (os.path.exists(LAJE_OBJ) and os.path.exists(LAJE_PNG)):
+        return None
+    verts, uvs, faces = [], [], []
+    with open(LAJE_OBJ, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("v "):
+                verts.append(tuple(float(x) for x in line.split()[1:4]))
+            elif line.startswith("vt "):
+                uvs.append(tuple(float(x) for x in line.split()[1:3]))
+            elif line.startswith("f "):
+                faces.append([int(p.split("/")[0]) - 1 for p in line.split()[1:]])
+    mesh = bpy.data.meshes.new("laje")
+    mesh.from_pydata(verts, [], faces)
+    layer = mesh.uv_layers.new(name="UV")
+    for loop in mesh.loops:
+        layer.data[loop.index].uv = uvs[loop.vertex_index]
+    obj = bpy.data.objects.new("laje", mesh)
+    obj.data.materials.append(textured("laje", LAJE_PNG))
+    col.objects.link(obj)
     return obj
 
 
@@ -178,8 +234,10 @@ def write_obj(obj, path):
         f.write("# MSC Duo extensao: eixos do Blender, coordenadas da casa 2\n")
         for v in obj.data.vertices:
             f.write("v %.4f %.4f %.4f\n" % tuple(v.co))
+        for v in obj.data.vertices:
+            f.write("vt %.5f %.5f\n" % tile_uv(v.co.x, v.co.y))
         for p in obj.data.polygons:
-            f.write("f " + " ".join(str(i + 1) for i in p.vertices) + "\n")
+            f.write("f " + " ".join("%d/%d" % (i + 1, i + 1) for i in p.vertices) + "\n")
 
 
 def main():
@@ -209,9 +267,21 @@ def main():
                 tops.append(h if h is not None else c[2])
             print("[MSC Duo] alturas da extensao:", [round(t, 3) for t in tops])
             plate(col, corners, min(tops[0], tops[1]) - SINK)
+        laje(col)
         print("[MSC Duo] relevo:", {k: len(v) for k, v in groups.items()})
     else:
         print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)
+
+
+def shade():
+    scene = bpy.context.scene
+    if scene.get("mscduo_textured"):
+        return
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == "VIEW_3D":
+                area.spaces.active.shading.type = "MATERIAL"
+                scene["mscduo_textured"] = True
 
 
 def frame():
@@ -238,6 +308,7 @@ def frame():
 try:
     main()
     frame()
+    shade()
     with open(LOG, "a", encoding="utf-8") as log:
         log.write("ok\n")
 except Exception:
