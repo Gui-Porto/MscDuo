@@ -87,6 +87,7 @@ namespace MscDuo.Net
                 SendPlayerState(now);
             }
             TickCars(now, sendDue);
+            TimeSync.Tick(now, transport.IsHost, Connected, body => Broadcast(MessageType.TimeState, body, Channel.Reliable));
             SleepSync.Tick(now, Connected, waiting => Broadcast(MessageType.SleepState, w => w.Write(waiting), Channel.Reliable));
             if (!transport.IsHost) SaveTransfer.Tick(() => Broadcast(MessageType.SaveRequest, null, Channel.Reliable));
             if (now >= nextHandshake)
@@ -225,6 +226,9 @@ namespace MscDuo.Net
                             if (SaveTransfer.InMenu) SaveTransfer.OnHostHello(() => Send(host, MessageType.SaveRequest, null, Channel.Reliable));
                             else PlayerContext.JoinAsGuest();
                         }
+                        break;
+                    case MessageType.TimeState:
+                        if (!transport.IsHost) TimeSync.Read(reader);
                         break;
                     case MessageType.Interaction:
                         InteractionSync.ReadInteraction(reader);

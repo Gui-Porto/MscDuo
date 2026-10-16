@@ -18,11 +18,12 @@ namespace MscDuo.Net
         SaveRequest = 17,
         SaveData = 18,
         Interaction = 19,
+        TimeState = 20,
     }
 
     internal static class Protocol
     {
-        internal const ushort Version = 11;
+        internal const ushort Version = 12;
     }
 
     internal struct PlayerStateMessage
