@@ -44,6 +44,11 @@ namespace MscDuo.Sync
             Forget();
             var excluded = new List<Transform>();
             foreach (var vehicle in CarSync.FindRoots().Values) excluded.Add(vehicle.transform);
+            foreach (var name in TrafficSync.RootNames)
+            {
+                var root = Duplication.SatsumaCloner.FindRoot(name);
+                if (root != null) excluded.Add(root.transform);
+            }
             var player = GameObject.Find("PLAYER");
             if (player != null) excluded.Add(player.transform);
             Add(Object.FindObjectsOfType<Rigidbody>(), excluded);

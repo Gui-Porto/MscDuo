@@ -62,6 +62,7 @@ namespace MscDuo
             House2Fridge.Patch();
             HouseCloner.Spawn();
             PlayerContext.Init();
+            Sync.TrafficSync.Build();
             Sync.ItemRegistry.Build();
             Sync.ItemRegistry.AddClone(SatsumaCloner.Clone, SatsumaCloner.Parts);
             Sync.SleepSync.Patch();

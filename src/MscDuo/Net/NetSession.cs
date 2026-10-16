@@ -66,6 +66,7 @@ namespace MscDuo.Net
             }
             CarSync.Reset();
             ItemSync.Reset();
+            TrafficSync.Restore();
             SleepSync.Reset();
             ItemRegistry.Forget();
             foreach (var peer in Current.peers.Values) peer.Player.Dispose();
@@ -161,6 +162,7 @@ namespace MscDuo.Net
             ItemSync.Tick(now, remoteNow, delay, remotePlayer, sendDue && Connected,
                 state => Broadcast(MessageType.ItemState, state.Write, Channel.Unreliable),
                 state => Broadcast(MessageType.ItemRest, state.Write, Channel.Reliable));
+            TrafficSync.Tick(now, remoteNow, delay, transport.IsHost, Connected, body => Broadcast(MessageType.TrafficState, body, Channel.Unreliable));
         }
 
         void Broadcast(MessageType type, Action<BinaryWriter> body, Channel channel)
@@ -226,6 +228,9 @@ namespace MscDuo.Net
                             if (SaveTransfer.InMenu) SaveTransfer.OnHostHello(() => Send(host, MessageType.SaveRequest, null, Channel.Reliable));
                             else PlayerContext.JoinAsGuest();
                         }
+                        break;
+                    case MessageType.TrafficState:
+                        if (!transport.IsHost) TrafficSync.Read(reader);
                         break;
                     case MessageType.TimeState:
                         if (!transport.IsHost) TimeSync.Read(reader);
