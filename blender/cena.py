@@ -13,19 +13,20 @@ PLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extensao.obj")
 UNDER_SLAB = 0.6
 EXTRA_ROAD = 0.2
 SINK = 0.003
-SKIRT = 0.5
 CRACK = [(-1.5, -8.6), (-2.6, -8.6), (-4.0, -9.2), (-4.35, -9.9), (-4.3, -11.0)]
 HIDDEN = ("YARD/", "JONNEZ")
 DUMPS = os.path.dirname(RELEVO)
 LAJE_OBJ = os.path.join(DUMPS, "laje.obj")
 LAJE_PNG = os.path.join(DUMPS, "laje.png")
-TILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cimento.png")
+IMAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extensao.png")
+IMAGE_U = (0.40, 0.90)
+IMAGE_V = (-0.36, 0.20)
+APRON_LEFT = (-3.37, -10.54)
+APRON_RIGHT = (0.96, -15.24)
+SIDE_INSET = 0.05
+DEPTH = 0.6
 APRON_U = (0.03321, -0.03610, 0.24511)
 APRON_V = (0.03610, 0.03320, 0.48602)
-TILE_U0 = 592 / 1024
-TILE_V0 = 1 - 915 / 1024
-TILE_W = 225 / 1024
-TILE_H = 150 / 1024
 LONGEST = 15.0
 
 COLORS = {
@@ -138,14 +139,41 @@ def prism(col, outline, tops):
 LOG = os.path.join(os.path.dirname(RELEVO), "blender_log.txt")
 
 
+def uv_of(x, y):
+    return (APRON_U[0] * x + APRON_U[1] * y + APRON_U[2], APRON_V[0] * x + APRON_V[1] * y + APRON_V[2])
+
+
+def image_uv(x, y):
+    u, v = uv_of(x, y)
+    return ((u - IMAGE_U[0]) / (IMAGE_U[1] - IMAGE_U[0]), (v - IMAGE_V[0]) / (IMAGE_V[1] - IMAGE_V[0]))
+
+
+def directions():
+    gu = Vector(APRON_U[:2]).normalized()
+    gv = Vector(APRON_V[:2]).normalized()
+    return gu, -gv
+
+
+def intersect(p, d, a, b):
+    e = b - a
+    den = d.x * e.y - d.y * e.x
+    t = ((a.x - p.x) * e.y - (a.y - p.y) * e.x) / den
+    return p + d * t
+
+
 def outline(corners):
     c = [Vector(p[:2]) for p in corners]
     inward = (c[0] + c[1] - c[2] - c[3]).normalized()
+    right, along = directions()
+    corner_left, corner_right = Vector(APRON_LEFT), Vector(APRON_RIGHT)
+    road_a, road_b = c[2] - inward * EXTRA_ROAD, c[3] - inward * EXTRA_ROAD
+    road_right = intersect(corner_right, along, road_a, road_b)
     return [
-        c[2] - inward * EXTRA_ROAD,
-        c[3] - inward * EXTRA_ROAD,
-        c[1] + inward * UNDER_SLAB,
-        c[0] + inward * UNDER_SLAB,
+        road_a,
+        road_right,
+        corner_right,
+        corner_right - right * SIDE_INSET - along * UNDER_SLAB,
+        corner_left + inward * UNDER_SLAB,
     ] + [Vector(p) for p in CRACK]
 
 
@@ -154,39 +182,36 @@ def plate(col, corners, top):
     if area(ring) < 0:
         ring.reverse()
     n = len(ring)
-    normals = []
-    for i in range(n):
-        a, b = ring[i - 1], ring[i]
-        d = (b - a).normalized()
-        normals.append(Vector((d.y, -d.x)))
-    corner = [(normals[i] + normals[(i + 1) % n]).normalized() for i in range(n)]
     bm = bmesh.new()
     upper = [bm.verts.new((p.x, p.y, top)) for p in ring]
-    lower = [bm.verts.new((p.x + o.x * SKIRT, p.y + o.y * SKIRT, top - SKIRT)) for p, o in zip(ring, corner)]
+    lower = [bm.verts.new((p.x, p.y, top - DEPTH)) for p in ring]
     face = bm.faces.new(upper)
-    bmesh.ops.triangulate(bm, faces=[face])
+    tops = bmesh.ops.triangulate(bm, faces=[face])["faces"]
+    sides = []
     for i in range(n):
         j = (i + 1) % n
-        bm.faces.new((upper[i], lower[i], lower[j], upper[j]))
+        sides.append(bm.faces.new((upper[i], lower[i], lower[j], upper[j])))
     bm.normal_update()
     layer = bm.loops.layers.uv.new("UV")
-    for f in bm.faces:
+    for f in tops:
         for loop in f.loops:
-            loop[layer].uv = tile_uv(loop.vert.co.x, loop.vert.co.y)
+            loop[layer].uv = image_uv(loop.vert.co.x, loop.vert.co.y)
+    for f in sides:
+        out = Vector((f.normal.x, f.normal.y))
+        if out.length > 0:
+            out.normalize()
+        for loop in f.loops:
+            p = loop.vert.co
+            q = Vector((p.x, p.y)) + out * (top - p.z)
+            loop[layer].uv = image_uv(q.x, q.y)
     mesh = bpy.data.meshes.new("Extensao")
     bm.to_mesh(mesh)
     bm.free()
     obj = bpy.data.objects.new("Extensao", mesh)
-    obj.data.materials.append(textured("extensao_cimento", TILE) if os.path.exists(TILE) else material("extensao"))
+    obj.data.materials.append(textured("extensao_cimento", IMAGE) if os.path.exists(IMAGE) else material("extensao"))
     col.objects.link(obj)
     write_obj(obj, PLATE)
     return obj
-
-
-def tile_uv(x, y):
-    u = APRON_U[0] * x + APRON_U[1] * y + APRON_U[2]
-    v = APRON_V[0] * x + APRON_V[1] * y + APRON_V[2]
-    return ((u - TILE_U0) / TILE_W, (v - TILE_V0) / TILE_H)
 
 
 def textured(name, path):
@@ -231,14 +256,16 @@ def area(ring):
 
 
 def write_obj(obj, path):
+    mesh = obj.data
+    layer = mesh.uv_layers.active.data
     with open(path, "w", encoding="utf-8") as f:
         f.write("# MSC Duo extensao: eixos do Blender, coordenadas da casa 2\n")
-        for v in obj.data.vertices:
+        for v in mesh.vertices:
             f.write("v %.4f %.4f %.4f\n" % tuple(v.co))
-        for v in obj.data.vertices:
-            f.write("vt %.5f %.5f\n" % tile_uv(v.co.x, v.co.y))
-        for p in obj.data.polygons:
-            f.write("f " + " ".join("%d/%d" % (i + 1, i + 1) for i in p.vertices) + "\n")
+        for loop in mesh.loops:
+            f.write("vt %.5f %.5f\n" % tuple(layer[loop.index].uv))
+        for p in mesh.polygons:
+            f.write("f " + " ".join("%d/%d" % (mesh.loops[k].vertex_index + 1, k + 1) for k in p.loop_indices) + "\n")
 
 
 def main():
