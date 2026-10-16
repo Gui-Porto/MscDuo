@@ -150,14 +150,24 @@ namespace MscDuo.Duplication
             var bottom = float.MaxValue;
             var found = false;
             var footprint = new Bounds();
-            foreach (var renderer in clone.GetComponentsInChildren<Renderer>())
+            foreach (var wheel in clone.GetComponentsInChildren<Wheel>(true))
             {
-                if (!renderer.enabled || !(renderer is MeshRenderer || renderer is SkinnedMeshRenderer)) continue;
-                var b = renderer.bounds;
-                if (!found) footprint = b; else footprint.Encapsulate(b);
-                if (b.min.y < bottom) bottom = b.min.y;
+                var center = wheel.model != null ? wheel.model.transform.position : wheel.transform.position;
+                var low = center.y - wheel.radius;
+                var point = new Bounds(new Vector3(center.x, low, center.z), Vector3.zero);
+                if (!found) footprint = point; else footprint.Encapsulate(point);
+                if (low < bottom) bottom = low;
                 found = true;
             }
+            if (!found)
+                foreach (var renderer in clone.GetComponentsInChildren<Renderer>())
+                {
+                    if (!renderer.enabled || !(renderer is MeshRenderer || renderer is SkinnedMeshRenderer)) continue;
+                    var b = renderer.bounds;
+                    if (!found) footprint = b; else footprint.Encapsulate(b);
+                    if (b.min.y < bottom) bottom = b.min.y;
+                    found = true;
+                }
             if (!found) return;
             var ground = float.MinValue;
             for (int i = 0; i < 4; i++)
@@ -170,7 +180,7 @@ namespace MscDuo.Duplication
                 if (Ground.TryHeight(corner, GroundProbe, out y, clone) && y > ground) ground = y;
             }
             if (ground == float.MinValue) return;
-            clone.transform.position += Vector3.up * (ground - bottom + 0.05f);
+            clone.transform.position += Vector3.up * (ground - bottom + 0.02f);
         }
     }
 }
