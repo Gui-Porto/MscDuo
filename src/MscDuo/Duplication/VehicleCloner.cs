@@ -7,36 +7,49 @@ namespace MscDuo.Duplication
     internal static class VehicleCloner
     {
         internal const string Suffix = "_P2";
-        const float NearHome = 40f;
         const float TrailerReach = 15f;
-        const float SlotStart = 5f;
-        const float SlotSpacing = 5f;
         const float GroundProbe = 3f;
+        internal const string HomeFlag = "MscDuo_casa.txt";
 
         internal class Spec
         {
             internal readonly string Root;
             internal readonly string Current;
+            internal readonly bool Home;
             internal readonly string TowedBy;
 
-            internal Spec(string root, string current, string towedBy = null)
+            internal Spec(string root, string current, bool home, string towedBy = null)
             {
                 Root = root;
                 Current = current;
+                Home = home;
                 TowedBy = towedBy;
             }
         }
 
         internal static readonly Spec[] Specs =
         {
-            new Spec("JONNEZ ES(Clone)", "Jonnez"),
-            new Spec("KEKMET(350-400psi)", "Kekmet"),
-            new Spec("FLATBED", null, "KEKMET(350-400psi)"),
-            new Spec("HAYOSIKO(1500kg, 250)", "Hayosiko"),
-            new Spec("GIFU(750/450psi)", "Gifu"),
-            new Spec("FERNDALE(1630kg)", "Ferndale"),
-            new Spec("RCO_RUSCKO12(270)", "Ruscko"),
+            new Spec("JONNEZ ES(Clone)", "Jonnez", true),
+            new Spec("HAYOSIKO(1500kg, 250)", "Hayosiko", true),
+            new Spec("KEKMET(350-400psi)", "Kekmet", false),
+            new Spec("FLATBED", null, false, "KEKMET(350-400psi)"),
+            new Spec("GIFU(750/450psi)", "Gifu", false),
+            new Spec("FERNDALE(1630kg)", "Ferndale", false),
+            new Spec("RCO_RUSCKO12(270)", "Ruscko", false),
         };
+
+        const string HomeVan = "HAYOSIKO(1500kg, 250)";
+
+        internal static bool MovedHomeVan { get; private set; }
+
+        static string HomeFlagPath => System.IO.Path.Combine(Application.persistentDataPath, HomeFlag);
+
+        internal static void MarkHomeSaved()
+        {
+            if (!MovedHomeVan) return;
+            try { System.IO.File.WriteAllText(HomeFlagPath, "van 1 levada para a casa 1"); }
+            catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] não foi possível gravar {HomeFlag}: {e.Message}"); }
+        }
 
         static readonly Dictionary<string, GameObject> clones = new Dictionary<string, GameObject>();
 
@@ -53,7 +66,9 @@ namespace MscDuo.Duplication
             var turn = house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation);
             var map = new Dictionary<Object, Object>();
             var originals = new Dictionary<string, GameObject>();
-            var slot = 0;
+            var placedBeside = 0;
+            var fallback = new List<string>();
+            MovedHomeVan = false;
 
             foreach (var spec in Specs)
             {
@@ -64,6 +79,9 @@ namespace MscDuo.Duplication
                     continue;
                 }
                 originals[spec.Root] = original;
+                if (spec.Root == HomeVan && !System.IO.File.Exists(HomeFlagPath) && SatsumaCloner.Original != null)
+                    MovedHomeVan = Placement.Beside(original, SatsumaCloner.Original);
+
                 GameObject clone;
                 GameObject tow;
                 GameObject towClone;
@@ -74,12 +92,18 @@ namespace MscDuo.Duplication
                     var relativeTurn = towClone.transform.rotation * Quaternion.Inverse(tow.transform.rotation);
                     clone = SatsumaCloner.CloneRoot(original, spec.Root + Suffix, relative, relativeTurn, map);
                 }
-                else if ((original.transform.position - house1.transform.position).magnitude < NearHome)
-                    clone = SatsumaCloner.CloneRoot(original, spec.Root + Suffix, move, turn, map);
                 else
                 {
                     clone = SatsumaCloner.CloneRoot(original, spec.Root + Suffix, Matrix4x4.identity, Quaternion.identity, map);
-                    PlaceInSlot(clone, satsuma2 != null ? satsuma2.transform : house2.transform, slot++);
+                    var anchor = spec.Home ? satsuma2 : original;
+                    if (Placement.Beside(clone, anchor, original)) placedBeside++;
+                    else
+                    {
+                        fallback.Add(clone.name);
+                        if (spec.Home) clone.transform.position = move.MultiplyPoint3x4(original.transform.position);
+                        if (spec.Home) clone.transform.rotation = turn * original.transform.rotation;
+                        Snap(clone);
+                    }
                 }
                 clones[spec.Root] = clone;
             }
@@ -88,7 +112,6 @@ namespace MscDuo.Duplication
             foreach (var pair in clones)
             {
                 var clone = pair.Value;
-                Snap(clone);
                 foreach (var fsm in clone.GetComponentsInChildren<PlayMakerFSM>(true))
                 {
                     try
@@ -117,7 +140,9 @@ namespace MscDuo.Duplication
                 CurrentVehicle.Separate(spec.Current, original, clone, new[] { original }, new[] { clone });
             }
 
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> veículos do jogador 2: {clones.Count} cópias, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SatsumaCloner.SaveFile}, {confined} avisos restritos a cada cópia.");
+            if (fallback.Count > 0) ModConsole.Warning($"[MSC Duo] sem espaço livre ao lado para: {string.Join(", ", fallback.ToArray())}; colocados no lugar aproximado.");
+            if (MovedHomeVan) ModConsole.Print("<color=orange>[MSC Duo]</color> van 1 levada para o lado da casa 1 (fica no save quando você salvar).");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> veículos do jogador 2: {clones.Count} cópias ({placedBeside} ao lado do lugar certo), {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SatsumaCloner.SaveFile}, {confined} avisos restritos a cada cópia.");
         }
 
         static int RemapJoints(GameObject clone, Dictionary<Object, Object> map)
@@ -133,16 +158,6 @@ namespace MscDuo.Duplication
                 count++;
             }
             return count;
-        }
-
-        static void PlaceInSlot(GameObject clone, Transform anchor, int slot)
-        {
-            var right = anchor.right;
-            right.y = 0f;
-            right.Normalize();
-            var position = anchor.position + right * (SlotStart + SlotSpacing * slot);
-            clone.transform.position = position;
-            clone.transform.rotation = Quaternion.Euler(0f, anchor.eulerAngles.y, 0f);
         }
 
         internal static float BottomOffset(GameObject vehicle)

@@ -28,6 +28,7 @@ namespace MscDuo
             SetupFunction(Setup.OnMenuLoad, OnMenuLoad);
             SetupFunction(Setup.OnLoad, OnGameLoad);
             SetupFunction(Setup.PostLoad, OnPostLoad);
+            SetupFunction(Setup.OnSave, OnSave);
             SetupFunction(Setup.Update, OnUpdate);
             SetupFunction(Setup.OnGUI, OnGui);
         }
@@ -68,6 +69,11 @@ namespace MscDuo
             Sync.SleepSync.Patch();
             Sync.InteractionSync.Patch();
             Sync.TimeSync.Patch();
+        }
+
+        void OnSave()
+        {
+            VehicleCloner.MarkHomeSaved();
         }
 
         void OnGui()
