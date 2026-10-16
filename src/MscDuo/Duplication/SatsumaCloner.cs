@@ -55,7 +55,6 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 1 pronta depois de {waited:0.0} s (estado '{(setup != null ? setup.ActiveStateName : "-")}'); clonando a Satsuma 2.");
             try { Spawn(house1, house2); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] Satsuma 2 falhou: {e}"); }
-            Sync.ItemRegistry.AddClone(Clone, Parts);
             Object.Destroy(runner);
         }
 

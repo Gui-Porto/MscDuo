@@ -44,6 +44,7 @@ namespace MscDuo.Sync
             var excluded = new List<Transform>();
             var car = GameObject.Find("SATSUMA(557kg, 248)");
             if (car != null) excluded.Add(car.transform);
+            if (Duplication.SatsumaCloner.Clone != null) excluded.Add(Duplication.SatsumaCloner.Clone.transform);
             var player = GameObject.Find("PLAYER");
             if (player != null) excluded.Add(player.transform);
             Add(Object.FindObjectsOfType<Rigidbody>(), excluded);

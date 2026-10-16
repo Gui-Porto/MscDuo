@@ -50,6 +50,7 @@ namespace MscDuo
             HouseCloner.Spawn();
             PlayerContext.Init();
             Sync.ItemRegistry.Build();
+            Sync.ItemRegistry.AddClone(SatsumaCloner.Clone, SatsumaCloner.Parts);
             Sync.SleepSync.Patch();
         }
 
