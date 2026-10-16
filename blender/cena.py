@@ -25,6 +25,8 @@ APRON_LEFT = (-3.37, -10.54)
 APRON_RIGHT = (0.96, -15.24)
 SIDE_INSET = 0.05
 DEPTH = 0.6
+EDIT = "EDITAR"
+PLATE_VERSION = 2
 APRON_U = (0.03321, -0.03610, 0.24511)
 APRON_V = (0.03610, 0.03320, 0.48602)
 LONGEST = 15.0
@@ -208,6 +210,7 @@ def plate(col, corners, top):
     bm.to_mesh(mesh)
     bm.free()
     obj = bpy.data.objects.new("Extensao", mesh)
+    obj["versao"] = PLATE_VERSION
     obj.data.materials.append(textured("extensao_cimento", IMAGE) if os.path.exists(IMAGE) else material("extensao"))
     col.objects.link(obj)
     write_obj(obj, PLATE)
@@ -255,6 +258,51 @@ def area(ring):
     return sum(ring[i - 1].x * ring[i].y - ring[i].x * ring[i - 1].y for i in range(len(ring))) / 2
 
 
+def editing():
+    col = bpy.data.collections.get(EDIT)
+    if col is None:
+        col = bpy.data.collections.new(EDIT)
+        bpy.context.scene.collection.children.link(col)
+    return col
+
+
+def refresh_uv(obj):
+    mesh = obj.data
+    if not mesh.uv_layers:
+        mesh.uv_layers.new(name="UV")
+    layer = mesh.uv_layers.active.data
+    top = max(v.co.z for v in mesh.vertices)
+    for poly in mesh.polygons:
+        out = Vector((poly.normal.x, poly.normal.y))
+        flat = poly.normal.z > 0.5 or out.length == 0
+        if not flat:
+            out.normalize()
+        for k in poly.loop_indices:
+            p = mesh.vertices[mesh.loops[k].vertex_index].co
+            q = Vector((p.x, p.y)) if flat else Vector((p.x, p.y)) + out * (top - p.z)
+            layer[k].uv = image_uv(q.x, q.y)
+    mesh.update()
+
+
+def on_save(*args):
+    obj = bpy.data.objects.get("Extensao")
+    if obj is None or obj.type != "MESH":
+        return
+    if obj.mode == "EDIT":
+        obj.update_from_editmode()
+    refresh_uv(obj)
+    write_obj(obj, PLATE)
+    print("[MSC Duo] extensao salva em", PLATE)
+
+
+def hook_save():
+    handlers = bpy.app.handlers.save_post
+    for h in list(handlers):
+        if getattr(h, "__name__", "") == "on_save":
+            handlers.remove(h)
+    handlers.append(on_save)
+
+
 def write_obj(obj, path):
     mesh = obj.data
     layer = mesh.uv_layers.active.data
@@ -282,9 +330,12 @@ def main():
                 objects[name] = add_group(col, name, verts, faces)
                 objects[name].hide_set(name in REFERENCE)
                 objects[name].hide_render = name in REFERENCE
+        slab = laje(col)
+        if slab is not None:
+            objects["laje"] = slab
         if len(corners) == 4:
             trees = {k: bvh(v) for k, v in objects.items()}
-            slab_side = [trees[k] for k in ("casa2",) if k in trees]
+            slab_side = [trees[k] for k in ("laje", "casa2") if k in trees]
             road_side = [trees[k] for k in ("chao_estrada", "estrada", "chao_terreno", "terreno") if k in trees]
             inward = Vector(corners[0][:2]) + Vector(corners[1][:2]) - Vector(corners[2][:2]) - Vector(corners[3][:2])
             inward.normalize()
@@ -294,8 +345,12 @@ def main():
                 h = height(slab_side if i < 2 else road_side, p.x, p.y, c[2] + (0.3 if i < 2 else 5.0))
                 tops.append(h if h is not None else c[2])
             print("[MSC Duo] alturas da extensao:", [round(t, 3) for t in tops])
-            plate(col, corners, min(tops[0], tops[1]) - SINK)
-        laje(col)
+            editable = bpy.data.objects.get("Extensao")
+            if editable is not None and editable.get("versao") != PLATE_VERSION:
+                bpy.data.objects.remove(editable, do_unlink=True)
+                editable = None
+            if editable is None or editable.name not in editing().objects:
+                plate(editing(), corners, min(tops[0], tops[1]) - SINK)
         print("[MSC Duo] relevo:", {k: len(v) for k, v in groups.items()})
     else:
         print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)
@@ -335,6 +390,7 @@ def frame():
 
 try:
     main()
+    hook_save()
     frame()
     shade()
     with open(LOG, "a", encoding="utf-8") as log:
