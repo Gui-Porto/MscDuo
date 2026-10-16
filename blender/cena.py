@@ -24,7 +24,8 @@ APRON_U = (0.03321, -0.03610, 0.24511)
 APRON_V = (0.03610, 0.03320, 0.48602)
 TILE_U0 = 592 / 1024
 TILE_V0 = 1 - 915 / 1024
-TILE_SIZE = 225 / 1024
+TILE_W = 225 / 1024
+TILE_H = 150 / 1024
 LONGEST = 15.0
 
 COLORS = {
@@ -185,7 +186,7 @@ def plate(col, corners, top):
 def tile_uv(x, y):
     u = APRON_U[0] * x + APRON_U[1] * y + APRON_U[2]
     v = APRON_V[0] * x + APRON_V[1] * y + APRON_V[2]
-    return ((u - TILE_U0) / TILE_SIZE, (v - TILE_V0) / TILE_SIZE)
+    return ((u - TILE_U0) / TILE_W, (v - TILE_V0) / TILE_H)
 
 
 def textured(name, path):
