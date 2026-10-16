@@ -145,6 +145,20 @@ namespace MscDuo.Duplication
             clone.transform.rotation = Quaternion.Euler(0f, anchor.eulerAngles.y, 0f);
         }
 
+        internal static float BottomOffset(GameObject vehicle)
+        {
+            var bottom = float.MaxValue;
+            foreach (var wheel in vehicle.GetComponentsInChildren<Wheel>(true))
+            {
+                var center = wheel.model != null ? wheel.model.transform.position : wheel.transform.position;
+                bottom = Mathf.Min(bottom, center.y - wheel.radius);
+            }
+            if (bottom == float.MaxValue)
+                foreach (var renderer in vehicle.GetComponentsInChildren<Renderer>())
+                    if (renderer.enabled && (renderer is MeshRenderer || renderer is SkinnedMeshRenderer)) bottom = Mathf.Min(bottom, renderer.bounds.min.y);
+            return bottom == float.MaxValue ? 0f : bottom - vehicle.transform.position.y;
+        }
+
         internal static void Snap(GameObject clone)
         {
             var bottom = float.MaxValue;
