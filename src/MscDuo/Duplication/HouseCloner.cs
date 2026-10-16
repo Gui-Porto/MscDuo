@@ -74,6 +74,7 @@ namespace MscDuo.Duplication
             Step("rampa", () => ApronExtension.Apply(Clone));
             Step("contas", () => House2Bills.Setup(Clone));
             Step("satsuma", () => SatsumaCloner.Spawn(Original, Clone));
+            Step("veículos", () => VehicleCloner.Spawn(Original, Clone, SatsumaCloner.Clone));
         }
 
         static void Step(string name, System.Action action)

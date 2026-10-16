@@ -18,11 +18,18 @@ namespace MscDuo.Sync
         const float YieldSeconds = 1f;
         const int MaxSnapshots = 32;
 
-        internal static readonly string[] Vehicles =
+        internal static readonly string[] Vehicles = BuildVehicles();
+
+        static string[] BuildVehicles()
         {
-            "JONNEZ ES(Clone)", "HAYOSIKO(1500kg, 250)", "GIFU(750/450psi)", "KEKMET(350-400psi)", "FERNDALE(1630kg)",
-            "RCO_RUSCKO12(270)", "FLATBED", "BOAT", "COMBINE(350-400psi)",
-        };
+            var names = new List<string>
+            {
+                "JONNEZ ES(Clone)", "HAYOSIKO(1500kg, 250)", "GIFU(750/450psi)", "KEKMET(350-400psi)", "FERNDALE(1630kg)",
+                "RCO_RUSCKO12(270)", "FLATBED", "BOAT", "COMBINE(350-400psi)",
+            };
+            foreach (var spec in VehicleCloner.Specs) names.Add(spec.Root + VehicleCloner.Suffix);
+            return names.ToArray();
+        }
 
         static readonly List<CarLink> links = new List<CarLink>();
         static readonly Dictionary<string, GameObject> roots = new Dictionary<string, GameObject>();
@@ -142,9 +149,10 @@ namespace MscDuo.Sync
 
         static string Short(string name)
         {
+            var copy = name.EndsWith(VehicleCloner.Suffix);
             var cut = name.IndexOf('(');
-            var text = cut > 0 ? name.Substring(0, cut) : name;
-            return text.Trim().ToLowerInvariant();
+            var text = cut > 0 ? name.Substring(0, cut) : copy ? name.Substring(0, name.Length - VehicleCloner.Suffix.Length) : name;
+            return text.Trim().ToLowerInvariant() + (copy ? " 2" : "");
         }
 
         internal class CarLink

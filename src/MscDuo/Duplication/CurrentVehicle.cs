@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HutongGames.PlayMaker;
 using HutongGames.PlayMaker.Actions;
 using MSCLoader;
@@ -9,19 +10,27 @@ namespace MscDuo.Duplication
     {
         const string GlobalName = "PlayerCurrentVehicle";
         const string Satsuma = "Satsuma";
-        const string OtherSatsuma = "SatsumaOutra";
+
+        class Pair
+        {
+            internal string Name;
+            internal GameObject Car1;
+            internal GameObject Car2;
+            internal FsmString View1;
+            internal FsmString View2;
+        }
 
         static FsmString global;
-        static readonly FsmString view1 = new FsmString("MscDuoVehicle1");
-        static readonly FsmString view2 = new FsmString("MscDuoVehicle2");
-        static GameObject car1;
-        static GameObject car2;
+        static readonly List<Pair> pairs = new List<Pair>();
         static Transform player;
 
         internal static int Current { get; private set; }
         internal static string GlobalValue => global != null ? global.Value : "";
 
-        internal static void Setup(GameObject satsuma1, GameObject parts1, GameObject satsuma2, GameObject parts2)
+        internal static void Setup(GameObject satsuma1, GameObject parts1, GameObject satsuma2, GameObject parts2) =>
+            Separate(Satsuma, satsuma1, satsuma2, new[] { satsuma1, parts1 }, new[] { satsuma2, parts2 });
+
+        internal static void Separate(string name, GameObject car1, GameObject car2, GameObject[] roots1, GameObject[] roots2)
         {
             global = FsmVariables.GlobalVariables.FindFsmString(GlobalName);
             if (global == null)
@@ -29,14 +38,22 @@ namespace MscDuo.Duplication
                 ModConsole.Warning($"[MSC Duo] variável global '{GlobalName}' não encontrada; veículo atual não separado.");
                 return;
             }
-            car1 = satsuma1;
-            car2 = satsuma2;
-            var redirected = Redirect(view1, satsuma1, parts1) + Redirect(view2, satsuma2, parts2);
+            pairs.RemoveAll(p => p.Name == name);
+            var pair = new Pair
+            {
+                Name = name,
+                Car1 = car1,
+                Car2 = car2,
+                View1 = new FsmString("MscDuo" + name + "1"),
+                View2 = new FsmString("MscDuo" + name + "2"),
+            };
+            pairs.Add(pair);
+            var redirected = Redirect(pair.View1, roots1) + Redirect(pair.View2, roots2);
             if (FindObjectOfType<CurrentVehicle>() == null) new GameObject("MscDuo_CurrentVehicle").AddComponent<CurrentVehicle>();
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> veículo atual separado entre as duas Satsumas ({redirected} verificações).");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> veículo atual separado entre os dois {name} ({redirected} verificações).");
         }
 
-        static int Redirect(FsmString view, params GameObject[] roots)
+        static int Redirect(FsmString view, GameObject[] roots)
         {
             var count = 0;
             foreach (var root in roots)
@@ -67,13 +84,19 @@ namespace MscDuo.Duplication
 
         void Update()
         {
+            if (global == null) return;
             var value = global.Value;
-            Current = value == Satsuma ? Nearest() : 0;
-            view1.Value = value == Satsuma && Current != 1 ? OtherSatsuma : value;
-            view2.Value = value == Satsuma && Current != 2 ? OtherSatsuma : value;
+            Current = 0;
+            foreach (var pair in pairs)
+            {
+                var which = value == pair.Name ? Nearest(pair) : 0;
+                if (pair.Name == Satsuma) Current = which;
+                pair.View1.Value = value == pair.Name && which != 1 ? "MscDuoOther" : value;
+                pair.View2.Value = value == pair.Name && which != 2 ? "MscDuoOther" : value;
+            }
         }
 
-        static int Nearest()
+        static int Nearest(Pair pair)
         {
             if (player == null)
             {
@@ -81,10 +104,12 @@ namespace MscDuo.Duplication
                 if (found == null) return 1;
                 player = found.transform;
             }
-            if (car2 == null) return 1;
-            if (car1 == null) return 2;
-            var d1 = (car1.transform.position - player.position).sqrMagnitude;
-            var d2 = (car2.transform.position - player.position).sqrMagnitude;
+            if (pair.Car2 == null) return 1;
+            if (pair.Car1 == null) return 2;
+            if (player.IsChildOf(pair.Car2.transform)) return 2;
+            if (player.IsChildOf(pair.Car1.transform)) return 1;
+            var d1 = (pair.Car1.transform.position - player.position).sqrMagnitude;
+            var d2 = (pair.Car2.transform.position - player.position).sqrMagnitude;
             return d2 < d1 ? 2 : 1;
         }
     }
