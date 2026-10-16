@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using HutongGames.PlayMaker;
+using MscDuo.Duplication;
 using MscDuo.Net;
 using UnityEngine;
 
@@ -15,6 +16,7 @@ namespace MscDuo.Sync
         const float HeldReach = 3f;
         const float MaxExtrapolation = 0.2f;
         const int MaxSnapshots = 16;
+        const int MaxJointDepth = 6;
 
         enum Owner { None, Me, Peer }
 
@@ -59,6 +61,13 @@ namespace MscDuo.Sync
                 var item = pair.Value;
                 if (body == null) { done.Add(pair.Key); continue; }
 
+                if (Installed(body, 0))
+                {
+                    Release(body, item);
+                    done.Add(pair.Key);
+                    continue;
+                }
+
                 if (item.Owner == Owner.Me)
                 {
                     OwnedByMe++;
@@ -96,6 +105,7 @@ namespace MscDuo.Sync
                 {
                     if (body.isKinematic || body.IsSleeping()) continue;
                     if (body.velocity.sqrMagnitude < MoveThreshold * MoveThreshold && body.angularVelocity.sqrMagnitude < MoveThreshold) continue;
+                    if (Installed(body, 0)) continue;
                     var position = body.position;
                     if (remotePlayer.HasValue && (remotePlayer.Value - position).sqrMagnitude < (mine - position).sqrMagnitude) continue;
                 }
@@ -107,7 +117,7 @@ namespace MscDuo.Sync
         {
             if (!ItemRegistry.TryLocal(state.Id, out state.Id)) return;
             var body = ItemRegistry.Get(state.Id);
-            if (!Enabled || body == null) return;
+            if (!Enabled || body == null || Installed(body, 0)) return;
             Tracked item;
             if (tracked.TryGetValue(state.Id, out item) && item.Owner == Owner.Me)
             {
@@ -133,7 +143,7 @@ namespace MscDuo.Sync
         {
             if (!ItemRegistry.TryLocal(state.Id, out state.Id)) return;
             var body = ItemRegistry.Get(state.Id);
-            if (!Enabled || body == null) return;
+            if (!Enabled || body == null || Installed(body, 0)) return;
             Tracked item;
             if (tracked.TryGetValue(state.Id, out item))
             {
@@ -209,6 +219,26 @@ namespace MscDuo.Sync
             if (item.Applying) body.isKinematic = item.WasKinematic;
             item.Applying = false;
             item.Snapshots.Clear();
+        }
+
+        static bool Installed(Rigidbody body, int depth)
+        {
+            if (body == null || depth > MaxJointDepth) return false;
+            if (OnCar(body.transform)) return true;
+            foreach (var joint in body.GetComponents<Joint>())
+            {
+                var other = joint.connectedBody;
+                if (other == null || other == body) continue;
+                if (OnCar(other.transform) || Installed(other, depth + 1)) return true;
+            }
+            return false;
+        }
+
+        static bool OnCar(Transform t)
+        {
+            var car1 = SatsumaCloner.Original;
+            var car2 = SatsumaCloner.Clone;
+            return car1 != null && t.IsChildOf(car1.transform) || car2 != null && t.IsChildOf(car2.transform);
         }
 
         static bool Held(Rigidbody body)
