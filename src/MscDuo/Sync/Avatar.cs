@@ -8,11 +8,17 @@ namespace MscDuo.Sync
         const float FeetBelowPivot = 0.5f;
         static readonly Color BodyColor = new Color(0.91f, 0.4f, 0.04f);
 
-        readonly GameObject root;
-        readonly Transform head;
-        readonly TextMesh label;
+        readonly string name;
+        GameObject root;
+        Transform head;
+        TextMesh label;
 
         internal Avatar(string name)
+        {
+            this.name = name;
+        }
+
+        void Build()
         {
             root = new GameObject("MscDuo_Avatar_" + name);
             var material = new Material(Shader.Find("Standard") ?? Shader.Find("Diffuse")) { color = BodyColor };
@@ -46,6 +52,7 @@ namespace MscDuo.Sync
 
         internal void Apply(Vector3 pivot, float yaw, float pitch)
         {
+            if (root == null) Build();
             root.transform.position = pivot - Vector3.up * FeetBelowPivot;
             root.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             head.localRotation = Quaternion.Euler(Mathf.Clamp(pitch, -80f, 80f), 0f, 0f);

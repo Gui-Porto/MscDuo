@@ -90,6 +90,7 @@ namespace MscDuo.Sync
             var pitch = a.Pitch + Mathf.DeltaAngle(a.Pitch, b.Pitch) * Mathf.Clamp01(t);
 
             Position = position;
+            if (SaveTransfer.InMenu) return;
             avatar.Apply(position + displayOffset, yaw, pitch);
         }
 

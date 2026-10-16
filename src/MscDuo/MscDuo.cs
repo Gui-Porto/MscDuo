@@ -25,6 +25,7 @@ namespace MscDuo
         {
             Instance = this;
             SetupFunction(Setup.ModSettings, ModSettings);
+            SetupFunction(Setup.OnMenuLoad, OnMenuLoad);
             SetupFunction(Setup.OnLoad, OnGameLoad);
             SetupFunction(Setup.PostLoad, OnPostLoad);
             SetupFunction(Setup.Update, OnUpdate);
@@ -37,10 +38,22 @@ namespace MscDuo
             WakeKey = Keybind.Add("wake", "Levantar da cama enquanto espera o outro jogador", KeyCode.F);
         }
 
+        void OnMenuLoad()
+        {
+            DevCommands.Register();
+            SteamInvites.Listen();
+            NetRunner.Ensure();
+            Sync.ItemSync.Reset();
+            Sync.ItemRegistry.Clear();
+            if (NetSession.Current != null && !NetSession.Current.Transport.IsHost) NetSession.Stop();
+            Sync.SaveTransfer.Restore();
+        }
+
         void OnGameLoad()
         {
             DevCommands.Register();
             SteamInvites.Listen();
+            NetRunner.Ensure();
             ModConsole.Print("<color=orange>[MSC Duo]</color> carregado. Comandos: duo_player, duo_car, duo_check, duo_export, duo_build, duo_net, duo_house, duo_tp, duo_dump, duo_map, duo_shots, duo_probe.");
         }
 
@@ -56,22 +69,12 @@ namespace MscDuo
 
         void OnGui()
         {
-            NetHud.Draw();
             PlayerHud.Draw();
             Sync.SleepSync.Draw();
         }
 
         void OnUpdate()
         {
-            try
-            {
-                NetSession.Current?.Tick();
-            }
-            catch (System.Exception e)
-            {
-                ModConsole.Error($"[MSC Duo] erro na rede, sessão encerrada: {e}");
-                NetSession.Stop();
-            }
             PlayerContext.Tick();
             if (NetSession.Current == null) Sync.SleepSync.Tick(Time.realtimeSinceStartup, false, null);
             if (dumpKey != null && dumpKey.GetKeybindDown())

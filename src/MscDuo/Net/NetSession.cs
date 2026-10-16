@@ -52,7 +52,11 @@ namespace MscDuo.Net
         internal static void Stop()
         {
             if (Current == null) return;
-            if (!Current.transport.IsHost) PlayerContext.SaveActive();
+            if (!Current.transport.IsHost)
+            {
+                PlayerContext.SaveActive();
+                if (SaveTransfer.InMenu) SaveTransfer.Restore();
+            }
             CarSync.Reset();
             ItemSync.Reset();
             SleepSync.Reset();
@@ -77,6 +81,7 @@ namespace MscDuo.Net
             }
             TickCars(now, sendDue);
             SleepSync.Tick(now, Connected, waiting => Broadcast(MessageType.SleepState, w => w.Write(waiting), Channel.Reliable));
+            if (!transport.IsHost) SaveTransfer.Tick(() => Broadcast(MessageType.SaveRequest, null, Channel.Reliable));
             if (now >= nextHandshake)
             {
                 nextHandshake = now + HandshakeInterval;
@@ -207,7 +212,18 @@ namespace MscDuo.Net
                             peer.GotHello = true;
                             Send(packet.From, MessageType.Hello, w => { w.Write(Protocol.Version); w.Write(transport.IsHost); w.Write(true); }, Channel.Reliable);
                         }
-                        if (fromHost && !transport.IsHost) PlayerContext.JoinAsGuest();
+                        if (fromHost && !transport.IsHost)
+                        {
+                            var host = packet.From;
+                            if (SaveTransfer.InMenu) SaveTransfer.OnHostHello(() => Send(host, MessageType.SaveRequest, null, Channel.Reliable));
+                            else PlayerContext.JoinAsGuest();
+                        }
+                        break;
+                    case MessageType.SaveRequest:
+                        if (transport.IsHost) Send(packet.From, MessageType.SaveData, SaveTransfer.WriteSave, Channel.Reliable);
+                        break;
+                    case MessageType.SaveData:
+                        if (!transport.IsHost) SaveTransfer.ReadSave(reader);
                         break;
                     case MessageType.Ping:
                         var sentAt = reader.ReadSingle();

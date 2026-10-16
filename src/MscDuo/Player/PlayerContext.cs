@@ -28,6 +28,8 @@ namespace MscDuo.Player
             profiles[1] = null;
             profiles[2] = PlayerProfile.Load(Player2Path);
             HookSave();
+            var session = Net.NetSession.Current;
+            if (session != null && !session.Transport.IsHost && session.Connected) JoinAsGuest();
         }
 
         internal static void Switch(int target)

@@ -60,6 +60,17 @@ namespace MscDuo.Sync
             if (pendingPaths != null) Match(pendingPaths, pendingOrigins);
         }
 
+        internal static void Clear()
+        {
+            items.Clear();
+            paths.Clear();
+            origins.Clear();
+            known.Clear();
+            clonesAdded.Clear();
+            Final = false;
+            Forget();
+        }
+
         internal static void Forget()
         {
             fromRemote.Clear();
