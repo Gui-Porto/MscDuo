@@ -19,7 +19,6 @@ namespace MscDuo
         internal static MscDuo Instance { get; private set; }
 
         SettingsKeybind dumpKey;
-        HutongGames.PlayMaker.FsmBool permaDeath;
         internal SettingsKeybind WakeKey { get; private set; }
 
         public override void ModSetup()
@@ -72,14 +71,6 @@ namespace MscDuo
             Sync.TimeSync.Patch();
         }
 
-        void KeepSaveOnDeath()
-        {
-            if (permaDeath == null) permaDeath = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmBool("PlayerPermaDeath");
-            if (permaDeath == null || !permaDeath.Value) return;
-            permaDeath.Value = false;
-            ModConsole.Print("<color=orange>[MSC Duo]</color> morte permanente desligada: se alguém morrer, o save continua.");
-        }
-
         void OnSave()
         {
             VehicleCloner.MarkHomeSaved();
@@ -94,7 +85,6 @@ namespace MscDuo
         void OnUpdate()
         {
             PlayerContext.Tick();
-            KeepSaveOnDeath();
             if (NetSession.Current == null) Sync.SleepSync.Tick(Time.realtimeSinceStartup, false, null);
             if (dumpKey != null && dumpKey.GetKeybindDown())
                 SceneDumper.DumpDefault();
