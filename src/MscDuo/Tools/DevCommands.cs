@@ -7,12 +7,14 @@ namespace MscDuo.Tools
 {
     internal static class DevCommands
     {
-        static bool registered;
+        static object console;
 
         internal static void Register()
         {
-            if (registered) return;
-            registered = true;
+            var field = typeof(ConsoleCommand).GetField("cc", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var current = field != null ? field.GetValue(null) : null;
+            if (current == null || ReferenceEquals(current, console)) return;
+            console = current;
             ConsoleCommand.Add(new DumpCommand());
             ConsoleCommand.Add(new MapCommand());
             ConsoleCommand.Add(new HouseCommand());
