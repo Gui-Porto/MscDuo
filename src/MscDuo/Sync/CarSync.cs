@@ -141,6 +141,7 @@ namespace MscDuo.Sync
 
         static bool Inside(CarLink link)
         {
+            if (Passenger.Active) return false;
             if (link.Owned) return CurrentVehicle.Current == link.Index;
             if (player != null && player.IsChildOf(link.Root)) return true;
             if (link.CurrentName == null) return false;

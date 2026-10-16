@@ -26,15 +26,22 @@ namespace MscDuo.Sync
             var vehicle = player.parent != null ? CarSync.IndexOf(player) : 0;
             var root = vehicle != 0 ? CarSync.RootOf(vehicle) : null;
             var head = camera != null ? camera.transform.position : player.position;
+            byte voice, voiceCount;
+            Gestures.CaptureVoice(out voice, out voiceCount);
+            var flags = PlayerContext.Active == 2 ? PlayerStateMessage.Player2Flag : (byte)0;
+            if (Passenger.Active) flags |= PlayerStateMessage.PassengerFlag;
 
             return new PlayerStateMessage
             {
                 Position = player.position,
                 Yaw = yaw,
                 Pitch = pitch,
-                Flags = PlayerContext.Active == 2 ? PlayerStateMessage.Player2Flag : (byte)0,
+                Flags = (byte)flags,
                 Vehicle = (byte)vehicle,
                 Head = root != null ? root.InverseTransformPoint(head) : head,
+                Gestures = Gestures.Capture(),
+                Voice = voice,
+                VoiceCount = voiceCount,
             };
         }
     }

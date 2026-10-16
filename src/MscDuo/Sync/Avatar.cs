@@ -17,6 +17,7 @@ namespace MscDuo.Sync
         const float EyesAhead = 0.08f;
         const float DefaultFeetBelowPivot = 0.28f;
         const float SkinWidth = 0.03f;
+        const int PeePoints = 14;
 
         static readonly Dictionary<int, string[]> Outfits = new Dictionary<int, string[]>
         {
@@ -35,6 +36,32 @@ namespace MscDuo.Sync
             { "pelvis/spine_middle/spine_upper/collar_right/shoulder_right", new Vector3(0f, -30f, 0f) },
         };
 
+        // carona: mãos no colo em vez de no volante ou no guidão
+        internal static readonly Dictionary<string, Vector3> PassengerArms = new Dictionary<string, Vector3>
+        {
+            { "pelvis/spine_middle/spine_upper/collar_left/shoulder_left", new Vector3(0f, 50f, 0f) },
+            { "pelvis/spine_middle/spine_upper/collar_right/shoulder_right", new Vector3(0f, -50f, 0f) },
+        };
+
+        const string Arms = "skeleton/pelvis/spine_middle/spine_upper/";
+        const string Punch = "fighter_right_hit_jaw";
+        const string Finger = "fat_handsright_pocket_offer_on";
+        const string Wave = "fat_waving_hello";
+        const string Drink = "fat_handsright_drink";
+        const string Smoke = "fat_handsleft_smoke";
+
+        // clipes de gesto emprestados de outros NPCs com o mesmo esqueleto (raiz, caminho do osso com a Animation, clipe)
+        static readonly string[][] GestureSources =
+        {
+            new[] { "HUMANS", "FighterPub/Fighter2/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Punch },
+            new[] { "DANCEHALL", "Functions/FIGHTER/Fighter/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Punch },
+            new[] { "JOBS", "HouseDrunk/Moving/JokkeHiker1/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Finger },
+            new[] { "JOBS", "HouseShit1/LOD/ShitNPC/ShitMan1/skeleton/pelvis/RotationPivot/spine_middle/spine_upper/collar_right", Drink },
+            new[] { "JOBS", "HouseShit1/LOD/ShitNPC/ShitMan1/skeleton/pelvis/RotationPivot/spine_middle/spine_upper/collar_left", Smoke },
+        };
+        static readonly Dictionary<string, AnimationClip> gestureClips = new Dictionary<string, AnimationClip>();
+        static AudioClip peeClip;
+
         static GameObject template;
         static Dictionary<string, KeyValuePair<Vector3, Quaternion>> seatedPose;
         static readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
@@ -52,6 +79,18 @@ namespace MscDuo.Sync
         int skin;
         int wanted = 1;
         bool seated;
+        Animation collarLeft;
+        Animation collarRight;
+        string idleLeft;
+        string idleRight;
+        string playingLeft;
+        string playingRight;
+        int voiceCount = -1;
+        Transform pelvis;
+        LineRenderer pee;
+        AudioSource peeAudio;
+        AudioSource voice;
+        readonly Dictionary<Transform, Transform[]> grips = new Dictionary<Transform, Transform[]>();
         Vector3 lastFeet;
         bool hasLast;
         float speed;
@@ -113,6 +152,43 @@ namespace MscDuo.Sync
 
             bones.Clear();
             if (skeleton != null) Collect(skeleton, "");
+
+            collarLeft = Collar("collar_left", out idleLeft);
+            collarRight = Collar("collar_right", out idleRight);
+            playingLeft = playingRight = null;
+            pelvis = body.Find("skeleton/pelvis");
+            head = head ?? body;
+
+            var stream = new GameObject("Pee");
+            stream.transform.parent = root.transform;
+            pee = stream.AddComponent<LineRenderer>();
+            pee.material = new Material(Shader.Find("Sprites/Default") ?? Shader.Find("Diffuse"));
+            pee.SetColors(new Color(1f, 0.92f, 0.35f, 0.75f), new Color(1f, 0.92f, 0.35f, 0.35f));
+            pee.SetWidth(0.012f, 0.02f);
+            pee.SetVertexCount(PeePoints);
+            pee.enabled = false;
+            peeAudio = stream.AddComponent<AudioSource>();
+            peeAudio.clip = peeClip;
+            peeAudio.loop = true;
+            peeAudio.spatialBlend = 1f;
+            peeAudio.maxDistance = 15f;
+
+            voice = head.gameObject.AddComponent<AudioSource>();
+            voice.spatialBlend = 1f;
+            voice.minDistance = 2f;
+            voice.maxDistance = 40f;
+        }
+
+        Animation Collar(string side, out string idle)
+        {
+            idle = null;
+            var bone = body.Find(Arms + side);
+            var anim = bone != null ? bone.GetComponent<Animation>() : null;
+            if (anim == null) return null;
+            foreach (AnimationState state in anim) { idle = state.name; break; }
+            foreach (var pair in gestureClips)
+                if (anim[pair.Key] == null) anim.AddClip(pair.Value, pair.Key);
+            return anim;
         }
 
         void Collect(Transform t, string path)
@@ -172,7 +248,7 @@ namespace MscDuo.Sync
             FaceCamera();
         }
 
-        internal void Sit(Transform vehicle, Vector3 headWorld, bool bike)
+        internal void Sit(Transform vehicle, Vector3 headWorld, bool bike, bool passenger)
         {
             if (!Ready()) return;
             if (!seated)
@@ -180,27 +256,116 @@ namespace MscDuo.Sync
                 seated = true;
                 hasLast = false;
                 foreach (var anim in animations) { anim.Stop(); anim.enabled = false; }
+                playingLeft = playingRight = null;
             }
             if (seatedPose != null)
                 foreach (var bone in bones)
                 {
                     KeyValuePair<Vector3, Quaternion> pose;
                     if (!seatedPose.TryGetValue(bone.Value, out pose)) continue;
-                    Vector3 bend;
+                    var bend = Vector3.zero;
                     bone.Key.localPosition = pose.Key;
-                    bone.Key.localRotation = bike && BikePose.TryGetValue(bone.Value, out bend) ? pose.Value * Quaternion.Euler(bend) : pose.Value;
+                    var adjusted = passenger && PassengerArms.TryGetValue(bone.Value, out bend) || bike && BikePose.TryGetValue(bone.Value, out bend);
+                    bone.Key.localRotation = adjusted ? pose.Value * Quaternion.Euler(bend) : pose.Value;
                 }
             // preso ao veículo local: acompanha a carroceria sem tremer entre pacotes
             root.transform.parent = vehicle;
             root.transform.rotation = vehicle.rotation;
             root.transform.position = headWorld;
             if (head != null) root.transform.position += headWorld - vehicle.forward * EyesAhead - head.position;
+            if (bike && !passenger) HoldHandlebar(vehicle);
             FaceCamera();
+        }
+
+        // mãos nas manoplas: dobra ombro e cotovelo para o punho cair na ponta do guidão, que gira com a direção
+        void HoldHandlebar(Transform vehicle)
+        {
+            Transform[] ends;
+            if (!grips.TryGetValue(vehicle, out ends))
+            {
+                var steering = Find(vehicle, "SteeringPivot");
+                grips[vehicle] = ends = steering == null ? null : new[] { Find(steering, "Clutch"), Find(steering, "Throttle") };
+            }
+            if (ends == null) return;
+            Reach("left", ends[0]);
+            Reach("right", ends[1]);
+        }
+
+        void Reach(string side, Transform target)
+        {
+            if (target == null) return;
+            var upper = body.Find(Arms + "collar_" + side + "/shoulder_" + side);
+            var lower = upper != null ? upper.Find("arm_" + side) : null;
+            var hand = lower != null ? lower.Find("hand_" + side) : null;
+            if (hand == null) return;
+            var a = (lower.position - upper.position).magnitude;
+            var b = (hand.position - lower.position).magnitude;
+            var c = Mathf.Clamp((target.position - upper.position).magnitude, Mathf.Abs(a - b) + 0.01f, a + b - 0.01f);
+            var toShoulder = upper.position - lower.position;
+            var toHand = hand.position - lower.position;
+            var axis = Vector3.Cross(toShoulder, toHand);
+            if (axis.sqrMagnitude < 1e-6f) axis = root.transform.right;
+            var current = Vector3.Angle(toShoulder, toHand);
+            var wanted = Mathf.Acos(Mathf.Clamp((a * a + b * b - c * c) / (2f * a * b), -1f, 1f)) * Mathf.Rad2Deg;
+            lower.rotation = Quaternion.AngleAxis(wanted - current, axis.normalized) * lower.rotation;
+            upper.rotation = Quaternion.FromToRotation(hand.position - upper.position, target.position - upper.position) * upper.rotation;
+        }
+
+        // gestos, voz e xixi do outro jogador, com as animações e sons do próprio jogo
+        internal void Express(byte flags, byte voiceId, byte count)
+        {
+            if (root == null || body == null) return;
+            string right = null;
+            if ((flags & Gestures.Punch) != 0) right = Punch;
+            else if ((flags & Gestures.MiddleFinger) != 0) right = Finger;
+            else if ((flags & Gestures.Wave) != 0) right = Wave;
+            else if ((flags & Gestures.Drink) != 0) right = Drink;
+            Drive(collarRight, right, idleRight, ref playingRight);
+            Drive(collarLeft, (flags & Gestures.Smoke) != 0 ? Smoke : null, idleLeft, ref playingLeft);
+
+            var peeing = (flags & Gestures.Pee) != 0 && pelvis != null;
+            pee.enabled = peeing;
+            if (peeing)
+            {
+                var forward = root.transform.forward;
+                var start = pelvis.position + forward * 0.16f - Vector3.up * 0.08f;
+                var velocity = forward * 1.5f + Vector3.up * 0.5f;
+                for (int i = 0; i < PeePoints; i++)
+                {
+                    var t = i * 0.045f;
+                    pee.SetPosition(i, start + velocity * t + 0.5f * Physics.gravity * t * t);
+                }
+                if (!peeAudio.isPlaying && peeAudio.clip != null) peeAudio.Play();
+            }
+            else if (peeAudio.isPlaying) peeAudio.Stop();
+
+            if (voiceCount >= 0 && count != voiceCount)
+            {
+                var clip = Gestures.VoiceClip(voiceId);
+                if (clip != null) voice.PlayOneShot(clip);
+            }
+            voiceCount = count;
+        }
+
+        void Drive(Animation anim, string clip, string idle, ref string current)
+        {
+            if (anim == null) return;
+            var want = clip != null && anim[clip] != null ? clip : null;
+            if (seated) anim.enabled = want != null;
+            if (want == current) return;
+            current = want;
+            if (want != null)
+            {
+                anim[want].wrapMode = want == Wave || want == Drink || want == Smoke ? WrapMode.Loop : WrapMode.ClampForever;
+                anim.CrossFade(want, 0.15f);
+            }
+            else if (!seated && idle != null) anim.CrossFade(idle, 0.3f);
         }
 
         void GetUp()
         {
             seated = false;
+            playingLeft = playingRight = null;
             foreach (var anim in animations)
             {
                 anim.enabled = true;
@@ -253,6 +418,21 @@ namespace MscDuo.Sync
                 Record(driver, "");
             }
             else ModConsole.Warning("[MSC Duo] motorista NPC_CARS/" + DriverPath + " não encontrado; avatar sentado fica na pose em pé.");
+
+            gestureClips.Clear();
+            foreach (var source in GestureSources)
+            {
+                if (gestureClips.ContainsKey(source[2])) continue;
+                var top = FindRoot(source[0]);
+                var bone = top != null ? top.Find(source[1]) : null;
+                var anim = bone != null ? bone.GetComponent<Animation>() : null;
+                if (anim != null && anim[source[2]] != null) gestureClips[source[2]] = anim[source[2]].clip;
+            }
+            foreach (var source in GestureSources)
+                if (!gestureClips.ContainsKey(source[2])) ModConsole.Warning("[MSC Duo] gesto " + source[2] + " não encontrado; o boneco não faz esse gesto.");
+            var player = GameObject.Find("PLAYER");
+            var sound = player != null ? player.transform.Find("PeeSound") : null;
+            peeClip = sound != null ? sound.GetComponent<AudioSource>().clip : null;
             return true;
         }
 
@@ -264,6 +444,17 @@ namespace MscDuo.Sync
                 seatedPose[childPath] = new KeyValuePair<Vector3, Quaternion>(child.localPosition, child.localRotation);
                 Record(child, childPath);
             }
+        }
+
+        static Transform Find(Transform t, string name)
+        {
+            if (t.name == name) return t;
+            foreach (Transform child in t)
+            {
+                var found = Find(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         static Transform FindRoot(string rootName)

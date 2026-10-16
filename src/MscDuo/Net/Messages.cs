@@ -24,12 +24,13 @@ namespace MscDuo.Net
 
     internal static class Protocol
     {
-        internal const ushort Version = 14;
+        internal const ushort Version = 15;
     }
 
     internal struct PlayerStateMessage
     {
         internal const byte Player2Flag = 1;
+        internal const byte PassengerFlag = 2;
 
         internal uint Sequence;
         internal float Time;
@@ -39,6 +40,9 @@ namespace MscDuo.Net
         internal byte Flags;
         internal byte Vehicle;
         internal Vector3 Head;
+        internal byte Gestures;
+        internal byte Voice;
+        internal byte VoiceCount;
 
         internal void Write(BinaryWriter w)
         {
@@ -54,6 +58,9 @@ namespace MscDuo.Net
             w.Write(Head.x);
             w.Write(Head.y);
             w.Write(Head.z);
+            w.Write(Gestures);
+            w.Write(Voice);
+            w.Write(VoiceCount);
         }
 
         internal static PlayerStateMessage Read(BinaryReader r) => new PlayerStateMessage
@@ -66,6 +73,9 @@ namespace MscDuo.Net
             Flags = r.ReadByte(),
             Vehicle = r.ReadByte(),
             Head = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Gestures = r.ReadByte(),
+            Voice = r.ReadByte(),
+            VoiceCount = r.ReadByte(),
         };
 
         static ushort Angle16(float degrees) => (ushort)Mathf.RoundToInt(Mathf.Repeat(degrees, 360f) / 360f * 65535f);
