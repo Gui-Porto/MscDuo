@@ -1,9 +1,12 @@
 import os
 
 import bpy
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 RELEVO = os.path.join(os.path.expanduser("~"), "Documents", "MySummerCar", "Mods", "Config", "Mod Settings", "MscDuo", "dumps", "relevo.obj")
 THICKNESS = 0.25
+HIDDEN = ("YARD/", "JONNEZ")
 
 COLORS = {
     "terreno": (0.33, 0.45, 0.25, 1.0),
@@ -13,7 +16,11 @@ COLORS = {
     "lote": (0.5, 0.5, 0.55, 1.0),
     "outros": (0.6, 0.4, 0.4, 1.0),
     "extensao": (0.85, 0.3, 0.2, 1.0),
+    "chao_estrada": (0.18, 0.18, 0.2, 1.0),
+    "chao_outros": (0.6, 0.4, 0.4, 1.0),
+    "chao_lote": (0.5, 0.5, 0.55, 1.0),
 }
+REFERENCE = ("chao_casa2", "chao_terreno", "chao_vegetacao")
 
 
 def collection():
@@ -46,15 +53,28 @@ def add_mesh(col, name, verts, faces, category):
 def read_relevo(path):
     verts, corners, groups = [], [], {}
     current = None
+    skip = False
+    upright = False
+
+    def point(values):
+        a, b, c = (float(x) for x in values)
+        return (a, b, c) if upright else (a, -c, b)
+
     with open(path, encoding="utf-8") as f:
         for line in f:
-            if line.startswith("# extensao "):
-                corners.append(tuple(float(x) for x in line.split()[2:5]))
+            if line.startswith("# eixos 2"):
+                upright = True
+            elif line.startswith("# extensao "):
+                corners.append(point(line.split()[2:5]))
             elif line.startswith("v "):
-                verts.append(tuple(float(x) for x in line.split()[1:4]))
-            elif line.startswith("usemtl "):
-                current = groups.setdefault(line.split()[1], [])
-            elif line.startswith("f ") and current is not None:
+                verts.append(point(line.split()[1:4]))
+            elif line.startswith("o "):
+                category, path = line[2:].strip().split("|", 1)
+                if path.startswith("MAP/MESH/TERRAIN_OBJ/Road"):
+                    category = "estrada"
+                skip = path.startswith(HIDDEN)
+                current = groups.setdefault(category, [])
+            elif line.startswith("f ") and not skip:
                 current.append([int(p.split("/")[0]) - 1 for p in line.split()[1:]])
     return verts, corners, groups
 
@@ -66,12 +86,24 @@ def add_group(col, name, verts, faces):
             if i not in remap:
                 remap[i] = len(local)
                 local.append(verts[i])
-    add_mesh(col, name, local, [[remap[i] for i in face] for face in faces], name)
+    return add_mesh(col, name, local, [[remap[i] for i in face] for face in faces], name)
 
 
-def prism(col, outline, top, bottom):
+def height(trees, x, y, start):
+    for tree in trees:
+        hit = tree.ray_cast(Vector((x, y, start)), Vector((0, 0, -1)), 20.0)
+        if hit[0] is not None:
+            return hit[0].z
+    return None
+
+
+def bvh(obj):
+    return BVHTree.FromPolygons([v.co for v in obj.data.vertices], [p.vertices for p in obj.data.polygons])
+
+
+def prism(col, outline, tops):
     n = len(outline)
-    verts = [(p[0], p[1], top) for p in outline] + [(p[0], p[1], bottom) for p in outline]
+    verts = [(p[0], p[1], t) for p, t in zip(outline, tops)] + [(p[0], p[1], t - THICKNESS) for p, t in zip(outline, tops)]
     faces = [list(range(n)), list(range(2 * n - 1, n - 1, -1))]
     faces += [[i, i + n, (i + 1) % n + n, (i + 1) % n] for i in range(n)]
     add_mesh(col, "Extensao", verts, faces, "extensao")
@@ -84,11 +116,25 @@ if cube is not None:
 col = collection()
 if os.path.exists(RELEVO):
     verts, corners, groups = read_relevo(RELEVO)
+    objects = {}
     for name, faces in groups.items():
-        add_group(col, name, verts, faces)
+        if faces:
+            objects[name] = add_group(col, name, verts, faces)
+            objects[name].hide_set(name in REFERENCE)
+            objects[name].hide_render = name in REFERENCE
     if len(corners) == 4:
-        top = max(c[2] for c in corners)
-        prism(col, [corners[0], corners[1], corners[3], corners[2]], top, top - THICKNESS)
+        trees = {k: bvh(v) for k, v in objects.items()}
+        slab_side = [trees[k] for k in ("casa2",) if k in trees]
+        road_side = [trees[k] for k in ("chao_estrada", "estrada", "chao_terreno", "terreno") if k in trees]
+        inward = Vector(corners[0][:2]) + Vector(corners[1][:2]) - Vector(corners[2][:2]) - Vector(corners[3][:2])
+        inward.normalize()
+        tops = []
+        for i, c in enumerate(corners):
+            p = Vector(c[:2]) + inward * (0.3 if i < 2 else -0.3)
+            h = height(slab_side if i < 2 else road_side, p.x, p.y, c[2] + (0.3 if i < 2 else 5.0))
+            tops.append(h if h is not None else c[2])
+        print("[MSC Duo] alturas da extensao:", [round(t, 3) for t in tops])
+        prism(col, [corners[0], corners[1], corners[3], corners[2]], [tops[0], tops[1], tops[3], tops[2]])
     print("[MSC Duo] relevo:", {k: len(v) for k, v in groups.items()})
 else:
     print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)

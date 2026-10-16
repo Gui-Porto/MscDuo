@@ -11,6 +11,7 @@ namespace MscDuo.Tools
     internal class ExportCommand : ConsoleCommand
     {
         const float Vertical = 20f;
+        const float Cell = 0.25f;
 
         static readonly string[] Skipped = { "PLAYER", "SATSUMA", "CARPARTS", "ITEMS", "GUI", "Database", "MscDuo_Commands" };
 
@@ -42,9 +43,10 @@ namespace MscDuo.Tools
         {
             var corners = ApronExtension.Corners(house);
             var center = (corners[0] + corners[1] + corners[2] + corners[3]) / 4f;
-            var toLocal = Matrix4x4.TRS(house.transform.position, house.transform.rotation, Vector3.one).inverse;
+            var toLocal = Frame(house).inverse;
             var text = new StringBuilder();
             text.AppendLine("# MSC Duo relevo: coordenadas da casa 2 em eixos do Blender (x, z, y da Unity)");
+            text.AppendLine("# eixos 2");
             foreach (var c in corners) text.AppendLine("# extensao " + Point(toLocal.MultiplyPoint3x4(c)));
 
             var done = new HashSet<Mesh>();
@@ -110,11 +112,82 @@ namespace MscDuo.Tools
                 }
                 offset += used.Count;
             }
+            var cells = Scan(house, center, half, toLocal, text, ref offset);
             File.WriteAllText(file, text.ToString());
 
             var summary = new List<string>();
             foreach (var pair in counts) summary.Add($"{pair.Key} {pair.Value}");
-            return $"relevo exportado ({string.Join(", ", summary.ToArray())}{(unreadable > 0 ? $", {unreadable} sem leitura" : "")}).";
+            return $"relevo exportado ({string.Join(", ", summary.ToArray())}{(unreadable > 0 ? $", {unreadable} sem leitura" : "")}; chão varrido em {cells} pontos).";
+        }
+
+        static int Scan(GameObject house, Vector3 center, float half, Matrix4x4 toLocal, StringBuilder text, ref int offset)
+        {
+            var n = Mathf.CeilToInt(half * 2f / Cell) + 1;
+            var points = new Vector3[n, n];
+            var kinds = new string[n, n];
+            var found = 0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    var x = center.x - half + i * Cell;
+                    var z = center.z - half + j * Cell;
+                    RaycastHit best = default(RaycastHit);
+                    var hasHit = false;
+                    foreach (var hit in Physics.RaycastAll(new Vector3(x, center.y + Vertical, z), Vector3.down, Vertical * 2f))
+                    {
+                        if (hit.collider.isTrigger || Skip(hit.collider.transform)) continue;
+                        if (!hasHit || hit.point.y > best.point.y) { best = hit; hasHit = true; }
+                    }
+                    if (!hasHit) continue;
+                    points[i, j] = toLocal.MultiplyPoint3x4(best.point);
+                    kinds[i, j] = Category(best.collider.transform, house, false);
+                    found++;
+                }
+
+            var groups = new Dictionary<string, List<int[]>>();
+            for (int i = 0; i < n - 1; i++)
+                for (int j = 0; j < n - 1; j++)
+                {
+                    var kind = kinds[i, j];
+                    if (kind == null || kinds[i + 1, j] == null || kinds[i, j + 1] == null || kinds[i + 1, j + 1] == null) continue;
+                    List<int[]> list;
+                    if (!groups.TryGetValue(kind, out list)) groups[kind] = list = new List<int[]>();
+                    list.Add(new[] { i, j });
+                }
+            foreach (var pair in groups)
+            {
+                text.AppendLine($"o chao_{pair.Key}|varredura");
+                text.AppendLine($"usemtl chao_{pair.Key}");
+                var index = new Dictionary<int, int>();
+                var faces = new List<int>();
+                foreach (var cell in pair.Value)
+                {
+                    int i = cell[0], j = cell[1];
+                    foreach (var k in new[] { i * n + j, (i + 1) * n + j, (i + 1) * n + j + 1, i * n + j + 1 })
+                    {
+                        int mapped;
+                        if (!index.TryGetValue(k, out mapped))
+                        {
+                            index[k] = mapped = index.Count;
+                            text.AppendLine("v " + Point(points[k / n, k % n]));
+                        }
+                        faces.Add(mapped + offset);
+                    }
+                }
+                for (int f = 0; f < faces.Count; f += 4)
+                    text.AppendLine($"f {faces[f]} {faces[f + 3]} {faces[f + 2]} {faces[f + 1]}");
+                offset += index.Count;
+            }
+            return found;
+        }
+
+        internal static Matrix4x4 Frame(GameObject house)
+        {
+            var right = house.transform.right;
+            right.y = 0f;
+            if (right.sqrMagnitude < 1e-4f) right = Vector3.right;
+            var forward = Vector3.Cross(right.normalized, Vector3.up);
+            return Matrix4x4.TRS(house.transform.position, Quaternion.LookRotation(forward, Vector3.up), Vector3.one);
         }
 
         static bool Near(Vector3 p, Vector3 center, float half) =>
@@ -132,6 +205,7 @@ namespace MscDuo.Tools
         {
             if (t.IsChildOf(house.transform)) return "casa2";
             var path = Path(t);
+            if (path == "MAP/MESH/TERRAIN_OBJ/Road") return "estrada";
             if (path.StartsWith("MAP/MESH/TERRAIN_OBJ")) return "terreno";
             if (path.StartsWith("MAP/MESH/FOLIAGE")) return "vegetacao";
             var collider = t.GetComponent<Collider>();
