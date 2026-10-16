@@ -145,7 +145,7 @@ namespace MscDuo.Duplication
             clone.transform.rotation = Quaternion.Euler(0f, anchor.eulerAngles.y, 0f);
         }
 
-        static void Snap(GameObject clone)
+        internal static void Snap(GameObject clone)
         {
             var bottom = float.MaxValue;
             var found = false;
