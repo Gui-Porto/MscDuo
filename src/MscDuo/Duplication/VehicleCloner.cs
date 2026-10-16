@@ -51,7 +51,12 @@ namespace MscDuo.Duplication
 
         internal static void MarkHomeSaved()
         {
-            Mark(MovedHomeVan, HomeFlagPath, "van 1 levada para a casa 1");
+            var van = SatsumaCloner.FindRoot(HomeVan);
+            if (van != null && (MovedHomeVan || System.IO.File.Exists(HomeFlagPath)))
+            {
+                var p = van.transform.position;
+                Mark(true, HomeFlagPath, string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0} {1} {2} {3}", p.x, p.y, p.z, van.transform.eulerAngles.y));
+            }
             Mark(MovedCopies, CopiesFlagPath, "cópias levadas para o lado dos originais");
         }
 
@@ -60,6 +65,29 @@ namespace MscDuo.Duplication
             if (!done) return;
             try { System.IO.File.WriteAllText(path, text); }
             catch (System.Exception e) { ModConsole.Warning($"[MSC Duo] não foi possível gravar {path}: {e.Message}"); }
+        }
+
+        static bool RestoreHomeVan(GameObject van)
+        {
+            try
+            {
+                var parts = System.IO.File.ReadAllText(HomeFlagPath).Trim().Split(' ');
+                if (parts.Length < 4) return false;
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                var position = new Vector3(float.Parse(parts[0], inv), float.Parse(parts[1], inv), float.Parse(parts[2], inv));
+                if ((van.transform.position - position).magnitude < 3f) return true;
+                van.transform.position = position;
+                van.transform.rotation = Quaternion.Euler(0f, float.Parse(parts[3], inv), 0f);
+                var body = van.GetComponent<Rigidbody>();
+                if (body != null && !body.isKinematic) { body.velocity = Vector3.zero; body.angularVelocity = Vector3.zero; }
+                ModConsole.Print("<color=orange>[MSC Duo]</color> van 1 devolvida para onde você salvou.");
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                ModConsole.Warning($"[MSC Duo] {HomeFlag} inválido: {e.Message}");
+                return false;
+            }
         }
 
         class Runner : MonoBehaviour { }
@@ -109,8 +137,12 @@ namespace MscDuo.Duplication
                     continue;
                 }
                 originals[spec.Root] = original;
-                if (spec.Root == HomeVan && !System.IO.File.Exists(HomeFlagPath) && SatsumaCloner.Original != null)
-                    MovedHomeVan = Placement.Beside(original, SatsumaCloner.Original);
+                if (spec.Root == HomeVan)
+                {
+                    UncleVan.Lock(original);
+                    if (!System.IO.File.Exists(HomeFlagPath)) MovedHomeVan = SatsumaCloner.Original != null && Placement.Beside(original, SatsumaCloner.Original);
+                    else if (!RestoreHomeVan(original)) MovedHomeVan = SatsumaCloner.Original != null && Placement.Beside(original, SatsumaCloner.Original);
+                }
 
                 GameObject clone;
                 GameObject tow;
