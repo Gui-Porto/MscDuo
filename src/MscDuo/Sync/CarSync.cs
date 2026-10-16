@@ -176,6 +176,25 @@ namespace MscDuo.Sync
             return roots.TryGetValue(name, out go) ? go : null;
         }
 
+        internal static int IndexOf(Transform t)
+        {
+            foreach (var link in links)
+                if (link.Root != null && t.IsChildOf(link.Root)) return link.Index;
+            return 0;
+        }
+
+        internal static Transform RootOf(int index)
+        {
+            var link = Find((byte)index);
+            return link != null ? link.Root : null;
+        }
+
+        internal static bool IsBike(int index)
+        {
+            var link = Find((byte)index);
+            return link != null && link.Label.StartsWith("jonnez");
+        }
+
         static CarLink Find(byte index)
         {
             foreach (var link in links)

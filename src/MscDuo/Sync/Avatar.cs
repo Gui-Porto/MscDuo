@@ -1,37 +1,57 @@
 using System.Collections.Generic;
-using System.Globalization;
+using MSCLoader;
 using UnityEngine;
 
 namespace MscDuo.Sync
 {
+    // corpo de um pedestre do próprio jogo, com as animações dele e a pose sentada dos motoristas NPC
     internal class Avatar
     {
-        const float FeetBelowPivot = 0.5f;
+        const string WalkerPath = "Randomizer/Walkers/Kale/Pivot/Char";
+        const string DriverPath = "KUSKI/LOD/Driver/skeleton";
+        const string HeadPath = "skeleton/pelvis/spine_middle/spine_upper/HeadPivot/head";
+        const string Walk = "fat_walk";
+        const string Stand = "fat_standing";
+        const float WalkAnimSpeed = 1.4f;
         const float NameHeight = 2.1f;
-        const float StrideLength = 1.1f;
-        const float MaxSwing = 32f;
-        const float FullSwingSpeed = 2f;
+        const float EyesAhead = 0.08f;
+        const float DefaultFeetBelowPivot = 0.28f;
+        const float SkinWidth = 0.03f;
 
-        class Part
+        static readonly Dictionary<int, string[]> Outfits = new Dictionary<int, string[]>
         {
-            internal string Name;
-            internal Vector3 Pivot;
-            internal Mesh Mesh;
-            internal Material[] Materials;
-        }
+            { 1, new[] { "char_shirt01", "char_pants01", "char_face01" } },
+            { 2, new[] { "char_shirt13", "char_pants05", "char_face03" } },
+        };
 
-        static readonly Dictionary<int, List<Part>> skins = new Dictionary<int, List<Part>>();
+        // na moto as pernas descem até a pedaleira em vez de esticar para a frente como no carro
+        internal static readonly Dictionary<string, Vector3> BikeLegs = new Dictionary<string, Vector3>
+        {
+            { "thig_left", new Vector3(0f, 0f, 20f) },
+            { "thig_right", new Vector3(0f, 0f, 20f) },
+            { "thig_left/knee_left", new Vector3(0f, 0f, 40f) },
+            { "thig_right/knee_right", new Vector3(0f, 0f, 40f) },
+        };
+
+        static GameObject template;
+        static Dictionary<string, KeyValuePair<Vector3, Quaternion>> seatedPose;
+        static readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
+        static float feetBelowPivot = -1f;
 
         readonly string name;
-        readonly Dictionary<string, Transform> parts = new Dictionary<string, Transform>();
         GameObject root;
         TextMesh label;
-        GameObject body;
+        Transform body;
+        Transform head;
+        SkinnedMeshRenderer mesh;
+        Animation legs;
+        Animation[] animations;
+        readonly List<KeyValuePair<Transform, string>> bones = new List<KeyValuePair<Transform, string>>();
         int skin;
         int wanted = 1;
+        bool seated;
         Vector3 lastFeet;
         bool hasLast;
-        float phase;
         float speed;
 
         internal Avatar(string name)
@@ -43,6 +63,7 @@ namespace MscDuo.Sync
         {
             root = new GameObject("MscDuo_Avatar_" + name);
             skin = 0;
+            seated = false;
             hasLast = false;
 
             var tag = new GameObject("Name");
@@ -57,77 +78,151 @@ namespace MscDuo.Sync
             var font = Resources.GetBuiltinResource<Font>("Arial.ttf");
             label.font = font;
             tag.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+
+            if (!LoadTemplate()) return;
+            var copy = (GameObject)Object.Instantiate(template);
+            copy.name = "Char";
+            foreach (var behaviour in copy.GetComponentsInChildren<MonoBehaviour>(true)) Object.Destroy(behaviour);
+            foreach (var collider in copy.GetComponentsInChildren<Collider>(true)) Object.Destroy(collider);
+            body = copy.transform;
+            body.parent = root.transform;
+            body.localPosition = template.transform.localPosition;
+            body.localRotation = template.transform.localRotation;
+            body.localScale = template.transform.localScale;
+            copy.SetActive(true);
+
+            head = body.Find(HeadPath);
+            mesh = copy.GetComponentsInChildren<SkinnedMeshRenderer>(true)[0];
+            mesh.enabled = true;
+            mesh.updateWhenOffscreen = true;
+            var skeleton = body.Find("skeleton");
+            legs = skeleton != null ? skeleton.GetComponent<Animation>() : null;
+            animations = copy.GetComponentsInChildren<Animation>(true);
+            foreach (var anim in animations)
+            {
+                anim.enabled = true;
+                anim.cullingType = AnimationCullingType.AlwaysAnimate;
+                anim.wrapMode = WrapMode.Loop;
+                if (anim == legs) continue;
+                // respiração e mãos paradas: o primeiro clipe de cada osso é o de repouso
+                foreach (AnimationState state in anim) { anim.Play(state.name); break; }
+            }
+            if (legs != null && legs[Stand] != null) legs.Play(Stand);
+
+            bones.Clear();
+            if (skeleton != null) Collect(skeleton, "");
+        }
+
+        void Collect(Transform t, string path)
+        {
+            foreach (Transform child in t)
+            {
+                var childPath = path.Length == 0 ? child.name : path + "/" + child.name;
+                bones.Add(new KeyValuePair<Transform, string>(child, childPath));
+                Collect(child, childPath);
+            }
         }
 
         internal void SetSkin(int value)
         {
             wanted = value;
-            if (root == null || value == skin) return;
-            var model = Load(value);
-            if (model == null) return;
-            skin = value;
-            if (body != null) Object.Destroy(body);
-            parts.Clear();
-            body = new GameObject("Jogador" + value);
-            body.transform.parent = root.transform;
-            body.transform.localPosition = Vector3.zero;
-            body.transform.localRotation = Quaternion.identity;
-            foreach (var part in model)
+            if (root == null || mesh == null || value == skin) return;
+            string[] outfit;
+            if (!Outfits.TryGetValue(value, out outfit)) return;
+            var current = mesh.sharedMaterials;
+            for (int i = 0; i < outfit.Length && i < current.Length; i++)
             {
-                var go = new GameObject(part.Name);
-                go.transform.parent = body.transform;
-                go.transform.localPosition = part.Pivot;
-                go.transform.localRotation = Quaternion.identity;
-                go.AddComponent<MeshFilter>().sharedMesh = part.Mesh;
-                go.AddComponent<MeshRenderer>().sharedMaterials = part.Materials;
-                parts[part.Name] = go.transform;
+                var material = FindMaterial(outfit[i]);
+                if (material != null) current[i] = material;
             }
+            mesh.sharedMaterials = current;
+            skin = value;
         }
 
         internal void Apply(Vector3 pivot, float yaw, float pitch)
+        {
+            if (!Ready()) return;
+            if (seated) GetUp();
+            var feet = pivot - Vector3.up * FeetBelowPivot();
+            root.transform.parent = null;
+            root.transform.position = feet;
+            root.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+
+            var dt = Time.deltaTime;
+            if (hasLast && dt > 0f)
+            {
+                var moved = feet - lastFeet;
+                moved.y = 0f;
+                speed = Mathf.Lerp(speed, moved.magnitude / dt, Mathf.Clamp01(dt * 8f));
+            }
+            lastFeet = feet;
+            hasLast = true;
+
+            if (legs != null && legs[Walk] != null)
+            {
+                if (speed > 0.3f)
+                {
+                    legs[Walk].speed = Mathf.Clamp(speed / WalkAnimSpeed, 0.6f, 3f);
+                    legs.CrossFade(Walk, 0.2f);
+                }
+                else legs.CrossFade(Stand, 0.3f);
+            }
+            FaceCamera();
+        }
+
+        internal void Sit(Transform vehicle, Vector3 headWorld, bool bike)
+        {
+            if (!Ready()) return;
+            if (!seated)
+            {
+                seated = true;
+                hasLast = false;
+                foreach (var anim in animations) { anim.Stop(); anim.enabled = false; }
+            }
+            if (seatedPose != null)
+                foreach (var bone in bones)
+                {
+                    KeyValuePair<Vector3, Quaternion> pose;
+                    if (!seatedPose.TryGetValue(bone.Value, out pose)) continue;
+                    Vector3 bend;
+                    bone.Key.localPosition = pose.Key;
+                    bone.Key.localRotation = bike && BikeLegs.TryGetValue(bone.Value, out bend) ? pose.Value * Quaternion.Euler(bend) : pose.Value;
+                }
+            // preso ao veículo local: acompanha a carroceria sem tremer entre pacotes
+            root.transform.parent = vehicle;
+            root.transform.rotation = vehicle.rotation;
+            root.transform.position = headWorld;
+            if (head != null) root.transform.position += headWorld - vehicle.forward * EyesAhead - head.position;
+            FaceCamera();
+        }
+
+        void GetUp()
+        {
+            seated = false;
+            foreach (var anim in animations)
+            {
+                anim.enabled = true;
+                if (anim == legs) continue;
+                foreach (AnimationState state in anim) { anim.Play(state.name); break; }
+            }
+            if (legs != null && legs[Stand] != null) legs.Play(Stand);
+        }
+
+        bool Ready()
         {
             if (root == null)
             {
                 Build();
                 SetSkin(wanted);
             }
-            var feet = pivot - Vector3.up * FeetBelowPivot;
-            root.transform.position = feet;
-            root.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-            Animate(feet, pitch);
+            return body != null;
+        }
 
+        void FaceCamera()
+        {
             var camera = Camera.main;
             if (camera != null)
                 label.transform.rotation = Quaternion.LookRotation(label.transform.position - camera.transform.position);
-        }
-
-        void Animate(Vector3 feet, float pitch)
-        {
-            var dt = Time.deltaTime;
-            if (hasLast && dt > 0f)
-            {
-                var moved = feet - lastFeet;
-                moved.y = 0f;
-                speed = Mathf.Lerp(speed, moved.magnitude / dt, Mathf.Clamp01(dt * 10f));
-            }
-            lastFeet = feet;
-            hasLast = true;
-
-            // ponytail: balanço senoidal de braços e pernas, troca por animação do Blender se precisar de agachar/sentar
-            phase = Mathf.Repeat(phase + speed * dt / StrideLength * Mathf.PI, Mathf.PI * 2f);
-            var swing = speed < 0.1f ? 0f : Mathf.Sin(phase) * MaxSwing * Mathf.Clamp01(speed / FullSwingSpeed);
-
-            Rotate("Cabeca", Mathf.Clamp(pitch, -60f, 60f));
-            Rotate("Perna_E", swing);
-            Rotate("Perna_D", -swing);
-            Rotate("Braco_E", -swing * 0.8f);
-            Rotate("Braco_D", swing * 0.8f);
-        }
-
-        void Rotate(string part, float angle)
-        {
-            Transform t;
-            if (parts.TryGetValue(part, out t)) t.localRotation = Quaternion.Euler(angle, 0f, 0f);
         }
 
         internal void Destroy()
@@ -135,105 +230,65 @@ namespace MscDuo.Sync
             if (root != null) Object.Destroy(root);
         }
 
-        static List<Part> Load(int skin)
+        static bool LoadTemplate()
         {
-            List<Part> model;
-            if (skins.TryGetValue(skin, out model)) return model;
-            var text = Resource("MscDuo.jogador" + skin + ".obj");
-            if (text == null) return null;
-
-            model = new List<Part>();
-            var shader = Shader.Find("Standard") ?? Shader.Find("Diffuse");
-            var colors = new Dictionary<string, Color>();
-            var vertices = new List<Vector3>();
-            var normals = new List<Vector3>();
-            var faces = new List<KeyValuePair<string, List<int[]>>>();
-            List<int[]> current = null;
-            Part part = null;
-
-            System.Action flush = () =>
+            if (template != null) return true;
+            var humans = FindRoot("HUMANS");
+            var walker = humans != null ? humans.Find(WalkerPath) : null;
+            if (walker == null)
             {
-                if (part == null) return;
-                var v = new List<Vector3>();
-                var n = new List<Vector3>();
-                var triangles = new List<int[]>();
-                foreach (var group in faces)
-                {
-                    var tris = new int[group.Value.Count];
-                    for (int i = 0; i < tris.Length; i++)
-                    {
-                        tris[i] = v.Count;
-                        v.Add(vertices[group.Value[i][0]] - part.Pivot);
-                        n.Add(normals[group.Value[i][1]]);
-                    }
-                    triangles.Add(tris);
-                }
-                part.Mesh = new Mesh { name = "Jogador" + skin + "_" + part.Name, vertices = v.ToArray(), normals = n.ToArray() };
-                part.Mesh.subMeshCount = triangles.Count;
-                for (int i = 0; i < triangles.Count; i++) part.Mesh.SetTriangles(triangles[i], i);
-                part.Mesh.RecalculateBounds();
-                part.Materials = new Material[faces.Count];
-                for (int i = 0; i < faces.Count; i++)
-                {
-                    Color color;
-                    if (!colors.TryGetValue(faces[i].Key, out color)) color = Color.magenta;
-                    var material = new Material(shader) { name = "Jogador" + skin + "_" + faces[i].Key, color = color };
-                    if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.1f);
-                    part.Materials[i] = material;
-                }
-                model.Add(part);
-                faces.Clear();
-                current = null;
-            };
-
-            foreach (var raw in text.Split('\n'))
-            {
-                var line = raw.Trim();
-                var p = line.Split(' ');
-                if (line.StartsWith("# cor ")) colors[p[2]] = new Color(F(p[3]), F(p[4]), F(p[5]));
-                else if (line.StartsWith("# pivo ")) part.Pivot = new Vector3(F(p[2]), F(p[4]), F(p[3]));
-                else if (line.StartsWith("o ")) { flush(); part = new Part { Name = p[1] }; }
-                else if (line.StartsWith("v ")) vertices.Add(new Vector3(F(p[1]), F(p[3]), F(p[2])));
-                else if (line.StartsWith("vn ")) normals.Add(new Vector3(F(p[1]), F(p[3]), F(p[2])));
-                else if (line.StartsWith("usemtl "))
-                {
-                    current = null;
-                    foreach (var group in faces)
-                        if (group.Key == p[1]) current = group.Value;
-                    if (current == null)
-                    {
-                        current = new List<int[]>();
-                        faces.Add(new KeyValuePair<string, List<int[]>>(p[1], current));
-                    }
-                }
-                else if (line.StartsWith("f ") && current != null)
-                {
-                    // eixo Y/Z trocado inverte a mão: grava os cantos em ordem a, c, b
-                    foreach (var k in new[] { 1, 3, 2 })
-                    {
-                        var idx = p[k].Split('/');
-                        current.Add(new[] { int.Parse(idx[0]) - 1, int.Parse(idx[2]) - 1 });
-                    }
-                }
+                ModConsole.Warning("[MSC Duo] pedestre HUMANS/" + WalkerPath + " não encontrado; avatar sem corpo.");
+                return false;
             }
-            flush();
-            if (model.Count == 0) return null;
-            skins[skin] = model;
-            return model;
+            template = walker.gameObject;
+
+            var cars = FindRoot("NPC_CARS");
+            var driver = cars != null ? cars.Find(DriverPath) : null;
+            seatedPose = null;
+            if (driver != null)
+            {
+                seatedPose = new Dictionary<string, KeyValuePair<Vector3, Quaternion>>();
+                Record(driver, "");
+            }
+            else ModConsole.Warning("[MSC Duo] motorista NPC_CARS/" + DriverPath + " não encontrado; avatar sentado fica na pose em pé.");
+            return true;
         }
 
-        static float F(string s) => float.Parse(s, CultureInfo.InvariantCulture);
-
-        static string Resource(string name)
+        static void Record(Transform t, string path)
         {
-            using (var stream = typeof(Avatar).Assembly.GetManifestResourceStream(name))
+            foreach (Transform child in t)
             {
-                if (stream == null) return null;
-                var bytes = new byte[stream.Length];
-                var read = 0;
-                while (read < bytes.Length) read += stream.Read(bytes, read, bytes.Length - read);
-                return System.Text.Encoding.UTF8.GetString(bytes);
+                var childPath = path.Length == 0 ? child.name : path + "/" + child.name;
+                seatedPose[childPath] = new KeyValuePair<Vector3, Quaternion>(child.localPosition, child.localRotation);
+                Record(child, childPath);
             }
+        }
+
+        static Transform FindRoot(string rootName)
+        {
+            foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+                if (t.parent == null && t.hideFlags == HideFlags.None && t.name == rootName) return t;
+            return null;
+        }
+
+        static Material FindMaterial(string materialName)
+        {
+            Material found;
+            if (materials.TryGetValue(materialName, out found) && found != null) return found;
+            foreach (var m in Resources.FindObjectsOfTypeAll<Material>())
+                if (m.name == materialName) { materials[materialName] = m; return m; }
+            ModConsole.Warning("[MSC Duo] material " + materialName + " não encontrado.");
+            return null;
+        }
+
+        static float FeetBelowPivot()
+        {
+            if (feetBelowPivot >= 0f) return feetBelowPivot;
+            var player = GameObject.Find("PLAYER");
+            var controller = player != null ? player.GetComponent<CharacterController>() : null;
+            if (controller == null || !controller.enabled) return DefaultFeetBelowPivot;
+            feetBelowPivot = player.transform.position.y - controller.bounds.min.y + SkinWidth;
+            return feetBelowPivot;
         }
     }
 }
