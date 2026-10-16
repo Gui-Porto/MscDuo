@@ -45,6 +45,12 @@ namespace MscDuo.Net
         {
             Stop();
             Current = new NetSession(transport, ghostOffset);
+            var session = Current;
+            InteractionSync.Bind((key, state, fsm) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.Interaction, w => InteractionSync.WriteInteraction(w, key, state, fsm), Channel.Reliable);
+            });
             ItemRegistry.Forget();
             ModConsole.Print($"<color=orange>[MSC Duo]</color> sessão iniciada ({transport.Name}).");
         }
@@ -52,6 +58,7 @@ namespace MscDuo.Net
         internal static void Stop()
         {
             if (Current == null) return;
+            InteractionSync.Bind(null);
             if (!Current.transport.IsHost)
             {
                 PlayerContext.SaveActive();
@@ -218,6 +225,9 @@ namespace MscDuo.Net
                             if (SaveTransfer.InMenu) SaveTransfer.OnHostHello(() => Send(host, MessageType.SaveRequest, null, Channel.Reliable));
                             else PlayerContext.JoinAsGuest();
                         }
+                        break;
+                    case MessageType.Interaction:
+                        InteractionSync.ReadInteraction(reader);
                         break;
                     case MessageType.SaveRequest:
                         if (transport.IsHost) Send(packet.From, MessageType.SaveData, SaveTransfer.WriteSave, Channel.Reliable);
