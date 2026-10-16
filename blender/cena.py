@@ -1,7 +1,9 @@
 import os
 
 import bpy
-from mathutils import Vector
+import math
+
+from mathutils import Euler, Vector
 from mathutils.bvhtree import BVHTree
 
 RELEVO = os.path.join(os.path.expanduser("~"), "Documents", "MySummerCar", "Mods", "Config", "Mod Settings", "MscDuo", "dumps", "relevo.obj")
@@ -151,8 +153,30 @@ def main():
         print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)
 
 
+def frame():
+    scene = bpy.context.scene
+    if scene.get("mscduo_framed"):
+        return
+    ext = bpy.data.objects.get("Extensao")
+    if ext is None:
+        return
+    center = sum((v.co for v in ext.data.vertices), Vector()) / len(ext.data.vertices)
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            view = area.spaces.active.region_3d
+            view.view_location = center
+            view.view_distance = 35.0
+            view.view_rotation = Euler((math.radians(55), 0, math.radians(20))).to_quaternion()
+            view.view_perspective = "PERSP"
+            area.spaces.active.clip_end = 1000.0
+            scene["mscduo_framed"] = True
+
+
 try:
     main()
+    frame()
     with open(LOG, "a", encoding="utf-8") as log:
         log.write("ok\n")
 except Exception:
