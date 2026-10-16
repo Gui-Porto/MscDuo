@@ -10,11 +10,14 @@ namespace MscDuo.Net
         Pong = 3,
         PlayerState = 10,
         CarState = 11,
+        ItemState = 12,
+        ItemRest = 13,
+        ItemsInfo = 14,
     }
 
     internal static class Protocol
     {
-        internal const ushort Version = 3;
+        internal const ushort Version = 4;
     }
 
     internal struct PlayerStateMessage
@@ -99,6 +102,46 @@ namespace MscDuo.Net
         }
 
         static Vector3 ReadVector(BinaryReader r) => new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+    }
+
+    internal struct ItemStateMessage
+    {
+        internal ushort Id;
+        internal uint Sequence;
+        internal float Time;
+        internal Vector3 Position;
+        internal Quaternion Rotation;
+        internal Vector3 Velocity;
+        internal bool Held;
+
+        internal void Write(BinaryWriter w)
+        {
+            w.Write(Id);
+            w.Write(Sequence);
+            w.Write(Time);
+            w.Write(Position.x);
+            w.Write(Position.y);
+            w.Write(Position.z);
+            w.Write(Rotation.x);
+            w.Write(Rotation.y);
+            w.Write(Rotation.z);
+            w.Write(Rotation.w);
+            w.Write(Velocity.x);
+            w.Write(Velocity.y);
+            w.Write(Velocity.z);
+            w.Write(Held);
+        }
+
+        internal static ItemStateMessage Read(BinaryReader r) => new ItemStateMessage
+        {
+            Id = r.ReadUInt16(),
+            Sequence = r.ReadUInt32(),
+            Time = r.ReadSingle(),
+            Position = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Rotation = new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Velocity = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Held = r.ReadBoolean(),
+        };
     }
 
     internal static class MessageWriter

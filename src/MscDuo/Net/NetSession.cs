@@ -43,6 +43,9 @@ namespace MscDuo.Net
         {
             Stop();
             Current = new NetSession(transport, ghostOffset);
+            ItemRegistry.Forget();
+            ItemSync.Enabled = false;
+            ItemRegistry.Finalized += Current.SendItemsInfo;
             ModConsole.Print($"<color=orange>[MSC Duo]</color> sessão iniciada ({transport.Name}).");
         }
 
@@ -51,6 +54,9 @@ namespace MscDuo.Net
             if (Current == null) return;
             if (!Current.transport.IsHost) PlayerContext.SaveActive();
             CarSync.Reset();
+            ItemSync.Reset();
+            ItemSync.Enabled = false;
+            ItemRegistry.Finalized -= Current.SendItemsInfo;
             foreach (var peer in Current.peers.Values) peer.Player.Dispose();
             Current.transport.Shutdown();
             Current = null;
@@ -98,6 +104,7 @@ namespace MscDuo.Net
                 knownPeers.Add(id);
                 Peer(id);
                 Send(id, MessageType.Hello, w => { w.Write(Protocol.Version); w.Write(transport.IsHost); }, Channel.Reliable);
+                SendItemsInfo(id);
             }
 
             var gone = new List<ulong>();
@@ -130,10 +137,27 @@ namespace MscDuo.Net
             foreach (var p in peers.Values) { peer = p; break; }
             var remoteNow = peer != null ? now + peer.ClockOffset : now;
             var delay = peer != null ? peer.Player.InterpolationDelay : 0.1f;
-            CarSync.Tick(now, remoteNow, delay, sendDue && Connected, state =>
-            {
-                foreach (var id in transport.Peers) Send(id, MessageType.CarState, state.Write, Channel.Unreliable);
-            });
+            CarSync.Tick(now, remoteNow, delay, sendDue && Connected, state => Broadcast(MessageType.CarState, state.Write, Channel.Unreliable));
+            Vector3? remotePlayer = null;
+            if (peer != null && peer.Player.Buffered > 0) remotePlayer = peer.Player.Position;
+            ItemSync.Tick(now, remoteNow, delay, remotePlayer, sendDue && Connected,
+                state => Broadcast(MessageType.ItemState, state.Write, Channel.Unreliable),
+                state => Broadcast(MessageType.ItemRest, state.Write, Channel.Reliable));
+        }
+
+        void Broadcast(MessageType type, Action<BinaryWriter> body, Channel channel)
+        {
+            foreach (var id in transport.Peers) Send(id, type, body, channel);
+        }
+
+        void SendItemsInfo()
+        {
+            foreach (var id in transport.Peers) SendItemsInfo(id);
+        }
+
+        void SendItemsInfo(ulong id)
+        {
+            Send(id, MessageType.ItemsInfo, w => { w.Write(ItemRegistry.Count); w.Write(ItemRegistry.Hash); w.Write(ItemRegistry.Final); }, Channel.Reliable);
         }
 
         void Receive(float now)
@@ -182,6 +206,16 @@ namespace MscDuo.Net
                     case MessageType.PlayerState:
                         var state = PlayerStateMessage.Read(reader);
                         peer.Player.Push(state, now);
+                        break;
+                    case MessageType.ItemsInfo:
+                        if (transport is LoopbackTransport) break;
+                        ItemRegistry.Remote(reader.ReadInt32(), reader.ReadInt32(), reader.ReadBoolean());
+                        break;
+                    case MessageType.ItemState:
+                        ItemSync.ReceiveState(ItemStateMessage.Read(reader), now, transport.IsHost);
+                        break;
+                    case MessageType.ItemRest:
+                        ItemSync.ReceiveRest(ItemStateMessage.Read(reader));
                         break;
                     case MessageType.CarState:
                         CarSync.Receive(CarStateMessage.Read(reader), now);

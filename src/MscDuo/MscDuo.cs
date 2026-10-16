@@ -47,6 +47,7 @@ namespace MscDuo
             House2Fridge.Patch();
             HouseCloner.Spawn();
             PlayerContext.Init();
+            Sync.ItemRegistry.Build();
         }
 
         void OnGui()
