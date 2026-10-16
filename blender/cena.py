@@ -20,7 +20,8 @@ FILL_CELL = 0.25
 FILL_LEVEL = -0.96
 FILL_SLOPE = 0.2
 FILL_LIFT = 0.02
-FILL_VERSION = 3
+FILL_VERSION = 4
+FILL_CEILING = 0.1
 FILL_UNDER = 0.02
 ROAD_TOLERANCE = 0.04
 CRACK = [(-1.5, -8.6), (-2.6, -8.6), (-4.0, -9.2), (-4.35, -9.9), (-4.3, -11.0)]
@@ -385,6 +386,10 @@ def fill(col, trees, plate_obj):
             g = probe(ground, p.x, p.y)
             r = probe(road, p.x, p.y)
             h = probe(house, p.x, p.y) if house is not None else None
+            if g is not None and g > FILL_LEVEL + FILL_CEILING:
+                g = None
+            if r is not None and r > FILL_LEVEL + FILL_CEILING:
+                r = None
             base = max(v for v in (g, r) if v is not None) if (g is not None or r is not None) else None
             if base is None or (h is not None and h > base + 0.05):
                 continue
