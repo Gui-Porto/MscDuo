@@ -17,7 +17,8 @@ namespace MscDuo.Duplication
         const float FlatMargin = 3f;
         const float BlendWidth = 12f;
 
-        const string RoadPath = "MAP/MESH/TERRAIN_OBJ/Road";
+        const string RoadName = "Road";
+        static int roadObjects;
         const string TerrainRoot = "MAP/MESH/TERRAIN_OBJ";
         const float RoadClear = 0.5f;
         const float HedgeSink = 0.05f;
@@ -102,21 +103,35 @@ namespace MscDuo.Duplication
 
             var roadCut = CutRoad(house, toHouse, local);
             var hedges = SettleHedges(house);
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra: {roadCut} triângulos tirados de dentro da casa e da extensão; cerca viva: {hedges} pedaços assentados no chão.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra ({roadObjects} malhas): {roadCut} triângulos tirados de dentro da casa e da extensão; cerca viva: {hedges} pedaços assentados no chão.");
             ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} pedaços abertos ({uncut} mantidos).");
         }
 
         static int CutRoad(GameObject house, Matrix4x4 toHouse, Bounds local)
         {
-            var go = GameObject.Find(RoadPath);
-            var filter = go != null ? go.GetComponent<MeshFilter>() : null;
-            if (filter == null || filter.sharedMesh == null) return 0;
+            var root = GameObject.Find(TerrainRoot);
+            if (root == null) return 0;
+            var corners = ApronExtension.Corners(house);
+            var removed = 0;
+            roadObjects = 0;
+            foreach (Transform child in root.transform)
+            {
+                if (child.name != RoadName) continue;
+                roadObjects++;
+                var filter = child.GetComponent<MeshFilter>();
+                if (filter != null && filter.sharedMesh != null) removed += CutRoad(filter, corners, toHouse, local);
+            }
+            return removed;
+        }
+
+        static int CutRoad(MeshFilter filter, Vector3[] corners, Matrix4x4 toHouse, Bounds local)
+        {
+            var go = filter.gameObject;
             var source = filter.sharedMesh;
             Vector3[] vertices;
             try { vertices = source.vertices; }
             catch { ModConsole.Warning("[MSC Duo] estradinha de terra sem leitura"); return 0; }
 
-            var corners = ApronExtension.Corners(house);
             var toWorld = go.transform.localToWorldMatrix;
             var removed = 0;
             var triangles = new int[source.subMeshCount][];
