@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using HutongGames.PlayMaker;
 using HutongGames.PlayMaker.Actions;
 using MSCLoader;
@@ -15,25 +16,28 @@ namespace MscDuo.Sync
         const string EventPrefix = "MSCDUO_";
         const int MaxChain = 40;
 
-        static readonly string[] SkippedFsms = { "Assembly", "Removal", "Activate", "Remove", "Assemble" };
-        static readonly string[] SkippedRoots = { "PLAYER", "SATSUMA(557kg, 248)", "SATSUMA_P2", "CARPARTS", "CARPARTS_P2", "Database", "Database_P2", "Systems", "GUI" };
+        static readonly string[] ToolEvents = { "TIGHTEN", "UNTIGHTEN" };
+        static readonly string[] SkippedFsms = { "Activate" };
+        static readonly string[] SkippedRoots = { "PLAYER", "Database", "Database_P2", "Systems", "GUI" };
         static readonly Dictionary<string, PlayMakerFSM> byKey = new Dictionary<string, PlayMakerFSM>();
-        static readonly Dictionary<PlayMakerFSM, string> keys = new Dictionary<PlayMakerFSM, string>();
+        static readonly Dictionary<PlayMakerFSM, string> worldKeys = new Dictionary<PlayMakerFSM, string>();
+        static readonly HashSet<PlayMakerFSM> anchored = new HashSet<PlayMakerFSM>();
         static readonly Dictionary<PlayMakerFSM, Dictionary<string, HashSet<string>>> sources = new Dictionary<PlayMakerFSM, Dictionary<string, HashSet<string>>>();
         static Action<string, string, PlayMakerFSM> send;
         static bool applying;
 
-        internal static int Count => byKey.Count;
+        internal static int Count => worldKeys.Count + anchored.Count;
         internal static int Sent { get; private set; }
         internal static int Applied { get; private set; }
 
         internal static void Patch()
         {
             byKey.Clear();
-            keys.Clear();
+            worldKeys.Clear();
+            anchored.Clear();
             sources.Clear();
             Sent = Applied = 0;
-            int hooked = 0, unsafeCount = 0, ambiguousCount = 0;
+            int hooked = 0, unsafeCount = 0, ambiguousCount = 0, parts = 0;
             var found = new Dictionary<PlayMakerFSM, Dictionary<string, HashSet<string>>>();
             var byPath = new Dictionary<string, List<PlayMakerFSM>>();
             foreach (var fsm in Resources.FindObjectsOfTypeAll<PlayMakerFSM>())
@@ -47,7 +51,13 @@ namespace MscDuo.Sync
                     if (targets.Count == 0) continue;
                     if (!Safe(fsm, new List<string>(targets.Keys))) { unsafeCount++; continue; }
                     found[fsm] = targets;
-                    var path = PathOf(fsm);
+                    if (HasAnchor(fsm.transform))
+                    {
+                        anchored.Add(fsm);
+                        parts++;
+                        continue;
+                    }
+                    var path = PathOf(fsm.transform) + ":" + fsm.FsmName;
                     List<PlayMakerFSM> list;
                     if (!byPath.TryGetValue(path, out list)) byPath[path] = list = new List<PlayMakerFSM>();
                     list.Add(fsm);
@@ -58,23 +68,29 @@ namespace MscDuo.Sync
                 }
             }
 
-            var candidates = new Dictionary<string, List<PlayMakerFSM>>();
             foreach (var pair in byPath)
                 foreach (var fsm in pair.Value)
                 {
-                    var key = pair.Value.Count == 1 ? pair.Key : pair.Key + "|" + Rounded(fsm.transform.position);
-                    List<PlayMakerFSM> list;
-                    if (!candidates.TryGetValue(key, out list)) candidates[key] = list = new List<PlayMakerFSM>();
-                    list.Add(fsm);
+                    var key = "w|" + (pair.Value.Count == 1 ? pair.Key : pair.Key + "|" + Rounded(fsm.transform.position));
+                    if (byKey.ContainsKey(key))
+                    {
+                        var other = byKey[key];
+                        if (other != null) { worldKeys.Remove(other); ambiguousCount++; }
+                        byKey[key] = null;
+                        ambiguousCount++;
+                        continue;
+                    }
+                    byKey[key] = fsm;
+                    worldKeys[fsm] = key;
                 }
 
-            foreach (var pair in candidates)
+            foreach (var pair in found)
             {
-                if (pair.Value.Count > 1) { ambiguousCount += pair.Value.Count; continue; }
-                var fsm = pair.Value[0];
+                var fsm = pair.Key;
+                if (!anchored.Contains(fsm) && !worldKeys.ContainsKey(fsm)) continue;
                 try
                 {
-                    foreach (var target in found[fsm].Keys)
+                    foreach (var target in pair.Value.Keys)
                     {
                         var stateName = target;
                         var owner = fsm;
@@ -82,17 +98,17 @@ namespace MscDuo.Sync
                         fsm.FsmInject(stateName, () => OnEnter(owner, stateName), false, 0, false);
                         hooked++;
                     }
-                    byKey[pair.Key] = fsm;
-                    keys[fsm] = pair.Key;
-                    sources[fsm] = found[fsm];
+                    sources[fsm] = pair.Value;
                 }
                 catch (Exception e)
                 {
+                    anchored.Remove(fsm);
+                    worldKeys.Remove(fsm);
                     ModConsole.Warning($"[MSC Duo] interação '{fsm.gameObject.name}/{fsm.FsmName}' não preparada: {e.Message}");
                 }
             }
             if (ambiguousCount > 0) ModConsole.Warning($"[MSC Duo] {ambiguousCount} objetos interativos com nome e posição repetidos ficaram sem sincronizar.");
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> {byKey.Count} objetos interativos sincronizados ({hooked} ações; {unsafeCount} ignorados por mexerem no jogador).");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> {Count} objetos interativos sincronizados, {parts} deles em peças e carros ({hooked} ações; {unsafeCount} ignorados por mexerem no jogador).");
         }
 
         internal static void Bind(Action<string, string, PlayMakerFSM> sender) => send = sender;
@@ -100,14 +116,93 @@ namespace MscDuo.Sync
         static void OnEnter(PlayMakerFSM fsm, string state)
         {
             if (applying || send == null) return;
-            string key;
-            if (!keys.TryGetValue(fsm, out key)) return;
             Dictionary<string, HashSet<string>> map;
             HashSet<string> from;
-            var previous = fsm.Fsm.PreviousActiveState;
-            if (previous == null || !sources.TryGetValue(fsm, out map) || !map.TryGetValue(state, out from) || !from.Contains(previous.Name)) return;
+            if (!sources.TryGetValue(fsm, out map) || !map.TryGetValue(state, out from)) return;
+            if (from != null)
+            {
+                var previous = fsm.Fsm.PreviousActiveState;
+                if (previous == null || !from.Contains(previous.Name)) return;
+            }
+            var key = KeyOf(fsm);
+            if (key == null) return;
             Sent++;
             send(key, state, fsm);
+        }
+
+        static string KeyOf(PlayMakerFSM fsm)
+        {
+            string key;
+            if (worldKeys.TryGetValue(fsm, out key)) return key;
+            if (!anchored.Contains(fsm)) return null;
+            var steps = new List<string>();
+            for (var c = fsm.transform; c != null; c = c.parent)
+            {
+                var anchor = AnchorOf(c);
+                if (anchor != null)
+                {
+                    steps.Reverse();
+                    return anchor + "|" + string.Join("/", steps.ToArray()) + "|" + fsm.FsmName;
+                }
+                steps.Add(c.GetSiblingIndex() + "." + c.name);
+            }
+            return null;
+        }
+
+        static string AnchorOf(Transform t)
+        {
+            var body = t.GetComponent<Rigidbody>();
+            ushort id;
+            if (body != null && ItemRegistry.TryId(body, out id)) return "i|" + id;
+            if (SatsumaCloner.Original != null && t == SatsumaCloner.Original.transform) return "c|1";
+            if (SatsumaCloner.Clone != null && t == SatsumaCloner.Clone.transform) return "c|2";
+            return null;
+        }
+
+        static bool HasAnchor(Transform t)
+        {
+            for (var c = t; c != null; c = c.parent)
+                if (AnchorOf(c) != null) return true;
+            return false;
+        }
+
+        static PlayMakerFSM Resolve(string key)
+        {
+            if (key.StartsWith("w|"))
+            {
+                PlayMakerFSM fsm;
+                return byKey.TryGetValue(key, out fsm) ? fsm : null;
+            }
+            var parts = key.Split('|');
+            if (parts.Length != 4) return null;
+            Transform root = null;
+            if (parts[0] == "i")
+            {
+                ushort remote, local;
+                if (!ushort.TryParse(parts[1], out remote) || !ItemRegistry.TryLocal(remote, out local)) return null;
+                var body = ItemRegistry.Get(local);
+                if (body != null) root = body.transform;
+            }
+            else if (parts[0] == "c")
+            {
+                var car = parts[1] == "1" ? SatsumaCloner.Original : parts[1] == "2" ? SatsumaCloner.Clone : null;
+                if (car != null) root = car.transform;
+            }
+            if (root == null) return null;
+            var current = root;
+            if (parts[2].Length > 0)
+                foreach (var step in parts[2].Split('/'))
+                {
+                    var dot = step.IndexOf('.');
+                    int index;
+                    if (dot <= 0 || !int.TryParse(step.Substring(0, dot), out index) || index >= current.childCount) return null;
+                    var child = current.GetChild(index);
+                    if (child.name != step.Substring(dot + 1)) return null;
+                    current = child;
+                }
+            foreach (var fsm in current.GetComponents<PlayMakerFSM>())
+                if (fsm.FsmName == parts[3]) return fsm;
+            return null;
         }
 
         internal static void WriteInteraction(BinaryWriter w, string key, string state, PlayMakerFSM fsm)
@@ -120,6 +215,16 @@ namespace MscDuo.Sync
             foreach (var b in bools) { w.Write(b.Name); w.Write(b.Value); }
             w.Write(ints.Length);
             foreach (var i in ints) { w.Write(i.Name); w.Write(i.Value); }
+            var objects = new List<KeyValuePair<string, ushort>>();
+            foreach (var g in fsm.FsmVariables.GameObjectVariables)
+            {
+                if (g.Value == null) continue;
+                var body = g.Value.GetComponent<Rigidbody>();
+                ushort id;
+                if (body != null && ItemRegistry.TryId(body, out id)) objects.Add(new KeyValuePair<string, ushort>(g.Name, id));
+            }
+            w.Write(objects.Count);
+            foreach (var pair in objects) { w.Write(pair.Key); w.Write(pair.Value); }
         }
 
         internal static void ReadInteraction(BinaryReader r)
@@ -128,13 +233,16 @@ namespace MscDuo.Sync
             var state = r.ReadString();
             var bools = new Dictionary<string, bool>();
             var ints = new Dictionary<string, int>();
+            var objects = new Dictionary<string, ushort>();
             var count = r.ReadInt32();
             for (int n = 0; n < count; n++) bools[r.ReadString()] = r.ReadBoolean();
             count = r.ReadInt32();
             for (int n = 0; n < count; n++) ints[r.ReadString()] = r.ReadInt32();
+            count = r.ReadInt32();
+            for (int n = 0; n < count; n++) objects[r.ReadString()] = r.ReadUInt16();
 
-            PlayMakerFSM fsm;
-            if (!byKey.TryGetValue(key, out fsm) || fsm == null) return;
+            var fsm = Resolve(key);
+            if (fsm == null) return;
             foreach (var b in fsm.FsmVariables.BoolVariables)
             {
                 bool value;
@@ -144,6 +252,15 @@ namespace MscDuo.Sync
             {
                 int value;
                 if (ints.TryGetValue(i.Name, out value)) i.Value = value;
+            }
+            foreach (var g in fsm.FsmVariables.GameObjectVariables)
+            {
+                ushort remote, local;
+                if (!objects.TryGetValue(g.Name, out remote) || !ItemRegistry.TryLocal(remote, out local)) continue;
+                var body = ItemRegistry.Get(local);
+                if (body == null) continue;
+                ItemSync.Forget(local);
+                g.Value = body.gameObject;
             }
             applying = true;
             try
@@ -174,9 +291,12 @@ namespace MscDuo.Sync
                         if (transition.EventName != trigger.Name || string.IsNullOrEmpty(transition.ToState)) continue;
                         HashSet<string> from;
                         if (!targets.TryGetValue(transition.ToState, out from)) targets[transition.ToState] = from = new HashSet<string>();
-                        from.Add(state.Name);
+                        if (from != null) from.Add(state.Name);
                     }
                 }
+            foreach (var transition in fsm.FsmGlobalTransitions)
+                if (Array.IndexOf(ToolEvents, transition.EventName) >= 0 && !string.IsNullOrEmpty(transition.ToState))
+                    targets[transition.ToState] = null;
             return targets;
         }
 
@@ -229,14 +349,14 @@ namespace MscDuo.Sync
         }
 
         static bool IsPlayerName(string name) =>
-            !string.IsNullOrEmpty(name) && (name.StartsWith("Player") || name == "Player" || name.StartsWith("SavePlayer") || name == "PLAYER");
+            !string.IsNullOrEmpty(name) && (name.StartsWith("Player") || name.StartsWith("SavePlayer") || name == "PLAYER");
 
-        static string PathOf(PlayMakerFSM fsm)
+        static string PathOf(Transform t)
         {
             var chain = new List<string>();
-            for (var c = fsm.transform; c != null; c = c.parent) chain.Add(c.name);
+            for (var c = t; c != null; c = c.parent) chain.Add(c.name);
             chain.Reverse();
-            return string.Join("/", chain.ToArray()) + ":" + fsm.FsmName;
+            return string.Join("/", chain.ToArray());
         }
 
         static string Rounded(Vector3 p) =>

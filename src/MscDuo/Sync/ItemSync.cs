@@ -161,6 +161,15 @@ namespace MscDuo.Sync
             }
         }
 
+        internal static void Forget(ushort id)
+        {
+            Tracked item;
+            if (!tracked.TryGetValue(id, out item)) return;
+            var body = ItemRegistry.Get(id);
+            if (body != null) Release(body, item);
+            tracked.Remove(id);
+        }
+
         internal static void Reset()
         {
             foreach (var pair in tracked)
@@ -224,14 +233,14 @@ namespace MscDuo.Sync
         static bool Installed(Rigidbody body, int depth)
         {
             if (body == null || depth > MaxJointDepth) return false;
-            if (OnCar(body.transform)) return true;
-            foreach (var joint in body.GetComponents<Joint>())
+            var joints = body.GetComponents<Joint>();
+            foreach (var joint in joints)
             {
                 var other = joint.connectedBody;
                 if (other == null || other == body) continue;
                 if (OnCar(other.transform) || Installed(other, depth + 1)) return true;
             }
-            return false;
+            return OnCar(body.transform) && (body.isKinematic || joints.Length > 0);
         }
 
         static bool OnCar(Transform t)

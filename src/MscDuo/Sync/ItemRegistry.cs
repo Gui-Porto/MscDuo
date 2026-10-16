@@ -15,7 +15,7 @@ namespace MscDuo.Sync
         static readonly List<Rigidbody> items = new List<Rigidbody>();
         static readonly List<string> paths = new List<string>();
         static readonly List<Vector3> origins = new List<Vector3>();
-        static readonly HashSet<Rigidbody> known = new HashSet<Rigidbody>();
+        static readonly Dictionary<Rigidbody, ushort> known = new Dictionary<Rigidbody, ushort>();
         static readonly HashSet<string> clonesAdded = new HashSet<string>();
         static readonly Dictionary<ushort, ushort> fromRemote = new Dictionary<ushort, ushort>();
         static string[] pendingPaths;
@@ -31,6 +31,8 @@ namespace MscDuo.Sync
 
         internal static bool TryLocal(ushort remoteId, out ushort localId) => fromRemote.TryGetValue(remoteId, out localId);
 
+        internal static bool TryId(Rigidbody body, out ushort id) => known.TryGetValue(body, out id);
+
         internal static void Build()
         {
             items.Clear();
@@ -41,9 +43,6 @@ namespace MscDuo.Sync
             Final = false;
             Forget();
             var excluded = new List<Transform>();
-            var car = GameObject.Find("SATSUMA(557kg, 248)");
-            if (car != null) excluded.Add(car.transform);
-            if (Duplication.SatsumaCloner.Clone != null) excluded.Add(Duplication.SatsumaCloner.Clone.transform);
             var player = GameObject.Find("PLAYER");
             if (player != null) excluded.Add(player.transform);
             Add(Object.FindObjectsOfType<Rigidbody>(), excluded);
@@ -54,7 +53,7 @@ namespace MscDuo.Sync
             var bodies = new List<Rigidbody>();
             foreach (var root in roots)
                 if (root != null && clonesAdded.Add(root.name)) bodies.AddRange(root.GetComponentsInChildren<Rigidbody>(true));
-            Add(bodies.ToArray(), new List<Transform> { car != null ? car.transform : null });
+            Add(bodies.ToArray(), new List<Transform>());
             Final = true;
             Status = "esperando o outro jogo";
             if (pendingPaths != null) Match(pendingPaths, pendingOrigins);
@@ -188,14 +187,14 @@ namespace MscDuo.Sync
             var layer = LayerMask.NameToLayer("Parts");
             foreach (var body in bodies)
             {
-                if (body == null || known.Contains(body) || items.Count >= ushort.MaxValue) continue;
+                if (body == null || known.ContainsKey(body) || items.Count >= ushort.MaxValue) continue;
                 var go = body.gameObject;
                 if (go.layer != layer && System.Array.IndexOf(Tags, go.tag) < 0) continue;
                 var skip = false;
                 foreach (var root in excluded)
                     if (root != null && body.transform.IsChildOf(root)) { skip = true; break; }
                 if (skip) continue;
-                known.Add(body);
+                known[body] = (ushort)items.Count;
                 items.Add(body);
                 paths.Add(PathOf(body.transform));
                 origins.Add(body.position);

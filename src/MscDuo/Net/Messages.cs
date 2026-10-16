@@ -22,7 +22,7 @@ namespace MscDuo.Net
 
     internal static class Protocol
     {
-        internal const ushort Version = 9;
+        internal const ushort Version = 10;
     }
 
     internal struct PlayerStateMessage
