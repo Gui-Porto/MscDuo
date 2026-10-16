@@ -16,6 +16,7 @@ JOINT_U0, JOINT_V0 = 592 / SIZE, 1 - 915 / SIZE
 PERIOD_U, PERIOD_V = 225 / SIZE, 150 / SIZE
 GRASS_BAND = 0.03
 INSET = 28
+GAIN = (1.30, 1.21, 1.19)
 
 
 def blur(a, radius):
@@ -58,7 +59,7 @@ def main(path):
     green = raw[..., 1] - (raw[..., 0] + raw[..., 2]) / 2
     near = (np.abs(u - APRON[1]) < GRASS_BAND) & (u <= APRON[1] + 0.002)
     mask = np.clip((green - 4) / 10, 0, 1) * near
-    out = base * (1 - mask[..., None]) + raw * mask[..., None]
+    out = (base * (1 - mask[..., None]) + raw * mask[..., None]) * np.array(GAIN)
     Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).save(OUT)
     print("textura da extensao:", OUT, out.shape)
 

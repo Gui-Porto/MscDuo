@@ -49,6 +49,14 @@ namespace MscDuo.Tools
             text.AppendLine("# MSC Duo relevo: coordenadas da casa 2 em eixos do Blender (x, z, y da Unity)");
             text.AppendLine("# eixos 2");
             foreach (var c in corners) text.AppendLine("# extensao " + Point(toLocal.MultiplyPoint3x4(c)));
+            var player = DevCommands.Player;
+            if (player != null) text.AppendLine("# jogador " + Point(toLocal.MultiplyPoint3x4(player.position)));
+            var view = Camera.main;
+            if (view != null)
+            {
+                text.AppendLine("# camera " + Point(toLocal.MultiplyPoint3x4(view.transform.position)));
+                text.AppendLine("# olhar " + Point(toLocal.MultiplyVector(view.transform.forward)));
+            }
 
             var done = new HashSet<Mesh>();
             var counts = new Dictionary<string, int>();

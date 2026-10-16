@@ -12,7 +12,8 @@ THICKNESS = 0.25
 PLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extensao.obj")
 UNDER_SLAB = 0.6
 EXTRA_ROAD = 0.2
-SINK = 0.003
+SINK = 0.0
+ROAD_SINK = 0.03
 CRACK = [(-1.5, -8.6), (-2.6, -8.6), (-4.0, -9.2), (-4.35, -9.9), (-4.3, -11.0)]
 HIDDEN = ("YARD/", "JONNEZ")
 DUMPS = os.path.dirname(RELEVO)
@@ -26,7 +27,7 @@ APRON_RIGHT = (0.96, -15.24)
 SIDE_INSET = 0.05
 DEPTH = 0.6
 EDIT = "EDITAR"
-PLATE_VERSION = 2
+PLATE_VERSION = 3
 APRON_U = (0.03321, -0.03610, 0.24511)
 APRON_V = (0.03610, 0.03320, 0.48602)
 LONGEST = 15.0
@@ -170,28 +171,29 @@ def outline(corners):
     corner_left, corner_right = Vector(APRON_LEFT), Vector(APRON_RIGHT)
     road_a, road_b = c[2] - inward * EXTRA_ROAD, c[3] - inward * EXTRA_ROAD
     road_right = intersect(corner_right, along, road_a, road_b)
-    return [
-        road_a,
-        road_right,
-        corner_right,
-        corner_right - right * SIDE_INSET - along * UNDER_SLAB,
-        corner_left + inward * UNDER_SLAB,
-    ] + [Vector(p) for p in CRACK]
+    ring = [(road_a, "rua"), (road_right, "rua"), (corner_right, "laje"), (corner_left, "laje")]
+    ring += [(Vector(p), "laje" if k == 0 else "livre") for k, p in enumerate(CRACK)]
+    return ring
 
 
 def plate(col, corners, top):
-    ring = outline(corners)
-    if area(ring) < 0:
-        ring.reverse()
+    tagged = outline(corners)
+    if area([p for p, _ in tagged]) < 0:
+        tagged.reverse()
+    ring = [p for p, _ in tagged]
+    kinds = [k for _, k in tagged]
     n = len(ring)
     bm = bmesh.new()
-    upper = [bm.verts.new((p.x, p.y, top)) for p in ring]
+    heights = [top - ROAD_SINK if k == "rua" else top for k in kinds]
+    upper = [bm.verts.new((p.x, p.y, h)) for p, h in zip(ring, heights)]
     lower = [bm.verts.new((p.x, p.y, top - DEPTH)) for p in ring]
     face = bm.faces.new(upper)
     tops = bmesh.ops.triangulate(bm, faces=[face])["faces"]
     sides = []
     for i in range(n):
         j = (i + 1) % n
+        if kinds[i] == "laje" and kinds[j] == "laje":
+            continue
         sides.append(bm.faces.new((upper[i], lower[i], lower[j], upper[j])))
     bm.normal_update()
     layer = bm.loops.layers.uv.new("UV")
