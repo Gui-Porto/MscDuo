@@ -111,7 +111,6 @@ namespace MscDuo.Duplication
         {
             var root = GameObject.Find(TerrainRoot);
             if (root == null) return 0;
-            var corners = ApronExtension.Corners(house);
             var removed = 0;
             roadObjects = 0;
             foreach (Transform child in root.transform)
@@ -119,12 +118,12 @@ namespace MscDuo.Duplication
                 if (child.name != RoadName) continue;
                 roadObjects++;
                 var filter = child.GetComponent<MeshFilter>();
-                if (filter != null && filter.sharedMesh != null) removed += CutRoad(filter, corners, toHouse, local);
+                if (filter != null && filter.sharedMesh != null) removed += CutRoad(filter, house, toHouse, local);
             }
             return removed;
         }
 
-        static int CutRoad(MeshFilter filter, Vector3[] corners, Matrix4x4 toHouse, Bounds local)
+        static int CutRoad(MeshFilter filter, GameObject house, Matrix4x4 toHouse, Bounds local)
         {
             var go = filter.gameObject;
             var source = filter.sharedMesh;
@@ -144,7 +143,7 @@ namespace MscDuo.Duplication
                     var center = toWorld.MultiplyPoint3x4((vertices[all[t]] + vertices[all[t + 1]] + vertices[all[t + 2]]) / 3f);
                     var h = toHouse.MultiplyPoint3x4(center);
                     var inHouse = h.x > local.min.x - RoadClear && h.x < local.max.x + RoadClear && h.z > local.min.z - RoadClear && h.z < local.max.z + RoadClear;
-                    if (inHouse || ApronExtension.Inside(corners, center, 0.6f)) { removed++; continue; }
+                    if (inHouse || ApronExtension.Covers(house, center, 0.6f)) { removed++; continue; }
                     kept.Add(all[t]); kept.Add(all[t + 1]); kept.Add(all[t + 2]);
                 }
                 triangles[s] = kept.ToArray();

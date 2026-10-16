@@ -58,6 +58,11 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="../../blender/extensao.obj" LogicalName="MscDuo.extensao.obj" />
+    <EmbeddedResource Include="../../blender/extensao.png" LogicalName="MscDuo.extensao.png" />
+  </ItemGroup>
+
   <Target Name="DeployToMods" AfterTargets="Build">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsDir)" />
     <Message Importance="high" Text="MscDuo.dll copiado para $(ModsDir)" />

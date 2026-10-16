@@ -223,14 +223,7 @@ namespace MscDuo.Tools
             return $"laje exportada: {renderer.name}, material {material.name}, textura {texture.name} {texture.width}x{texture.height} (laje.obj, laje.png).";
         }
 
-        internal static Matrix4x4 Frame(GameObject house)
-        {
-            var right = house.transform.right;
-            right.y = 0f;
-            if (right.sqrMagnitude < 1e-4f) right = Vector3.right;
-            var forward = Vector3.Cross(right.normalized, Vector3.up);
-            return Matrix4x4.TRS(house.transform.position, Quaternion.LookRotation(forward, Vector3.up), Vector3.one);
-        }
+        static Matrix4x4 Frame(GameObject house) => HouseCloner.LocalFrame(house);
 
         static bool Near(Vector3 p, Vector3 center, float half) =>
             Mathf.Abs(p.x - center.x) <= half && Mathf.Abs(p.z - center.z) <= half && Mathf.Abs(p.y - center.y) <= Vertical;

@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using MSCLoader;
 using UnityEngine;
 
@@ -17,54 +19,60 @@ namespace MscDuo.Duplication
             new Vector2(-12.35f, 29.00f),
         };
 
-        const int Steps = 24;
-        const float Skirt = 0.8f;
+        const string ModelResource = "MscDuo.extensao.obj";
+        const string TextureResource = "MscDuo.extensao.png";
+        const string SlabName = "house_base_concrete_mesh";
         const float ClearHeight = 2.5f;
         const float TerrainGap = 0.08f;
-        const float RoadCover = 0.03f;
-        const float Berm = 3f;
-        const float BermSlope = 0.25f;
 
         static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
         static readonly string[] KeptRoots = { "MSCDUO", "PLAYER", "SATSUMA", "CARPARTS", "Database", "ITEMS", "STORE", "Systems", "Sheets", "GUI" };
         static readonly string[] TerrainPaths = { "MAP/MESH/TERRAIN_OBJ/Grass1", "MAP/MESH/TERRAIN_OBJ/Grass2" };
 
         static GameObject slab;
+        static Mesh model;
+        static Vector2[][] outline;
+        static float top;
+        static Texture2D texture;
+        static Material concrete;
         static readonly Dictionary<MeshFilter, Mesh> cutMeshes = new Dictionary<MeshFilter, Mesh>();
         static readonly Dictionary<MeshCollider, Mesh> cutColliders = new Dictionary<MeshCollider, Mesh>();
         static readonly List<Collider> disabled = new List<Collider>();
 
+        internal static MeshRenderer ConcreteRenderer { get; private set; }
+
         internal static void Apply(GameObject house)
         {
             Restore();
-            var corners = Corners(house);
-            Collider apron;
-            Material material;
-            var apronY = ApronHeight(house, corners, out apron, out material);
-            var roadLeft = RoadHeight(corners[2]);
-            var roadRight = RoadHeight(corners[3]);
-            var heights = new[] { apronY, apronY, roadLeft, roadRight };
+            if (!LoadModel())
+            {
+                ModConsole.Error("[MSC Duo] casa 2: modelo da extensão não encontrado na DLL.");
+                return;
+            }
 
+            var frame = HouseCloner.LocalFrame(house);
             int cut, removed;
-            var unreadable = Clear(house, corners, Mathf.Max(apronY, Mathf.Max(roadLeft, roadRight)), out cut, out removed);
+            var unreadable = Clear(house, frame, out cut, out removed);
 
             slab = new GameObject("ApronExtension_P2");
             slab.transform.parent = house.transform.parent;
-            if (apron != null) slab.layer = apron.gameObject.layer;
-            var mesh = Build(corners, heights);
-            slab.AddComponent<MeshFilter>().sharedMesh = mesh;
-            slab.AddComponent<MeshRenderer>().sharedMaterial = material ?? Fallback();
+            slab.transform.position = frame.MultiplyPoint3x4(Vector3.zero);
+            slab.transform.rotation = Quaternion.LookRotation(frame.GetColumn(2), frame.GetColumn(1));
+            slab.AddComponent<MeshFilter>().sharedMesh = model;
+            slab.AddComponent<MeshRenderer>().sharedMaterial = Concrete(house);
             var collider = slab.AddComponent<MeshCollider>();
-            collider.sharedMesh = mesh;
+            collider.sharedMesh = model;
+            var apron = ConcreteRenderer != null ? ConcreteRenderer.GetComponentInParent<Collider>() : null;
             if (apron != null)
             {
-                collider.sharedMaterial = apron.sharedMaterial;
+                slab.layer = apron.gameObject.layer;
                 slab.tag = apron.gameObject.tag;
+                collider.sharedMaterial = apron.sharedMaterial;
             }
 
-            var lowered = LowerTerrain(corners, collider);
+            var lowered = LowerTerrain(house, frame);
             var extra = unreadable.Count > 0 ? $" Sem leitura (ficaram): {string.Join(", ", unreadable.ToArray())}." : "";
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: extensão do cimento criada (laje {apronY:0.00}, rua {roadLeft:0.00}/{roadRight:0.00}, material {(material != null ? material.name : "cinza")}), {cut} triângulos e {removed} objetos tirados do caminho, {lowered} pontos de terreno rebaixados.{extra}");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: extensão do Blender criada (topo {frame.MultiplyPoint3x4(new Vector3(0f, top, 0f)).y:0.00}, {model.vertexCount} vértices, material {(concrete != null ? concrete.name : "cinza")}), {cut} triângulos e {removed} objetos tirados do caminho, {lowered} pontos de terreno rebaixados.{extra}");
         }
 
         internal static Vector3[] Corners(GameObject house)
@@ -78,157 +86,117 @@ namespace MscDuo.Duplication
             return corners;
         }
 
-        static float ApronHeight(GameObject house, Vector3[] corners, out Collider apron, out Material material)
+        internal static bool Covers(GameObject house, Vector3 world, float margin)
         {
-            apron = null;
-            material = null;
-            var heights = new List<float>();
-            var inward = ((corners[0] + corners[1]) - (corners[2] + corners[3])).normalized;
-            inward.y = 0f;
-            for (int i = 0; i <= 10; i++)
-            {
-                var p = Vector3.Lerp(corners[0], corners[1], i / 10f) + inward * 0.5f;
-                foreach (var hit in Physics.RaycastAll(new Vector3(p.x, house.transform.position.y + 1f, p.z), Vector3.down, 6f))
-                {
-                    if (hit.collider.isTrigger || !hit.collider.transform.IsChildOf(house.transform)) continue;
-                    heights.Add(hit.point.y);
-                    if (apron == null) apron = hit.collider;
-                }
-            }
-            if (heights.Count == 0) return house.transform.position.y - 0.4f;
-            heights.Sort();
-            var y = heights[heights.Count / 2];
-
-            material = ConcreteFrom(house, corners, inward, y);
-            return y;
+            if (!LoadModel()) return false;
+            var local = HouseCloner.LocalFrame(house).inverse.MultiplyPoint3x4(world);
+            var p = new Vector2(local.x, local.z);
+            foreach (var t in outline)
+                if (InTriangle(p, t[0], t[1], t[2]) || EdgeDistance(p, t) <= margin) return true;
+            return false;
         }
 
-        static float RoadHeight(Vector3 p)
+        static bool LoadModel()
         {
-            var road = float.MinValue;
-            var ground = float.MinValue;
-            foreach (var hit in Physics.RaycastAll(new Vector3(p.x, p.y + 20f, p.z), Vector3.down, 40f))
-            {
-                if (hit.collider.isTrigger) continue;
-                if (IsRoad(hit.collider)) road = Mathf.Max(road, hit.point.y);
-                else if (Path(hit.collider.transform).StartsWith("MAP/MESH/TERRAIN_OBJ")) ground = Mathf.Max(ground, hit.point.y);
-            }
-            return road > float.MinValue ? road : ground > float.MinValue ? ground : p.y - 1f;
-        }
-
-        static float RoadOnly(Vector3 p)
-        {
-            var road = float.MinValue;
-            foreach (var hit in Physics.RaycastAll(new Vector3(p.x, p.y + 20f, p.z), Vector3.down, 40f))
-                if (!hit.collider.isTrigger && IsRoad(hit.collider)) road = Mathf.Max(road, hit.point.y);
-            return road;
-        }
-
-        static float SurfaceHeight(Vector3[] c, float[] h, float u, float v) =>
-            Mathf.Lerp(Mathf.Lerp(h[0], h[1], u), Mathf.Lerp(h[2], h[3], u), v);
-
-        static Vector3 SurfacePoint(Vector3[] c, float[] h, float u, float v)
-        {
-            var near = Vector3.Lerp(c[0], c[1], u);
-            var far = Vector3.Lerp(c[2], c[3], u);
-            var p = Vector3.Lerp(near, far, v);
-            p.y = SurfaceHeight(c, h, u, v) + (v < 0.02f ? -0.01f : 0.02f);
-            return p;
-        }
-
-        static Mesh Build(Vector3[] c, float[] h)
-        {
+            if (model != null) return true;
+            var text = Resource(ModelResource);
+            if (text == null) return false;
+            var points = new List<Vector3>();
+            var coords = new List<Vector2>();
             var vertices = new List<Vector3>();
             var uv = new List<Vector2>();
             var triangles = new List<int>();
-            var grid = new int[Steps + 1, Steps + 1];
-            for (int i = 0; i <= Steps; i++)
-                for (int j = 0; j <= Steps; j++)
-                {
-                    var u = i / (float)Steps;
-                    var v = Mathf.Lerp(-0.12f, 1.03f, j / (float)Steps);
-                    var p = SurfacePoint(c, h, u, v);
-                    var road = RoadOnly(p);
-                    if (road > float.MinValue) p.y = Mathf.Max(p.y, road + RoadCover);
-                    grid[i, j] = vertices.Count;
-                    vertices.Add(p);
-                    uv.Add(UvAt(p));
-                }
-            for (int i = 0; i < Steps; i++)
-                for (int j = 0; j < Steps; j++)
-                {
-                    int a = grid[i, j], b = grid[i + 1, j], d = grid[i, j + 1], e = grid[i + 1, j + 1];
-                    Upward(triangles, vertices, a, b, e);
-                    Upward(triangles, vertices, a, e, d);
-                }
-            for (int k = 0; k < Steps; k++)
+            var footprint = new List<Vector2[]>();
+            var keys = new Dictionary<string, int>();
+            top = float.MinValue;
+            foreach (var raw in text.Split('\n'))
             {
-                SkirtEdge(vertices[grid[0, k]], vertices[grid[0, k + 1]], vertices, uv, triangles);
-                SkirtEdge(vertices[grid[Steps, k]], vertices[grid[Steps, k + 1]], vertices, uv, triangles);
-                SkirtEdge(vertices[grid[k, Steps]], vertices[grid[k + 1, Steps]], vertices, uv, triangles);
-            }
-
-            var mesh = new Mesh { name = "ApronExtension_P2" };
-            mesh.vertices = vertices.ToArray();
-            mesh.uv = uv.ToArray();
-            mesh.triangles = triangles.ToArray();
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-            return mesh;
-        }
-
-        static void SkirtEdge(Vector3 a, Vector3 b, List<Vector3> vertices, List<Vector2> uv, List<int> triangles)
-        {
-            var c = new Vector3(b.x, b.y - Skirt, b.z);
-            var d = new Vector3(a.x, a.y - Skirt, a.z);
-            for (int side = 0; side < 2; side++)
-            {
-                var k = vertices.Count;
-                vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
-                foreach (var p in new[] { a, b, c, d }) uv.Add(new Vector2((p.x + p.z) * 0.5f, p.y * 0.5f));
-                if (side == 0)
+                var line = raw.Trim();
+                var parts = line.Split(' ');
+                if (line.StartsWith("v "))
                 {
-                    triangles.Add(k); triangles.Add(k + 1); triangles.Add(k + 2);
-                    triangles.Add(k); triangles.Add(k + 2); triangles.Add(k + 3);
+                    var p = new Vector3(F(parts[1]), F(parts[3]), F(parts[2]));
+                    points.Add(p);
+                    top = Mathf.Max(top, p.y);
                 }
-                else
+                else if (line.StartsWith("vt ")) coords.Add(new Vector2(F(parts[1]), F(parts[2])));
+                else if (line.StartsWith("f "))
                 {
-                    triangles.Add(k); triangles.Add(k + 2); triangles.Add(k + 1);
-                    triangles.Add(k); triangles.Add(k + 3); triangles.Add(k + 2);
+                    var face = new List<int>();
+                    var corners = new List<Vector3>();
+                    for (int k = 1; k < parts.Length; k++)
+                    {
+                        if (parts[k].Length == 0) continue;
+                        int index;
+                        if (!keys.TryGetValue(parts[k], out index))
+                        {
+                            var ids = parts[k].Split('/');
+                            index = vertices.Count;
+                            keys[parts[k]] = index;
+                            vertices.Add(points[int.Parse(ids[0]) - 1]);
+                            uv.Add(ids.Length > 1 && ids[1].Length > 0 ? coords[int.Parse(ids[1]) - 1] : Vector2.zero);
+                        }
+                        face.Add(index);
+                        corners.Add(vertices[index]);
+                    }
+                    for (int k = 1; k + 1 < face.Count; k++)
+                    {
+                        triangles.Add(face[0]); triangles.Add(face[k + 1]); triangles.Add(face[k]);
+                        var normal = Vector3.Cross(corners[k + 1] - corners[0], corners[k] - corners[0]);
+                        if (normal.normalized.y > 0.5f)
+                            footprint.Add(new[] { Flat(corners[0]), Flat(corners[k]), Flat(corners[k + 1]) });
+                    }
                 }
             }
+            if (triangles.Count == 0) return false;
+            model = new Mesh { name = "ApronExtension_P2" };
+            model.vertices = vertices.ToArray();
+            model.uv = uv.ToArray();
+            model.triangles = triangles.ToArray();
+            model.RecalculateNormals();
+            model.RecalculateBounds();
+            outline = footprint.ToArray();
+            return true;
         }
 
-        static void Upward(List<int> t, List<Vector3> v, int a, int b, int c)
+        static Material Concrete(GameObject house)
         {
-            var normal = Vector3.Cross(v[b] - v[a], v[c] - v[a]);
-            if (normal.y >= 0f) { t.Add(a); t.Add(b); t.Add(c); }
-            else { t.Add(a); t.Add(c); t.Add(b); }
-        }
-
-        internal static bool Inside(Vector3[] c, Vector3 p, float margin)
-        {
-            var poly = new[] { c[0], c[1], c[3], c[2] };
-            var center = (c[0] + c[1] + c[2] + c[3]) / 4f;
-            var inside = false;
-            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+            ConcreteRenderer = null;
+            foreach (var renderer in house.GetComponentsInChildren<MeshRenderer>(true))
+                if (renderer.name == SlabName) { ConcreteRenderer = renderer; break; }
+            if (concrete != null) return concrete;
+            if (texture == null)
             {
-                var a = poly[i] + (poly[i] - center).normalized * margin;
-                var b = poly[j] + (poly[j] - center).normalized * margin;
-                if ((a.z > p.z) != (b.z > p.z) && p.x < (b.x - a.x) * (p.z - a.z) / (b.z - a.z) + a.x) inside = !inside;
+                var bytes = ResourceBytes(TextureResource);
+                if (bytes != null)
+                {
+                    texture = new Texture2D(2, 2, TextureFormat.ARGB32, true) { name = "MscDuoApron" };
+                    texture.LoadImage(bytes);
+                    texture.wrapMode = TextureWrapMode.Clamp;
+                    texture.anisoLevel = 4;
+                }
             }
-            return inside;
+            var source = ConcreteRenderer != null ? ConcreteRenderer.sharedMaterial : null;
+            concrete = source != null ? new Material(source) : new Material(Shader.Find("Standard") ?? Shader.Find("Diffuse"));
+            concrete.name = "MscDuoApron";
+            concrete.mainTexture = texture;
+            concrete.mainTextureScale = Vector2.one;
+            concrete.mainTextureOffset = Vector2.zero;
+            foreach (var map in new[] { "_BumpMap", "_ParallaxMap", "_OcclusionMap", "_DetailAlbedoMap", "_DetailNormalMap", "_DetailMask", "_MetallicGlossMap", "_EmissionMap" })
+                if (concrete.HasProperty(map)) concrete.SetTexture(map, null);
+            if (texture == null) concrete.color = new Color(0.56f, 0.55f, 0.52f);
+            return concrete;
         }
 
-        static List<string> Clear(GameObject house, Vector3[] corners, float top, out int cut, out int removed)
+        static List<string> Clear(GameObject house, Matrix4x4 frame, out int cut, out int removed)
         {
             cut = 0;
             removed = 0;
             var unreadable = new List<string>();
-            var min = Vector3.Min(Vector3.Min(corners[0], corners[1]), Vector3.Min(corners[2], corners[3]));
-            var max = Vector3.Max(Vector3.Max(corners[0], corners[1]), Vector3.Max(corners[2], corners[3]));
-            var floor = Mathf.Min(min.y, max.y) - 3f;
-            var ceiling = top + ClearHeight;
+            var surface = frame.MultiplyPoint3x4(new Vector3(0f, top, 0f)).y;
+            var floor = surface - 3f;
+            var ceiling = surface + ClearHeight;
+            var area = WorldBounds(frame);
 
             foreach (var filter in Object.FindObjectsOfType<MeshFilter>())
             {
@@ -236,7 +204,7 @@ namespace MscDuo.Duplication
                 var renderer = filter.GetComponent<Renderer>();
                 if (renderer == null) continue;
                 var bounds = renderer.bounds;
-                if (bounds.max.x < min.x - 1f || bounds.min.x > max.x + 1f || bounds.max.z < min.z - 1f || bounds.min.z > max.z + 1f) continue;
+                if (bounds.max.x < area.min.x || bounds.min.x > area.max.x || bounds.max.z < area.min.z || bounds.min.z > area.max.z) continue;
                 if (bounds.max.y < floor || bounds.min.y > ceiling) continue;
 
                 Vector3[] vertices;
@@ -257,7 +225,7 @@ namespace MscDuo.Duplication
                     for (int t = 0; t < source.Length; t += 3)
                     {
                         var center = (toWorld.MultiplyPoint3x4(vertices[source[t]]) + toWorld.MultiplyPoint3x4(vertices[source[t + 1]]) + toWorld.MultiplyPoint3x4(vertices[source[t + 2]])) / 3f;
-                        if (center.y > floor && center.y < ceiling && Inside(corners, center, 0.3f)) { removedHere++; continue; }
+                        if (center.y > floor && center.y < ceiling && Covers(house, center, 0.3f)) { removedHere++; continue; }
                         list.Add(source[t]); list.Add(source[t + 1]); list.Add(source[t + 2]);
                     }
                     subMeshes[s] = list.ToArray();
@@ -284,7 +252,7 @@ namespace MscDuo.Duplication
                 if (!collider.enabled || collider.isTrigger || collider is MeshCollider || Kept(collider.transform, house)) continue;
                 var b = collider.bounds;
                 if (b.size.x > 6f || b.size.z > 6f || b.max.y < floor || b.min.y > ceiling) continue;
-                if (!Inside(corners, b.center, 0.5f)) continue;
+                if (!Covers(house, b.center, 0.5f)) continue;
                 collider.enabled = false;
                 disabled.Add(collider);
                 removed++;
@@ -292,53 +260,43 @@ namespace MscDuo.Duplication
             return unreadable;
         }
 
-        static int LowerTerrain(Vector3[] corners, Collider surface)
+        static int LowerTerrain(GameObject house, Matrix4x4 frame)
         {
             var lowered = 0;
+            var target = frame.MultiplyPoint3x4(new Vector3(0f, top, 0f)).y - TerrainGap;
+            var area = WorldBounds(frame);
             foreach (var path in TerrainPaths)
             {
                 var go = GameObject.Find(path);
                 var filter = go != null ? go.GetComponent<MeshFilter>() : null;
                 if (filter == null || filter.sharedMesh == null) continue;
                 var mesh = filter.sharedMesh;
-                if (!mesh.name.EndsWith("_flat"))
-                {
-                    var copy = Object.Instantiate(mesh);
-                    copy.name = mesh.name + "_flat";
-                    cutMeshes[filter] = mesh;
-                    filter.sharedMesh = mesh = copy;
-                }
                 var vertices = mesh.vertices;
                 var toWorld = go.transform.localToWorldMatrix;
                 var toMesh = go.transform.worldToLocalMatrix;
-                var changed = false;
+                var changed = new List<int>();
                 for (int i = 0; i < vertices.Length; i++)
                 {
                     var w = toWorld.MultiplyPoint3x4(vertices[i]);
-                    if (!Inside(corners, w, 0.6f))
-                    {
-                        var edge = EdgeDistance(corners, w);
-                        if (edge > Berm) continue;
-                        RaycastHit rim;
-                        if (!NearestSurface(surface, w, out rim)) continue;
-                        var rise = rim.point.y - 0.03f - edge * BermSlope;
-                        if (w.y >= rise) continue;
-                        w.y = rise;
-                        vertices[i] = toMesh.MultiplyPoint3x4(w);
-                        lowered++;
-                        changed = true;
-                        continue;
-                    }
-                    RaycastHit hit;
-                    if (!surface.Raycast(new Ray(new Vector3(w.x, w.y + 20f, w.z), Vector3.down), out hit, 40f) && !NearestSurface(surface, w, out hit)) continue;
-                    var target = hit.point.y - TerrainGap;
-                    if (w.y <= target) continue;
+                    if (w.y <= target || w.x < area.min.x || w.x > area.max.x || w.z < area.min.z || w.z > area.max.z) continue;
+                    if (!Covers(house, w, 0.6f)) continue;
+                    changed.Add(i);
+                }
+                if (changed.Count == 0) continue;
+                if (!mesh.name.EndsWith("_flat") && !cutMeshes.ContainsKey(filter))
+                {
+                    var copy = Object.Instantiate(mesh);
+                    copy.name = mesh.name + "_apron";
+                    cutMeshes[filter] = mesh;
+                    filter.sharedMesh = mesh = copy;
+                }
+                foreach (var i in changed)
+                {
+                    var w = toWorld.MultiplyPoint3x4(vertices[i]);
                     w.y = target;
                     vertices[i] = toMesh.MultiplyPoint3x4(w);
-                    lowered++;
-                    changed = true;
                 }
-                if (!changed) continue;
+                lowered += changed.Count;
                 mesh.vertices = vertices;
                 mesh.RecalculateNormals();
                 mesh.RecalculateBounds();
@@ -352,27 +310,19 @@ namespace MscDuo.Duplication
             return lowered;
         }
 
-        static float EdgeDistance(Vector3[] c, Vector3 p)
+        static Bounds WorldBounds(Matrix4x4 frame)
         {
-            var poly = new[] { c[0], c[1], c[3], c[2] };
-            var best = float.MaxValue;
-            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
-            {
-                var a = new Vector2(poly[j].x, poly[j].z);
-                var b = new Vector2(poly[i].x, poly[i].z);
-                var q = new Vector2(p.x, p.z);
-                var ab = b - a;
-                var t = Mathf.Clamp01(Vector2.Dot(q - a, ab) / ab.sqrMagnitude);
-                best = Mathf.Min(best, (a + ab * t - q).magnitude);
-            }
-            return best;
-        }
-
-        static bool NearestSurface(Collider surface, Vector3 w, out RaycastHit hit)
-        {
-            var b = surface.bounds;
-            var p = new Vector3(Mathf.Clamp(w.x, b.min.x + 0.05f, b.max.x - 0.05f), b.max.y + 5f, Mathf.Clamp(w.z, b.min.z + 0.05f, b.max.z - 0.05f));
-            return surface.Raycast(new Ray(p, Vector3.down), out hit, 20f);
+            var first = true;
+            var bounds = new Bounds();
+            foreach (var t in outline)
+                foreach (var p in t)
+                {
+                    var w = frame.MultiplyPoint3x4(new Vector3(p.x, top, p.y));
+                    if (first) { bounds = new Bounds(w, Vector3.zero); first = false; }
+                    else bounds.Encapsulate(w);
+                }
+            bounds.Expand(new Vector3(2f, 0f, 2f));
+            return bounds;
         }
 
         internal static void Restore()
@@ -387,6 +337,15 @@ namespace MscDuo.Duplication
                 pair.Key.sharedMesh = pair.Value;
             }
             foreach (var c in disabled) if (c != null) c.enabled = true;
+            foreach (var path in TerrainPaths)
+            {
+                var go = GameObject.Find(path);
+                var collider = go != null ? go.GetComponent<MeshCollider>() : null;
+                var filter = go != null ? go.GetComponent<MeshFilter>() : null;
+                if (collider == null || filter == null) continue;
+                collider.sharedMesh = null;
+                collider.sharedMesh = filter.sharedMesh;
+            }
             cutMeshes.Clear();
             cutColliders.Clear();
             disabled.Clear();
@@ -410,114 +369,51 @@ namespace MscDuo.Duplication
             return false;
         }
 
-        static Material concrete;
-        internal static MeshRenderer ConcreteRenderer { get; private set; }
-        static Vector3[] uvMap;
-
-        static Vector3[] FitUv(List<KeyValuePair<Vector3, Vector2>> pairs)
+        static bool InTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
         {
-            var m = new float[3, 3];
-            var bu = new float[3];
-            var bv = new float[3];
-            foreach (var pair in pairs)
-            {
-                var row = new[] { pair.Key.x, pair.Key.z, 1f };
-                for (int a = 0; a < 3; a++)
-                {
-                    for (int b = 0; b < 3; b++) m[a, b] += row[a] * row[b];
-                    bu[a] += row[a] * pair.Value.x;
-                    bv[a] += row[a] * pair.Value.y;
-                }
-            }
-            var u = Solve(m, bu);
-            var v = Solve(m, bv);
-            return u == null || v == null ? null : new[] { u.Value, v.Value };
+            var d1 = Side(p, a, b);
+            var d2 = Side(p, b, c);
+            var d3 = Side(p, c, a);
+            var negative = d1 < 0 || d2 < 0 || d3 < 0;
+            var positive = d1 > 0 || d2 > 0 || d3 > 0;
+            return !(negative && positive);
         }
 
-        static Vector3? Solve(float[,] m, float[] b)
+        static float Side(Vector2 p, Vector2 a, Vector2 b) => (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
+
+        static float EdgeDistance(Vector2 p, Vector2[] t)
         {
-            var det = Det(m[0, 0], m[0, 1], m[0, 2], m[1, 0], m[1, 1], m[1, 2], m[2, 0], m[2, 1], m[2, 2]);
-            if (Mathf.Abs(det) < 1e-9f) return null;
-            var x = Det(b[0], m[0, 1], m[0, 2], b[1], m[1, 1], m[1, 2], b[2], m[2, 1], m[2, 2]) / det;
-            var y = Det(m[0, 0], b[0], m[0, 2], m[1, 0], b[1], m[1, 2], m[2, 0], b[2], m[2, 2]) / det;
-            var z = Det(m[0, 0], m[0, 1], b[0], m[1, 0], m[1, 1], b[1], m[2, 0], m[2, 1], b[2]) / det;
-            return new Vector3(x, y, z);
+            var best = float.MaxValue;
+            for (int i = 0; i < 3; i++)
+            {
+                var a = t[i];
+                var ab = t[(i + 1) % 3] - a;
+                var k = Mathf.Clamp01(Vector2.Dot(p - a, ab) / ab.sqrMagnitude);
+                best = Mathf.Min(best, (a + ab * k - p).magnitude);
+            }
+            return best;
         }
 
-        static float Det(float a, float b, float c, float d, float e, float f, float g, float h, float i) =>
-            a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+        static Vector2 Flat(Vector3 p) => new Vector2(p.x, p.z);
 
-        static Vector2 UvAt(Vector3 p) =>
-            uvMap == null
-                ? new Vector2(p.x * 0.5f, p.z * 0.5f)
-                : new Vector2(uvMap[0].x * p.x + uvMap[0].y * p.z + uvMap[0].z, uvMap[1].x * p.x + uvMap[1].y * p.z + uvMap[1].z);
+        static float F(string s) => float.Parse(s, CultureInfo.InvariantCulture);
 
-        static Material ConcreteFrom(GameObject house, Vector3[] corners, Vector3 inward, float slabY)
+        static string Resource(string name)
         {
-            if (concrete != null) return concrete;
-            MeshRenderer bestRenderer = null;
-            List<KeyValuePair<Vector3, Vector2>> bestPairs = null;
-            Vector2 min = Vector2.zero, max = Vector2.zero;
-            var samples = 0;
-            foreach (var renderer in house.GetComponentsInChildren<MeshRenderer>())
-            {
-                var filter = renderer.GetComponent<MeshFilter>();
-                if (filter == null || filter.sharedMesh == null || renderer.sharedMaterial == null || renderer.sharedMaterial.mainTexture == null) continue;
-                var b = renderer.bounds;
-                if (b.min.y > slabY + 0.1f || b.max.y < slabY - 0.1f) continue;
-                Vector2 lo = Vector2.one * float.MaxValue, hi = Vector2.one * float.MinValue;
-                var count = 0;
-                var pairs = new List<KeyValuePair<Vector3, Vector2>>();
-                var collider = renderer.gameObject.AddComponent<MeshCollider>();
-                try
-                {
-                    collider.sharedMesh = filter.sharedMesh;
-                    for (int i = 0; i <= 6; i++)
-                        for (int k = 1; k <= 4; k++)
-                        {
-                            var p = Vector3.Lerp(corners[0], corners[1], i / 6f) + inward * (0.6f * k);
-                            RaycastHit hit;
-                            if (!collider.Raycast(new Ray(new Vector3(p.x, slabY + 2f, p.z), Vector3.down), out hit, 4f)) continue;
-                            if (hit.normal.y < 0.9f || Mathf.Abs(hit.point.y - slabY) > 0.1f) continue;
-                            lo = Vector2.Min(lo, hit.textureCoord);
-                            hi = Vector2.Max(hi, hit.textureCoord);
-                            pairs.Add(new KeyValuePair<Vector3, Vector2>(hit.point, hit.textureCoord));
-                            count++;
-                        }
-                }
-                catch { count = 0; }
-                finally { Object.DestroyImmediate(collider); }
-                if (count <= samples) continue;
-                samples = count;
-                bestRenderer = renderer;
-                bestPairs = pairs;
-                min = lo;
-                max = hi;
-            }
-            if (bestRenderer == null || samples < 3 || (max - min).magnitude < 0.0005f)
-            {
-                ModConsole.Warning($"[MSC Duo] casa 2: superfície de cimento da laje não encontrada ({samples} amostras).");
-                return null;
-            }
-            var source = bestRenderer.sharedMaterial;
-            var texture = source.mainTexture;
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: cimento da laje é '{bestRenderer.name}' ({source.name}).");
-
-            uvMap = FitUv(bestPairs);
-            if (uvMap == null) return null;
-            concrete = source;
-            ConcreteRenderer = bestRenderer;
-            return concrete;
+            var bytes = ResourceBytes(name);
+            return bytes == null ? null : System.Text.Encoding.UTF8.GetString(bytes);
         }
 
-        static Material fallback;
-
-        static Material Fallback()
+        static byte[] ResourceBytes(string name)
         {
-            if (fallback != null) return fallback;
-            var shader = Shader.Find("Standard") ?? Shader.Find("Diffuse");
-            fallback = new Material(shader) { name = "MscDuoConcrete", color = new Color(0.56f, 0.55f, 0.52f) };
-            return fallback;
+            using (var stream = typeof(ApronExtension).Assembly.GetManifestResourceStream(name))
+            {
+                if (stream == null) return null;
+                var bytes = new byte[stream.Length];
+                var read = 0;
+                while (read < bytes.Length) read += stream.Read(bytes, read, bytes.Length - read);
+                return bytes;
+            }
         }
 
         static string Path(Transform t) => t.parent == null ? t.name : Path(t.parent) + "/" + t.name;

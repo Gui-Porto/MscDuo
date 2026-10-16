@@ -139,6 +139,15 @@ namespace MscDuo.Duplication
         internal static Quaternion RotationFor(float yaw) =>
             Quaternion.Euler(0f, yaw, 0f) * Original.transform.rotation;
 
+        internal static Matrix4x4 LocalFrame(GameObject house)
+        {
+            var right = house.transform.right;
+            right.y = 0f;
+            if (right.sqrMagnitude < 1e-4f) right = Vector3.right;
+            var forward = Vector3.Cross(right.normalized, Vector3.up);
+            return Matrix4x4.TRS(house.transform.position, Quaternion.LookRotation(forward, Vector3.up), Vector3.one);
+        }
+
         internal static float OriginalYaw => Original != null ? Original.transform.eulerAngles.y : 0f;
 
         static void Strip(GameObject clone, CloneStats stats)
