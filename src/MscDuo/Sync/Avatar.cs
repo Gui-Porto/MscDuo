@@ -24,13 +24,15 @@ namespace MscDuo.Sync
             { 2, new[] { "char_shirt13", "char_pants05", "char_face03" } },
         };
 
-        // na moto as pernas descem até a pedaleira em vez de esticar para a frente como no carro
-        internal static readonly Dictionary<string, Vector3> BikeLegs = new Dictionary<string, Vector3>
+        // na moto as pernas descem até a pedaleira e as mãos vão para as manoplas, em vez da pose de volante do carro
+        internal static readonly Dictionary<string, Vector3> BikePose = new Dictionary<string, Vector3>
         {
             { "thig_left", new Vector3(0f, 0f, 20f) },
             { "thig_right", new Vector3(0f, 0f, 20f) },
             { "thig_left/knee_left", new Vector3(0f, 0f, 40f) },
             { "thig_right/knee_right", new Vector3(0f, 0f, 40f) },
+            { "pelvis/spine_middle/spine_upper/collar_left/shoulder_left", new Vector3(0f, 30f, 0f) },
+            { "pelvis/spine_middle/spine_upper/collar_right/shoulder_right", new Vector3(0f, -30f, 0f) },
         };
 
         static GameObject template;
@@ -186,7 +188,7 @@ namespace MscDuo.Sync
                     if (!seatedPose.TryGetValue(bone.Value, out pose)) continue;
                     Vector3 bend;
                     bone.Key.localPosition = pose.Key;
-                    bone.Key.localRotation = bike && BikeLegs.TryGetValue(bone.Value, out bend) ? pose.Value * Quaternion.Euler(bend) : pose.Value;
+                    bone.Key.localRotation = bike && BikePose.TryGetValue(bone.Value, out bend) ? pose.Value * Quaternion.Euler(bend) : pose.Value;
                 }
             // preso ao veículo local: acompanha a carroceria sem tremer entre pacotes
             root.transform.parent = vehicle;
