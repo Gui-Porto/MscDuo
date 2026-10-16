@@ -26,7 +26,6 @@ namespace MscDuo.Sync
         internal static int Matched => fromRemote.Count;
         internal static int RemoteCount { get; private set; }
         internal static string Status { get; private set; } = "esperando o outro jogo";
-        internal static event System.Action Finalized;
 
         internal static Rigidbody Get(ushort id) => id < items.Count ? items[id] : null;
 
@@ -59,7 +58,6 @@ namespace MscDuo.Sync
             Final = true;
             Status = "esperando o outro jogo";
             if (pendingPaths != null) Match(pendingPaths, pendingOrigins);
-            Finalized?.Invoke();
         }
 
         internal static void Forget()
@@ -85,9 +83,9 @@ namespace MscDuo.Sync
             }
         }
 
-        internal static void ReadInfo(BinaryReader r)
+        internal static bool ReadInfo(BinaryReader r)
         {
-            if (!r.ReadBoolean()) return;
+            if (!r.ReadBoolean()) return false;
             var count = r.ReadInt32();
             var remotePaths = new string[count];
             var remoteOrigins = new Vector3[count];
@@ -101,9 +99,10 @@ namespace MscDuo.Sync
                 pendingPaths = remotePaths;
                 pendingOrigins = remoteOrigins;
                 Status = "esperando o registro local";
-                return;
+                return false;
             }
             Match(remotePaths, remoteOrigins);
+            return true;
         }
 
         static void Match(string[] remotePaths, Vector3[] remoteOrigins)
