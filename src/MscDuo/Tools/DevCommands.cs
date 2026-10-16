@@ -25,6 +25,7 @@ namespace MscDuo.Tools
             ConsoleCommand.Add(new PlayerCommand());
             ConsoleCommand.Add(new CarCommand());
             ConsoleCommand.Add(new VanCommand());
+            ConsoleCommand.Add(new DiagCommand());
             ConsoleCommand.Add(new BuildCommand());
             ConsoleCommand.Add(new CheckCommand());
             ConsoleCommand.Add(new ExportCommand());

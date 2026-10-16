@@ -25,6 +25,13 @@ namespace MscDuo.Duplication
         static Transform player;
 
         internal static int Current { get; private set; }
+
+        internal static string Describe()
+        {
+            var text = $"PlayerCurrentVehicle='{GlobalValue}'";
+            foreach (var pair in pairs) text += $"  {pair.Name}: 1='{pair.View1.Value}' 2='{pair.View2.Value}'";
+            return text;
+        }
         internal static string GlobalValue => global != null ? global.Value : "";
 
         internal static void Setup(GameObject satsuma1, GameObject parts1, GameObject satsuma2, GameObject parts2) =>

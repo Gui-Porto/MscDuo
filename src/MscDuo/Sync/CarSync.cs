@@ -123,6 +123,16 @@ namespace MscDuo.Sync
             }
         }
 
+        internal static string Describe(CarLink link, float now)
+        {
+            var inside = link.Ready && Inside(link);
+            var body = link.Body;
+            var engine = link.Engine;
+            return $"{link.Label}: dentro={inside} enviando={link.Sending} seguindo={link.Applying} outroDirigindo={now < link.PeerDrivingUntil} " +
+                   $"kinematic={(body != null ? body.isKinematic.ToString() : "-")} motor={(engine != null ? engine.enabled + " rpm " + engine.rpm.ToString("0") + " marcha " + engine.gear : "-")} " +
+                   $"distância={(link.Root != null && player != null ? (link.Root.position - player.position).magnitude.ToString("0.0") : "-")}";
+        }
+
         static bool Inside(CarLink link)
         {
             if (link.Owned) return CurrentVehicle.Current == link.Index;
@@ -198,6 +208,8 @@ namespace MscDuo.Sync
             internal readonly string CurrentName;
             internal uint LastSequence;
             internal bool Applying { get; private set; }
+            internal Rigidbody Body => body;
+            internal Drivetrain Engine => drivetrain;
             internal bool Owned => RootName == null;
             internal Transform Root => car != null ? car.transform : null;
             internal bool Moving => body != null && (body.velocity.sqrMagnitude > MoveThreshold * MoveThreshold || body.angularVelocity.sqrMagnitude > MoveThreshold);
