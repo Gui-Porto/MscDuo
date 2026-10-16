@@ -100,7 +100,7 @@ namespace MscDuo.Tools
             foreach (var car in CarSync.Links)
                 text += $"\nSatsuma {car.Index}: " + (car.Sending ? "enviando" : car.Applying ? "seguindo o outro jogador" : "parada");
 
-            text += ItemSync.Enabled ? $"\nobjetos: {ItemSync.OwnedByMe} meus, {ItemSync.OwnedByPeer} do outro ({ItemRegistry.Count} registrados)" : "\nobjetos: sincronização desligada";
+            text += $"\nobjetos: {ItemRegistry.Status}" + (ItemSync.Enabled ? $"  ({ItemSync.OwnedByMe} meus, {ItemSync.OwnedByPeer} do outro agora)" : "  <color=yellow>sincronização desligada</color>");
 
             var rect = new Rect(Screen.width - 520, 40, 510, 150);
             GUI.color = new Color(0f, 0f, 0f, 0.55f);

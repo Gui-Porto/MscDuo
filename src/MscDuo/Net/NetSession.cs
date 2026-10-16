@@ -44,7 +44,6 @@ namespace MscDuo.Net
             Stop();
             Current = new NetSession(transport, ghostOffset);
             ItemRegistry.Forget();
-            ItemSync.Enabled = false;
             ItemRegistry.Finalized += Current.SendItemsInfo;
             ModConsole.Print($"<color=orange>[MSC Duo]</color> sessão iniciada ({transport.Name}).");
         }
@@ -56,7 +55,7 @@ namespace MscDuo.Net
             CarSync.Reset();
             ItemSync.Reset();
             SleepSync.Reset();
-            ItemSync.Enabled = false;
+            ItemRegistry.Forget();
             ItemRegistry.Finalized -= Current.SendItemsInfo;
             foreach (var peer in Current.peers.Values) peer.Player.Dispose();
             Current.transport.Shutdown();
@@ -159,7 +158,7 @@ namespace MscDuo.Net
 
         void SendItemsInfo(ulong id)
         {
-            Send(id, MessageType.ItemsInfo, w => { w.Write(ItemRegistry.Count); w.Write(ItemRegistry.Hash); w.Write(ItemRegistry.Final); }, Channel.Reliable);
+            Send(id, MessageType.ItemsInfo, ItemRegistry.WriteInfo, Channel.Reliable);
         }
 
         void Receive(float now)
@@ -211,7 +210,7 @@ namespace MscDuo.Net
                         break;
                     case MessageType.ItemsInfo:
                         if (transport is LoopbackTransport) break;
-                        ItemRegistry.Remote(reader.ReadInt32(), reader.ReadInt32(), reader.ReadBoolean());
+                        ItemRegistry.ReadInfo(reader);
                         break;
                     case MessageType.ItemState:
                         ItemSync.ReceiveState(ItemStateMessage.Read(reader), now, transport.IsHost);

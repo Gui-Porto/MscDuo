@@ -1,41 +1,52 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using MSCLoader;
-using MscDuo.Duplication;
 using UnityEngine;
 
 namespace MscDuo.Sync
 {
     internal static class ItemRegistry
     {
+        const float MatchDistance = 2f;
+        const string ReportFile = "objetos.txt";
+
         static readonly string[] Tags = { "PART", "ITEM" };
         static readonly List<Rigidbody> items = new List<Rigidbody>();
-        static readonly Dictionary<Rigidbody, ushort> ids = new Dictionary<Rigidbody, ushort>();
+        static readonly List<string> paths = new List<string>();
+        static readonly List<Vector3> origins = new List<Vector3>();
+        static readonly HashSet<Rigidbody> known = new HashSet<Rigidbody>();
         static readonly HashSet<string> clonesAdded = new HashSet<string>();
+        static readonly Dictionary<ushort, ushort> fromRemote = new Dictionary<ushort, ushort>();
+        static string[] pendingPaths;
+        static Vector3[] pendingOrigins;
 
         internal static int Count => items.Count;
-        internal static int Hash { get; private set; }
         internal static bool Final { get; private set; }
+        internal static int Matched => fromRemote.Count;
+        internal static int RemoteCount { get; private set; }
+        internal static string Status { get; private set; } = "esperando o outro jogo";
         internal static event System.Action Finalized;
-        static int? remoteCount;
-        static int remoteHash;
 
         internal static Rigidbody Get(ushort id) => id < items.Count ? items[id] : null;
+
+        internal static bool TryLocal(ushort remoteId, out ushort localId) => fromRemote.TryGetValue(remoteId, out localId);
 
         internal static void Build()
         {
             items.Clear();
-            ids.Clear();
+            paths.Clear();
+            origins.Clear();
+            known.Clear();
             clonesAdded.Clear();
             Final = false;
-            remoteCount = null;
-            Hash = 17;
+            Forget();
             var excluded = new List<Transform>();
             var car = GameObject.Find("SATSUMA(557kg, 248)");
             if (car != null) excluded.Add(car.transform);
             var player = GameObject.Find("PLAYER");
             if (player != null) excluded.Add(player.transform);
-            Add(Collect(Object.FindObjectsOfType<Rigidbody>(), excluded));
+            Add(Object.FindObjectsOfType<Rigidbody>(), excluded);
         }
 
         internal static void AddClone(GameObject car, params GameObject[] roots)
@@ -43,72 +54,150 @@ namespace MscDuo.Sync
             var bodies = new List<Rigidbody>();
             foreach (var root in roots)
                 if (root != null && clonesAdded.Add(root.name)) bodies.AddRange(root.GetComponentsInChildren<Rigidbody>(true));
-            Add(Collect(bodies.ToArray(), new List<Transform> { car != null ? car.transform : null }));
+            Add(bodies.ToArray(), new List<Transform> { car != null ? car.transform : null });
             Final = true;
-            Compare();
+            Status = "esperando o outro jogo";
+            if (pendingPaths != null) Match(pendingPaths, pendingOrigins);
             Finalized?.Invoke();
         }
 
-        internal static void Remote(int count, int hash, bool final)
+        internal static void Forget()
         {
-            if (!final) return;
-            remoteCount = count;
-            remoteHash = hash;
-            Compare();
+            fromRemote.Clear();
+            pendingPaths = null;
+            pendingOrigins = null;
+            RemoteCount = 0;
+            Status = Final ? "esperando o outro jogo" : "esperando o registro local";
+            ItemSync.Enabled = false;
         }
 
-        internal static void Forget() => remoteCount = null;
-
-        static void Compare()
+        internal static void WriteInfo(BinaryWriter w)
         {
-            if (!Final || !remoteCount.HasValue) return;
-            var same = remoteCount.Value == Count && remoteHash == Hash;
-            ItemSync.Enabled = same;
-            if (same) ModConsole.Print($"<color=orange>[MSC Duo]</color> objetos soltos iguais nos dois jogos ({Count}); sincronização de objetos ligada.");
-            else ModConsole.Warning($"[MSC Duo] os saves são diferentes ({Count} objetos aqui, {remoteCount.Value} no outro jogo): objetos soltos NÃO serão sincronizados. Copie o save do anfitrião de novo.");
+            w.Write(Final);
+            w.Write(items.Count);
+            for (int i = 0; i < items.Count; i++)
+            {
+                w.Write(paths[i]);
+                w.Write(origins[i].x);
+                w.Write(origins[i].y);
+                w.Write(origins[i].z);
+            }
         }
 
-        static List<KeyValuePair<string, Rigidbody>> Collect(Rigidbody[] bodies, List<Transform> excluded)
+        internal static void ReadInfo(BinaryReader r)
         {
-            var parts = LayerMask.NameToLayer("Parts");
-            var found = new List<KeyValuePair<string, Rigidbody>>();
+            if (!r.ReadBoolean()) return;
+            var count = r.ReadInt32();
+            var remotePaths = new string[count];
+            var remoteOrigins = new Vector3[count];
+            for (int i = 0; i < count; i++)
+            {
+                remotePaths[i] = r.ReadString();
+                remoteOrigins[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+            }
+            if (!Final)
+            {
+                pendingPaths = remotePaths;
+                pendingOrigins = remoteOrigins;
+                Status = "esperando o registro local";
+                return;
+            }
+            Match(remotePaths, remoteOrigins);
+        }
+
+        static void Match(string[] remotePaths, Vector3[] remoteOrigins)
+        {
+            fromRemote.Clear();
+            RemoteCount = remotePaths.Length;
+            var byPath = new Dictionary<string, List<int>>();
+            for (int i = 0; i < paths.Count; i++)
+            {
+                List<int> list;
+                if (!byPath.TryGetValue(paths[i], out list)) byPath[paths[i]] = list = new List<int>();
+                list.Add(i);
+            }
+
+            var used = new HashSet<int>();
+            var remoteOnly = new List<string>();
+            for (int r = 0; r < remotePaths.Length; r++)
+            {
+                List<int> candidates;
+                var best = -1;
+                var bestDistance = MatchDistance * MatchDistance;
+                if (byPath.TryGetValue(remotePaths[r], out candidates))
+                    foreach (var l in candidates)
+                    {
+                        if (used.Contains(l)) continue;
+                        var d = (origins[l] - remoteOrigins[r]).sqrMagnitude;
+                        if (d <= bestDistance) { bestDistance = d; best = l; }
+                    }
+                if (best < 0) { remoteOnly.Add(Describe(remotePaths[r], remoteOrigins[r])); continue; }
+                used.Add(best);
+                fromRemote[(ushort)r] = (ushort)best;
+            }
+
+            var localOnly = new List<string>();
+            for (int i = 0; i < paths.Count; i++)
+                if (!used.Contains(i)) localOnly.Add(Describe(paths[i], origins[i]));
+
+            ItemSync.Enabled = fromRemote.Count > 0;
+            Status = $"{fromRemote.Count} em comum, {localOnly.Count} só aqui, {remoteOnly.Count} só no outro";
+            WriteReport(localOnly, remoteOnly);
+            if (localOnly.Count == 0 && remoteOnly.Count == 0)
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> objetos soltos iguais nos dois jogos ({fromRemote.Count}); sincronização de objetos ligada.");
+            else
+                ModConsole.Warning($"[MSC Duo] objetos soltos: {Status}. Os em comum serão sincronizados; lista das diferenças em {ReportFile}.");
+        }
+
+        static void WriteReport(List<string> localOnly, List<string> remoteOnly)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine($"# {Status}");
+                sb.AppendLine($"## só neste jogo ({localOnly.Count})");
+                foreach (var line in localOnly) sb.AppendLine(line);
+                sb.AppendLine($"## só no outro jogo ({remoteOnly.Count})");
+                foreach (var line in remoteOnly) sb.AppendLine(line);
+                sb.AppendLine($"## todos deste jogo ({paths.Count})");
+                for (int i = 0; i < paths.Count; i++) sb.AppendLine(Describe(paths[i], origins[i]));
+                File.WriteAllText(Path.Combine(MscDuo.Instance.SettingsFolder, ReportFile), sb.ToString(), Encoding.UTF8);
+            }
+            catch (System.Exception e)
+            {
+                ModConsole.Warning($"[MSC Duo] não foi possível gravar {ReportFile}: {e.Message}");
+            }
+        }
+
+        static string Describe(string path, Vector3 origin) =>
+            string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}  ({1:0.0}, {2:0.0}, {3:0.0})", path, origin.x, origin.y, origin.z);
+
+        static void Add(Rigidbody[] bodies, List<Transform> excluded)
+        {
+            var layer = LayerMask.NameToLayer("Parts");
             foreach (var body in bodies)
             {
-                if (body == null || ids.ContainsKey(body)) continue;
+                if (body == null || known.Contains(body) || items.Count >= ushort.MaxValue) continue;
                 var go = body.gameObject;
-                if (go.layer != parts && System.Array.IndexOf(Tags, go.tag) < 0) continue;
+                if (go.layer != layer && System.Array.IndexOf(Tags, go.tag) < 0) continue;
                 var skip = false;
                 foreach (var root in excluded)
                     if (root != null && body.transform.IsChildOf(root)) { skip = true; break; }
                 if (skip) continue;
-                found.Add(new KeyValuePair<string, Rigidbody>(Key(body.transform), body));
-            }
-            found.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
-            return found;
-        }
-
-        static void Add(List<KeyValuePair<string, Rigidbody>> found)
-        {
-            foreach (var pair in found)
-            {
-                if (items.Count >= ushort.MaxValue) break;
-                ids[pair.Value] = (ushort)items.Count;
-                items.Add(pair.Value);
-                foreach (var c in pair.Key.Substring(0, pair.Key.IndexOf('|'))) Hash = Hash * 31 + c;
+                known.Add(body);
+                items.Add(body);
+                paths.Add(PathOf(body.transform));
+                origins.Add(body.position);
             }
             ModConsole.Print($"<color=orange>[MSC Duo]</color> {items.Count} objetos soltos registrados para sincronizar.");
         }
 
-        static string Key(Transform t)
+        static string PathOf(Transform t)
         {
             var chain = new List<string>();
-            for (var c = t; c != null; c = c.parent)
-                chain.Add(c.parent != null ? c.name + "#" + c.GetSiblingIndex() : c.name);
+            for (var c = t; c != null; c = c.parent) chain.Add(c.name);
             chain.Reverse();
-            var sb = new StringBuilder(string.Join("/", chain.ToArray()));
-            var p = t.position;
-            sb.Append('|').Append(Mathf.RoundToInt(p.x * 2f)).Append(',').Append(Mathf.RoundToInt(p.y * 2f)).Append(',').Append(Mathf.RoundToInt(p.z * 2f));
-            return sb.ToString();
+            return string.Join("/", chain.ToArray());
         }
     }
 }

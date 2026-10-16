@@ -105,6 +105,7 @@ namespace MscDuo.Sync
 
         internal static void ReceiveState(ItemStateMessage state, float now, bool isHost)
         {
+            if (!ItemRegistry.TryLocal(state.Id, out state.Id)) return;
             var body = ItemRegistry.Get(state.Id);
             if (!Enabled || body == null) return;
             Tracked item;
@@ -130,6 +131,7 @@ namespace MscDuo.Sync
 
         internal static void ReceiveRest(ItemStateMessage state)
         {
+            if (!ItemRegistry.TryLocal(state.Id, out state.Id)) return;
             var body = ItemRegistry.Get(state.Id);
             if (!Enabled || body == null) return;
             Tracked item;
