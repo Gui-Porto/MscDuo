@@ -12,8 +12,9 @@ namespace MscDuo.Sync
         const float DriverTimeout = 0.5f;
         const float StateTimeout = 1f;
         const float MaxExtrapolation = 0.25f;
-        const float MoveThreshold = 0.1f;
+        const float MoveThreshold = 0.3f;
         const float SettleSeconds = 2f;
+        const float MaxSettleAfterLeaving = 6f;
         const float RootScanInterval = 10f;
         const float YieldSeconds = 1f;
         const int MaxSnapshots = 32;
@@ -35,6 +36,7 @@ namespace MscDuo.Sync
         static readonly Dictionary<string, GameObject> roots = new Dictionary<string, GameObject>();
         static float nextRootScan;
         static Transform player;
+        static HutongGames.PlayMaker.FsmString currentVehicle;
 
         internal static IEnumerable<CarLink> Links => links;
 
@@ -52,12 +54,13 @@ namespace MscDuo.Sync
                 var go = GameObject.Find("PLAYER");
                 if (go != null) player = go.transform;
             }
+            foreach (var link in links) link.Resolve(now);
             foreach (var link in links)
             {
-                if (!link.Resolve(now)) continue;
-                var inside = link.Owned ? CurrentVehicle.Current == link.Index : player != null && player.IsChildOf(link.Root);
+                if (!link.Ready) continue;
+                var inside = Inside(link);
                 var peerDriving = now < link.PeerDrivingUntil;
-                if (inside) link.LastLocalDriver = true;
+                if (inside) { link.LastLocalDriver = true; link.LeftAt = now; }
                 if (peerDriving) link.LastLocalDriver = false;
 
                 if (link.Owned)
@@ -70,9 +73,9 @@ namespace MscDuo.Sync
                     var nearer = player != null && (!remotePlayer.HasValue ||
                         (player.position - link.Root.position).sqrMagnitude < (remotePlayer.Value - link.Root.position).sqrMagnitude);
                     var receiving = link.Snapshots.Count > 0 && now - link.LastArrival < StateTimeout;
-                    link.Sending = inside || (!peerDriving && now >= link.YieldUntil &&
-                        (link.LastLocalDriver && settling || moving && nearer && !receiving));
-                    if (!link.Sending && !settling) link.LastLocalDriver = false;
+                    var justLeft = link.LastLocalDriver && settling && now - link.LeftAt < MaxSettleAfterLeaving;
+                    link.Sending = inside || (!peerDriving && now >= link.YieldUntil && (justLeft || moving && nearer && !receiving));
+                    if (!inside && !justLeft) link.LastLocalDriver = false;
                 }
 
                 if (link.Sending)
@@ -94,7 +97,7 @@ namespace MscDuo.Sync
             if (state.Driving) link.PeerDrivingUntil = now + DriverTimeout;
             if (link.Sending)
             {
-                var inside = link.Owned ? CurrentVehicle.Current == link.Index : player != null && link.Root != null && player.IsChildOf(link.Root);
+                var inside = link.Ready && Inside(link);
                 if (link.Owned || inside || (!state.Driving && isHost)) return;
                 link.YieldUntil = now + YieldSeconds;
                 link.LastLocalDriver = false;
@@ -118,6 +121,29 @@ namespace MscDuo.Sync
                 link.LastLocalDriver = false;
                 link.Sending = false;
             }
+        }
+
+        static bool Inside(CarLink link)
+        {
+            if (link.Owned) return CurrentVehicle.Current == link.Index;
+            if (player != null && player.IsChildOf(link.Root)) return true;
+            if (link.CurrentName == null) return false;
+            if (currentVehicle == null) currentVehicle = HutongGames.PlayMaker.FsmVariables.GlobalVariables.FindFsmString("PlayerCurrentVehicle");
+            if (currentVehicle == null || currentVehicle.Value != link.CurrentName || player == null) return false;
+            var mine = (link.Root.position - player.position).sqrMagnitude;
+            foreach (var other in links)
+                if (other != link && other.Ready && other.CurrentName == link.CurrentName && (other.Root.position - player.position).sqrMagnitude < mine)
+                    return false;
+            return true;
+        }
+
+        static string CurrentNameOf(string rootName)
+        {
+            if (rootName == null) return null;
+            var original = rootName.EndsWith(VehicleCloner.Suffix) ? rootName.Substring(0, rootName.Length - VehicleCloner.Suffix.Length) : rootName;
+            foreach (var spec in VehicleCloner.Specs)
+                if (spec.Root == original) return spec.Current;
+            return null;
         }
 
         internal static Dictionary<string, GameObject> FindRoots()
@@ -167,6 +193,9 @@ namespace MscDuo.Sync
             internal float LastArrival;
             internal float LastMoving = -100f;
             internal bool LastLocalDriver;
+            internal float LeftAt;
+            internal bool Ready;
+            internal readonly string CurrentName;
             internal uint LastSequence;
             internal bool Applying { get; private set; }
             internal bool Owned => RootName == null;
@@ -184,6 +213,7 @@ namespace MscDuo.Sync
                 Index = index;
                 Label = label;
                 RootName = rootName;
+                CurrentName = CurrentNameOf(rootName);
             }
 
             internal bool Resolve(float now)
@@ -199,7 +229,8 @@ namespace MscDuo.Sync
                     body = car != null ? car.GetComponent<Rigidbody>() : null;
                     drivetrain = car != null ? car.GetComponentInChildren<Drivetrain>() : null;
                 }
-                return body != null && car.activeInHierarchy;
+                Ready = body != null && car.activeInHierarchy;
+                return Ready;
             }
 
             internal CarStateMessage Capture(float now, bool driving) => new CarStateMessage
