@@ -18,6 +18,8 @@ namespace MscDuo.Net
 
     internal struct PlayerStateMessage
     {
+        internal const byte Player2Flag = 1;
+
         internal uint Sequence;
         internal float Time;
         internal Vector3 Position;

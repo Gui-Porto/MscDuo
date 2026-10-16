@@ -1,4 +1,5 @@
 using MscDuo.Net;
+using MscDuo.Player;
 using UnityEngine;
 
 namespace MscDuo.Sync
@@ -26,6 +27,7 @@ namespace MscDuo.Sync
                 Position = player.position,
                 Yaw = yaw,
                 Pitch = pitch,
+                Flags = PlayerContext.Active == 2 ? PlayerStateMessage.Player2Flag : (byte)0,
             };
         }
     }

@@ -90,6 +90,7 @@ namespace MscDuo.Sync
             var pitch = a.Pitch + Mathf.DeltaAngle(a.Pitch, b.Pitch) * Mathf.Clamp01(t);
 
             Position = position;
+            avatar.SetSkin((b.Flags & PlayerStateMessage.Player2Flag) != 0 ? 2 : 1);
             avatar.Apply(position + displayOffset, yaw, pitch);
         }
 
