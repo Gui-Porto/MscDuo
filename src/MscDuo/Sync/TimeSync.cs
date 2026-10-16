@@ -63,6 +63,29 @@ namespace MscDuo.Sync
 
         internal static void ForceSend() => nextSend = 0f;
 
+        internal static bool SetBlock(string block)
+        {
+            if (color == null || Array.IndexOf(Blocks, block) < 0) return false;
+            int hour;
+            if (int.TryParse(block.Substring(0, 2), out hour)) SetInt(color, "Time", hour);
+            SetFloat(color, "Minutes", 0f);
+            color.SendEvent(TimePrefix + block);
+            ForceSend();
+            return true;
+        }
+
+        internal static bool SetWeather(int type)
+        {
+            if (weather == null) return false;
+            SetInt(weather, "WeatherType", type);
+            if (Int(weather, "WeatherCloudID") <= 0) SetInt(weather, "WeatherCloudID", 1);
+            weather.SendEvent(WeatherEvent);
+            ForceSend();
+            return true;
+        }
+
+        internal static string CurrentBlock => color != null ? color.ActiveStateName : "";
+
         static void Write(BinaryWriter w)
         {
             w.Write(color.ActiveStateName ?? "");

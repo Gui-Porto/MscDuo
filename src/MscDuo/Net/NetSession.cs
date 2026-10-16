@@ -29,6 +29,16 @@ namespace MscDuo.Net
         internal ITransport Transport => transport;
         internal IEnumerable<PeerState> Peers => peers.Values;
         internal bool Connected => knownPeers.Count > 0;
+
+        internal Vector3? RemotePosition
+        {
+            get
+            {
+                foreach (var peer in peers.Values)
+                    if (peer.Player.Buffered > 0) return peer.Player.Position;
+                return null;
+            }
+        }
         internal int SentPerSecond { get; private set; }
         internal int ReceivedPerSecond { get; private set; }
         internal int BytesOutPerSecond { get; private set; }
