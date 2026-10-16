@@ -256,8 +256,8 @@ namespace MscDuo.Duplication
 
         static void LoadPose()
         {
-            Position = Original.transform.position + new Vector3(0f, 0f, 40f);
-            Yaw = 180f;
+            Position = new Vector3(-7.46f, 0.38f, 45.43f);
+            Yaw = 241.1472f;
             try
             {
                 if (!File.Exists(PosePath)) return;
