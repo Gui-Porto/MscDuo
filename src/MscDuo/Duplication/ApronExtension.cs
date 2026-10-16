@@ -67,7 +67,7 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: extensão do cimento criada (laje {apronY:0.00}, rua {roadLeft:0.00}/{roadRight:0.00}, material {(material != null ? material.name : "cinza")}), {cut} triângulos e {removed} objetos tirados do caminho, {lowered} pontos de terreno rebaixados.{extra}");
         }
 
-        static Vector3[] Corners(GameObject house)
+        internal static Vector3[] Corners(GameObject house)
         {
             var drawn = Matrix4x4.TRS(DrawnPosition, HouseCloner.RotationFor(DrawnYaw), Vector3.one);
             var now = Matrix4x4.TRS(house.transform.position, house.transform.rotation, Vector3.one);
@@ -375,7 +375,7 @@ namespace MscDuo.Duplication
             return surface.Raycast(new Ray(p, Vector3.down), out hit, 20f);
         }
 
-        static void Restore()
+        internal static void Restore()
         {
             if (slab != null) Object.DestroyImmediate(slab);
             slab = null;
