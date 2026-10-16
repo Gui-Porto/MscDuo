@@ -143,7 +143,9 @@ namespace MscDuo.Duplication
             var colors = new Color[vertices.Length];
             var found = new bool[vertices.Length];
             var pairs = new List<KeyValuePair<Vector3, Vector2>>();
-            var votes = new Dictionary<Renderer, int>();
+            var votes = new Dictionary<Material, int>();
+            var owners = new Dictionary<Material, Renderer>();
+            var starts = new Dictionary<MeshCollider, int[]>();
             var hasColors = false;
             var cache = new Dictionary<MeshCollider, KeyValuePair<Color[], int[]>>();
             for (int i = 0; i < vertices.Length; i++)
@@ -160,7 +162,12 @@ namespace MscDuo.Duplication
                     found[i] = true;
                     pairs.Add(new KeyValuePair<Vector3, Vector2>(w, hit.textureCoord));
                     var renderer = go.GetComponent<Renderer>();
-                    if (renderer != null) votes[renderer] = (votes.TryGetValue(renderer, out var n) ? n : 0) + 1;
+                    var material = renderer != null ? MaterialAt(renderer, collider, hit.triangleIndex, starts) : null;
+                    if (material != null)
+                    {
+                        votes[material] = (votes.TryGetValue(material, out var n) ? n : 0) + 1;
+                        owners[material] = renderer;
+                    }
                     KeyValuePair<Color[], int[]> data;
                     if (!cache.TryGetValue(collider, out data))
                         cache[collider] = data = new KeyValuePair<Color[], int[]>(collider.sharedMesh.colors, collider.sharedMesh.triangles);
@@ -186,10 +193,11 @@ namespace MscDuo.Duplication
             mesh.uv = uv;
             if (hasColors) mesh.colors = colors;
 
-            Renderer best = null;
+            Material chosen = null;
             var most = 0;
             foreach (var pair in votes)
-                if (pair.Value > most) { most = pair.Value; best = pair.Key; }
+                if (pair.Value > most) { most = pair.Value; chosen = pair.Key; }
+            var best = chosen != null ? owners[chosen] : null;
 
             fill = new GameObject("ApronFill_P2");
             fill.transform.parent = house.transform.parent;
@@ -197,7 +205,7 @@ namespace MscDuo.Duplication
             fill.transform.rotation = Quaternion.LookRotation(frame.GetColumn(2), frame.GetColumn(1));
             fill.AddComponent<MeshFilter>().sharedMesh = mesh;
             var meshRenderer = fill.AddComponent<MeshRenderer>();
-            meshRenderer.sharedMaterials = best != null ? best.sharedMaterials : new[] { Concrete(house) };
+            meshRenderer.sharedMaterial = chosen ?? Concrete(house);
             var fillCollider = fill.AddComponent<MeshCollider>();
             fillCollider.sharedMesh = mesh;
             if (best != null)
@@ -207,7 +215,24 @@ namespace MscDuo.Duplication
                 var terrainCollider = best.GetComponent<Collider>();
                 if (terrainCollider != null) fillCollider.sharedMaterial = terrainCollider.sharedMaterial;
             }
-            return $"aterro com {vertices.Length} pontos ({pairs.Count} alinhados à grama de {(best != null ? best.name : "nenhum terreno")})";
+            return $"aterro com {vertices.Length} pontos ({pairs.Count} alinhados à grama de {(best != null ? best.name : "nenhum terreno")}, material {(chosen != null ? chosen.name : "nenhum")} de {(best != null ? best.sharedMaterials.Length : 0)})";
+        }
+
+        static Material MaterialAt(Renderer renderer, MeshCollider collider, int triangle, Dictionary<MeshCollider, int[]> starts)
+        {
+            var materials = renderer.sharedMaterials;
+            if (materials.Length <= 1 || triangle < 0) return renderer.sharedMaterial;
+            int[] first;
+            if (!starts.TryGetValue(collider, out first))
+            {
+                var mesh = collider.sharedMesh;
+                first = new int[mesh.subMeshCount + 1];
+                for (int s = 0; s < mesh.subMeshCount; s++) first[s + 1] = first[s] + mesh.GetTriangles(s).Length / 3;
+                starts[collider] = first;
+            }
+            for (int s = 0; s + 1 < first.Length; s++)
+                if (triangle < first[s + 1]) return materials[Mathf.Min(s, materials.Length - 1)];
+            return renderer.sharedMaterial;
         }
 
         static Color Nearest(Vector3[] vertices, bool[] found, Color[] colors, int i)
