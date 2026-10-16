@@ -1,5 +1,6 @@
 import os
 
+import bmesh
 import bpy
 import math
 
@@ -8,6 +9,12 @@ from mathutils.bvhtree import BVHTree
 
 RELEVO = os.path.join(os.path.expanduser("~"), "Documents", "MySummerCar", "Mods", "Config", "Mod Settings", "MscDuo", "dumps", "relevo.obj")
 THICKNESS = 0.25
+PLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extensao.obj")
+UNDER_SLAB = 0.6
+EXTRA_ROAD = 0.2
+SINK = 0.003
+SKIRT = 0.5
+CRACK = [(-1.5, -8.6), (-2.6, -8.6), (-4.0, -9.2), (-4.35, -9.9), (-4.3, -11.0)]
 HIDDEN = ("YARD/", "JONNEZ")
 LONGEST = 15.0
 
@@ -121,6 +128,60 @@ def prism(col, outline, tops):
 LOG = os.path.join(os.path.dirname(RELEVO), "blender_log.txt")
 
 
+def outline(corners):
+    c = [Vector(p[:2]) for p in corners]
+    inward = (c[0] + c[1] - c[2] - c[3]).normalized()
+    return [
+        c[2] - inward * EXTRA_ROAD,
+        c[3] - inward * EXTRA_ROAD,
+        c[1] + inward * UNDER_SLAB,
+        c[0] + inward * UNDER_SLAB,
+    ] + [Vector(p) for p in CRACK]
+
+
+def plate(col, corners, top):
+    ring = outline(corners)
+    if area(ring) < 0:
+        ring.reverse()
+    n = len(ring)
+    normals = []
+    for i in range(n):
+        a, b = ring[i - 1], ring[i]
+        d = (b - a).normalized()
+        normals.append(Vector((d.y, -d.x)))
+    corner = [(normals[i] + normals[(i + 1) % n]).normalized() for i in range(n)]
+    bm = bmesh.new()
+    upper = [bm.verts.new((p.x, p.y, top)) for p in ring]
+    lower = [bm.verts.new((p.x + o.x * SKIRT, p.y + o.y * SKIRT, top - SKIRT)) for p, o in zip(ring, corner)]
+    face = bm.faces.new(upper)
+    bmesh.ops.triangulate(bm, faces=[face])
+    for i in range(n):
+        j = (i + 1) % n
+        bm.faces.new((upper[i], lower[i], lower[j], upper[j]))
+    bm.normal_update()
+    mesh = bpy.data.meshes.new("Extensao")
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new("Extensao", mesh)
+    obj.data.materials.append(material("extensao"))
+    col.objects.link(obj)
+    write_obj(obj, PLATE)
+    return obj
+
+
+def area(ring):
+    return sum(ring[i - 1].x * ring[i].y - ring[i].x * ring[i - 1].y for i in range(len(ring))) / 2
+
+
+def write_obj(obj, path):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("# MSC Duo extensao: eixos do Blender, coordenadas da casa 2\n")
+        for v in obj.data.vertices:
+            f.write("v %.4f %.4f %.4f\n" % tuple(v.co))
+        for p in obj.data.polygons:
+            f.write("f " + " ".join(str(i + 1) for i in p.vertices) + "\n")
+
+
 def main():
     cube = bpy.data.objects.get("Cube")
     if cube is not None:
@@ -147,7 +208,7 @@ def main():
                 h = height(slab_side if i < 2 else road_side, p.x, p.y, c[2] + (0.3 if i < 2 else 5.0))
                 tops.append(h if h is not None else c[2])
             print("[MSC Duo] alturas da extensao:", [round(t, 3) for t in tops])
-            prism(col, [corners[0], corners[1], corners[3], corners[2]], [tops[0], tops[1], tops[3], tops[2]])
+            plate(col, corners, min(tops[0], tops[1]) - SINK)
         print("[MSC Duo] relevo:", {k: len(v) for k, v in groups.items()})
     else:
         print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)
