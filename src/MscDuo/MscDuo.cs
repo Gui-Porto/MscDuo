@@ -19,6 +19,7 @@ namespace MscDuo
         internal static MscDuo Instance { get; private set; }
 
         SettingsKeybind dumpKey;
+        internal SettingsKeybind WakeKey { get; private set; }
 
         public override void ModSetup()
         {
@@ -33,6 +34,7 @@ namespace MscDuo
         void ModSettings()
         {
             dumpKey = Keybind.Add("dump", "Exportar YARD, Satsuma e globais", KeyCode.F8);
+            WakeKey = Keybind.Add("wake", "Levantar da cama enquanto espera o outro jogador", KeyCode.F);
         }
 
         void OnGameLoad()
@@ -48,12 +50,14 @@ namespace MscDuo
             HouseCloner.Spawn();
             PlayerContext.Init();
             Sync.ItemRegistry.Build();
+            Sync.SleepSync.Patch();
         }
 
         void OnGui()
         {
             NetHud.Draw();
             PlayerHud.Draw();
+            Sync.SleepSync.Draw();
         }
 
         void OnUpdate()
@@ -68,6 +72,7 @@ namespace MscDuo
                 NetSession.Stop();
             }
             PlayerContext.Tick();
+            if (NetSession.Current == null) Sync.SleepSync.Tick(Time.realtimeSinceStartup, false, null);
             if (dumpKey != null && dumpKey.GetKeybindDown())
                 SceneDumper.DumpDefault();
         }

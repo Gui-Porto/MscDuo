@@ -13,11 +13,12 @@ namespace MscDuo.Net
         ItemState = 12,
         ItemRest = 13,
         ItemsInfo = 14,
+        SleepState = 15,
     }
 
     internal static class Protocol
     {
-        internal const ushort Version = 4;
+        internal const ushort Version = 5;
     }
 
     internal struct PlayerStateMessage

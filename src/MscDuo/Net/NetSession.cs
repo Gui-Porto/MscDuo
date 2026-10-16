@@ -55,6 +55,7 @@ namespace MscDuo.Net
             if (!Current.transport.IsHost) PlayerContext.SaveActive();
             CarSync.Reset();
             ItemSync.Reset();
+            SleepSync.Reset();
             ItemSync.Enabled = false;
             ItemRegistry.Finalized -= Current.SendItemsInfo;
             foreach (var peer in Current.peers.Values) peer.Player.Dispose();
@@ -76,6 +77,7 @@ namespace MscDuo.Net
                 SendPlayerState(now);
             }
             TickCars(now, sendDue);
+            SleepSync.Tick(now, Connected, waiting => Broadcast(MessageType.SleepState, w => w.Write(waiting), Channel.Reliable));
             if (now >= nextPing)
             {
                 nextPing = now + PingInterval;
@@ -216,6 +218,9 @@ namespace MscDuo.Net
                         break;
                     case MessageType.ItemRest:
                         ItemSync.ReceiveRest(ItemStateMessage.Read(reader));
+                        break;
+                    case MessageType.SleepState:
+                        SleepSync.Receive(reader.ReadBoolean());
                         break;
                     case MessageType.CarState:
                         CarSync.Receive(CarStateMessage.Read(reader), now);
