@@ -43,6 +43,7 @@ namespace MscDuo.Sync
             Final = false;
             Forget();
             var excluded = new List<Transform>();
+            foreach (var vehicle in CarSync.FindRoots().Values) excluded.Add(vehicle.transform);
             var player = GameObject.Find("PLAYER");
             if (player != null) excluded.Add(player.transform);
             Add(Object.FindObjectsOfType<Rigidbody>(), excluded);

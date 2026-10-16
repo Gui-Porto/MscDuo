@@ -12,25 +12,66 @@ namespace MscDuo.Sync
         const float DriverTimeout = 0.5f;
         const float StateTimeout = 1f;
         const float MaxExtrapolation = 0.25f;
+        const float MoveThreshold = 0.1f;
+        const float SettleSeconds = 2f;
+        const float RootScanInterval = 10f;
+        const float YieldSeconds = 1f;
         const int MaxSnapshots = 32;
 
-        static readonly CarLink[] links = { new CarLink(1), new CarLink(2) };
+        internal static readonly string[] Vehicles =
+        {
+            "JONNEZ ES(Clone)", "HAYOSIKO(1500kg, 250)", "GIFU(750/450psi)", "KEKMET(350-400psi)", "FERNDALE(1630kg)",
+            "RCO_RUSCKO12(270)", "FLATBED", "BOAT", "COMBINE(350-400psi)",
+        };
+
+        static readonly List<CarLink> links = new List<CarLink>();
+        static readonly Dictionary<string, GameObject> roots = new Dictionary<string, GameObject>();
+        static float nextRootScan;
+        static Transform player;
 
         internal static IEnumerable<CarLink> Links => links;
 
-        internal static void Tick(float now, float remoteNow, float delay, bool sendDue, Action<CarStateMessage> broadcast)
+        static CarSync()
         {
+            links.Add(new CarLink(1, "Satsuma 1", null));
+            links.Add(new CarLink(2, "Satsuma 2", null));
+            for (int i = 0; i < Vehicles.Length; i++) links.Add(new CarLink(3 + i, Short(Vehicles[i]), Vehicles[i]));
+        }
+
+        internal static void Tick(float now, float remoteNow, float delay, Vector3? remotePlayer, bool isHost, bool sendDue, Action<CarStateMessage> broadcast)
+        {
+            if (player == null)
+            {
+                var go = GameObject.Find("PLAYER");
+                if (go != null) player = go.transform;
+            }
             foreach (var link in links)
             {
-                if (!link.Resolve()) continue;
-                var driving = CurrentVehicle.Current == link.Index;
+                if (!link.Resolve(now)) continue;
+                var inside = link.Owned ? CurrentVehicle.Current == link.Index : player != null && player.IsChildOf(link.Root);
                 var peerDriving = now < link.PeerDrivingUntil;
-                link.Sending = driving || (link.Index == PlayerContext.Active && !peerDriving);
+                if (inside) link.LastLocalDriver = true;
+                if (peerDriving) link.LastLocalDriver = false;
+
+                if (link.Owned)
+                    link.Sending = inside || (link.Index == PlayerContext.Active && !peerDriving);
+                else
+                {
+                    var moving = link.Moving;
+                    if (moving) link.LastMoving = now;
+                    var settling = now - link.LastMoving < SettleSeconds;
+                    var nearer = player != null && (!remotePlayer.HasValue ||
+                        (player.position - link.Root.position).sqrMagnitude < (remotePlayer.Value - link.Root.position).sqrMagnitude);
+                    var receiving = link.Snapshots.Count > 0 && now - link.LastArrival < StateTimeout;
+                    link.Sending = inside || (!peerDriving && now >= link.YieldUntil &&
+                        (link.LastLocalDriver && settling || moving && nearer && !receiving));
+                    if (!link.Sending && !settling) link.LastLocalDriver = false;
+                }
 
                 if (link.Sending)
                 {
                     link.Release();
-                    if (sendDue) broadcast(link.Capture(now, driving));
+                    if (sendDue) broadcast(link.Capture(now, inside));
                 }
                 else if (link.Snapshots.Count > 0 && now - link.LastArrival < StateTimeout)
                     link.Apply(remoteNow - delay);
@@ -39,12 +80,20 @@ namespace MscDuo.Sync
             }
         }
 
-        internal static void Receive(CarStateMessage state, float now)
+        internal static void Receive(CarStateMessage state, float now, bool isHost)
         {
-            if (state.Car < 1 || state.Car > links.Length) return;
-            var link = links[state.Car - 1];
+            var link = Find(state.Car);
+            if (link == null) return;
             if (state.Driving) link.PeerDrivingUntil = now + DriverTimeout;
-            if (link.Sending || state.Sequence <= link.LastSequence) return;
+            if (link.Sending)
+            {
+                var inside = link.Owned ? CurrentVehicle.Current == link.Index : player != null && link.Root != null && player.IsChildOf(link.Root);
+                if (link.Owned || inside || (!state.Driving && isHost)) return;
+                link.YieldUntil = now + YieldSeconds;
+                link.LastLocalDriver = false;
+                link.Sending = false;
+            }
+            if (state.Sequence <= link.LastSequence) return;
             link.LastSequence = state.Sequence;
             link.LastArrival = now;
             link.Snapshots.Add(state);
@@ -58,37 +107,89 @@ namespace MscDuo.Sync
                 link.Release();
                 link.LastSequence = 0;
                 link.PeerDrivingUntil = 0f;
+                link.YieldUntil = 0f;
+                link.LastLocalDriver = false;
                 link.Sending = false;
             }
+        }
+
+        internal static Dictionary<string, GameObject> FindRoots()
+        {
+            var found = new Dictionary<string, GameObject>();
+            foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+                if (t.parent == null && t.hideFlags == HideFlags.None && Array.IndexOf(Vehicles, t.name) >= 0 && !found.ContainsKey(t.name))
+                    found[t.name] = t.gameObject;
+            return found;
+        }
+
+        static GameObject RootOf(string name, float now)
+        {
+            GameObject go;
+            if (roots.TryGetValue(name, out go) && go != null) return go;
+            if (now < nextRootScan) return null;
+            nextRootScan = now + RootScanInterval;
+            roots.Clear();
+            foreach (var pair in FindRoots()) roots[pair.Key] = pair.Value;
+            return roots.TryGetValue(name, out go) ? go : null;
+        }
+
+        static CarLink Find(byte index)
+        {
+            foreach (var link in links)
+                if (link.Index == index) return link;
+            return null;
+        }
+
+        static string Short(string name)
+        {
+            var cut = name.IndexOf('(');
+            var text = cut > 0 ? name.Substring(0, cut) : name;
+            return text.Trim().ToLowerInvariant();
         }
 
         internal class CarLink
         {
             internal readonly int Index;
+            internal readonly string Label;
+            internal readonly string RootName;
             internal readonly List<CarStateMessage> Snapshots = new List<CarStateMessage>();
             internal bool Sending;
             internal float PeerDrivingUntil;
+            internal float YieldUntil;
             internal float LastArrival;
+            internal float LastMoving = -100f;
+            internal bool LastLocalDriver;
             internal uint LastSequence;
             internal bool Applying { get; private set; }
+            internal bool Owned => RootName == null;
+            internal Transform Root => car != null ? car.transform : null;
+            internal bool Moving => body != null && (body.velocity.sqrMagnitude > MoveThreshold * MoveThreshold || body.angularVelocity.sqrMagnitude > MoveThreshold);
             GameObject car;
             Rigidbody body;
+            Drivetrain drivetrain;
             bool wasKinematic;
+            bool drivetrainWasEnabled;
             uint sequence;
 
-            internal CarLink(int index)
+            internal CarLink(int index, string label, string rootName)
             {
                 Index = index;
+                Label = label;
+                RootName = rootName;
             }
 
-            internal bool Resolve()
+            internal bool Resolve(float now)
             {
-                var current = Index == 1 ? SatsumaCloner.Original : SatsumaCloner.Clone;
+                GameObject current;
+                if (Owned) current = Index == 1 ? SatsumaCloner.Original : SatsumaCloner.Clone;
+                else if (car != null) current = car;
+                else current = RootOf(RootName, now);
                 if (current != car)
                 {
                     Release();
                     car = current;
                     body = car != null ? car.GetComponent<Rigidbody>() : null;
+                    drivetrain = car != null ? car.GetComponentInChildren<Drivetrain>() : null;
                 }
                 return body != null && car.activeInHierarchy;
             }
@@ -103,6 +204,8 @@ namespace MscDuo.Sync
                 Velocity = body.velocity,
                 AngularVelocity = body.angularVelocity,
                 Driving = driving,
+                Rpm = drivetrain != null && drivetrain.enabled ? drivetrain.rpm : 0f,
+                Throttle = drivetrain != null && drivetrain.enabled ? drivetrain.throttle : 0f,
             };
 
             internal void Apply(float renderTime)
@@ -111,6 +214,11 @@ namespace MscDuo.Sync
                 {
                     wasKinematic = body.isKinematic;
                     body.isKinematic = true;
+                    if (drivetrain != null)
+                    {
+                        drivetrainWasEnabled = drivetrain.enabled;
+                        drivetrain.enabled = false;
+                    }
                     Applying = true;
                 }
 
@@ -119,9 +227,10 @@ namespace MscDuo.Sync
                 while (i > 0 && Snapshots[i - 1].Time > renderTime) i--;
                 Vector3 position;
                 Quaternion rotation;
-                if (renderTime >= Snapshots[Snapshots.Count - 1].Time)
+                var latest = Snapshots[Snapshots.Count - 1];
+                if (renderTime >= latest.Time)
                 {
-                    b = Snapshots[Snapshots.Count - 1];
+                    b = latest;
                     var ahead = Mathf.Min(renderTime - b.Time, MaxExtrapolation);
                     position = b.Position + b.Velocity * ahead;
                     var spin = b.AngularVelocity.magnitude;
@@ -143,6 +252,11 @@ namespace MscDuo.Sync
 
                 car.transform.position = position;
                 car.transform.rotation = rotation;
+                if (drivetrain != null)
+                {
+                    drivetrain.rpm = latest.Rpm;
+                    drivetrain.throttle = latest.Throttle;
+                }
             }
 
             internal void Release()
@@ -156,6 +270,7 @@ namespace MscDuo.Sync
                         body.velocity = last.Velocity;
                         body.angularVelocity = last.AngularVelocity;
                     }
+                    if (drivetrain != null) drivetrain.enabled = drivetrainWasEnabled;
                 }
                 Applying = false;
                 Snapshots.Clear();

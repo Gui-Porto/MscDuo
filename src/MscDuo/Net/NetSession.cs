@@ -154,9 +154,9 @@ namespace MscDuo.Net
             foreach (var p in peers.Values) { peer = p; break; }
             var remoteNow = peer != null ? now + peer.ClockOffset : now;
             var delay = peer != null ? peer.Player.InterpolationDelay : 0.1f;
-            CarSync.Tick(now, remoteNow, delay, sendDue && Connected, state => Broadcast(MessageType.CarState, state.Write, Channel.Unreliable));
             Vector3? remotePlayer = null;
             if (peer != null && peer.Player.Buffered > 0) remotePlayer = peer.Player.Position;
+            CarSync.Tick(now, remoteNow, delay, remotePlayer, transport.IsHost, sendDue && Connected, state => Broadcast(MessageType.CarState, state.Write, Channel.Unreliable));
             ItemSync.Tick(now, remoteNow, delay, remotePlayer, sendDue && Connected,
                 state => Broadcast(MessageType.ItemState, state.Write, Channel.Unreliable),
                 state => Broadcast(MessageType.ItemRest, state.Write, Channel.Reliable));
@@ -263,7 +263,7 @@ namespace MscDuo.Net
                         SleepSync.Receive(reader.ReadBoolean());
                         break;
                     case MessageType.CarState:
-                        CarSync.Receive(CarStateMessage.Read(reader), now);
+                        CarSync.Receive(CarStateMessage.Read(reader), now, transport.IsHost);
                         break;
                 }
             }
