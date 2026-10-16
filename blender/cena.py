@@ -116,32 +116,47 @@ def prism(col, outline, tops):
     add_mesh(col, "Extensao", verts, faces, "extensao")
 
 
-cube = bpy.data.objects.get("Cube")
-if cube is not None:
-    bpy.data.objects.remove(cube, do_unlink=True)
+LOG = os.path.join(os.path.dirname(RELEVO), "blender_log.txt")
 
-col = collection()
-if os.path.exists(RELEVO):
-    verts, corners, groups = read_relevo(RELEVO)
-    objects = {}
-    for name, faces in groups.items():
-        if faces:
-            objects[name] = add_group(col, name, verts, faces)
-            objects[name].hide_set(name in REFERENCE)
-            objects[name].hide_render = name in REFERENCE
-    if len(corners) == 4:
-        trees = {k: bvh(v) for k, v in objects.items()}
-        slab_side = [trees[k] for k in ("casa2",) if k in trees]
-        road_side = [trees[k] for k in ("chao_estrada", "estrada", "chao_terreno", "terreno") if k in trees]
-        inward = Vector(corners[0][:2]) + Vector(corners[1][:2]) - Vector(corners[2][:2]) - Vector(corners[3][:2])
-        inward.normalize()
-        tops = []
-        for i, c in enumerate(corners):
-            p = Vector(c[:2]) + inward * (0.3 if i < 2 else -0.3)
-            h = height(slab_side if i < 2 else road_side, p.x, p.y, c[2] + (0.3 if i < 2 else 5.0))
-            tops.append(h if h is not None else c[2])
-        print("[MSC Duo] alturas da extensao:", [round(t, 3) for t in tops])
-        prism(col, [corners[0], corners[1], corners[3], corners[2]], [tops[0], tops[1], tops[3], tops[2]])
-    print("[MSC Duo] relevo:", {k: len(v) for k, v in groups.items()})
-else:
-    print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)
+
+def main():
+    cube = bpy.data.objects.get("Cube")
+    if cube is not None:
+        bpy.data.objects.remove(cube, do_unlink=True)
+
+    col = collection()
+    if os.path.exists(RELEVO):
+        verts, corners, groups = read_relevo(RELEVO)
+        objects = {}
+        for name, faces in groups.items():
+            if faces:
+                objects[name] = add_group(col, name, verts, faces)
+                objects[name].hide_set(name in REFERENCE)
+                objects[name].hide_render = name in REFERENCE
+        if len(corners) == 4:
+            trees = {k: bvh(v) for k, v in objects.items()}
+            slab_side = [trees[k] for k in ("casa2",) if k in trees]
+            road_side = [trees[k] for k in ("chao_estrada", "estrada", "chao_terreno", "terreno") if k in trees]
+            inward = Vector(corners[0][:2]) + Vector(corners[1][:2]) - Vector(corners[2][:2]) - Vector(corners[3][:2])
+            inward.normalize()
+            tops = []
+            for i, c in enumerate(corners):
+                p = Vector(c[:2]) + inward * (0.3 if i < 2 else -0.3)
+                h = height(slab_side if i < 2 else road_side, p.x, p.y, c[2] + (0.3 if i < 2 else 5.0))
+                tops.append(h if h is not None else c[2])
+            print("[MSC Duo] alturas da extensao:", [round(t, 3) for t in tops])
+            prism(col, [corners[0], corners[1], corners[3], corners[2]], [tops[0], tops[1], tops[3], tops[2]])
+        print("[MSC Duo] relevo:", {k: len(v) for k, v in groups.items()})
+    else:
+        print("[MSC Duo] relevo.obj ainda não existe:", RELEVO)
+
+
+try:
+    main()
+    with open(LOG, "a", encoding="utf-8") as log:
+        log.write("ok\n")
+except Exception:
+    import traceback
+    with open(LOG, "a", encoding="utf-8") as log:
+        log.write(traceback.format_exc())
+    raise
