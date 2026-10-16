@@ -411,6 +411,7 @@ namespace MscDuo.Duplication
         }
 
         static Material concrete;
+        internal static MeshRenderer ConcreteRenderer { get; private set; }
         static Vector3[] uvMap;
 
         static Vector3[] FitUv(List<KeyValuePair<Vector3, Vector2>> pairs)
@@ -505,6 +506,7 @@ namespace MscDuo.Duplication
             uvMap = FitUv(bestPairs);
             if (uvMap == null) return null;
             concrete = source;
+            ConcreteRenderer = bestRenderer;
             return concrete;
         }
 

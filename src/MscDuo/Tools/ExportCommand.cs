@@ -37,6 +37,7 @@ namespace MscDuo.Tools
             {
                 ApronExtension.Apply(house);
             }
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> {ExportSlab(house, folder)}");
         }
 
         static string Export(GameObject house, float half, string file)
@@ -179,6 +180,47 @@ namespace MscDuo.Tools
                 offset += index.Count;
             }
             return found;
+        }
+
+        static string ExportSlab(GameObject house, string folder)
+        {
+            var renderer = ApronExtension.ConcreteRenderer;
+            if (renderer == null) return "laje: material do cimento não encontrado.";
+            var material = renderer.sharedMaterial;
+            var filter = renderer.GetComponent<MeshFilter>();
+            var mesh = filter != null ? filter.sharedMesh : null;
+            if (mesh == null) return "laje: malha não encontrada.";
+
+            var toLocal = Frame(house).inverse * renderer.transform.localToWorldMatrix;
+            var vertices = mesh.vertices;
+            var uv = mesh.uv;
+            var triangles = mesh.triangles;
+            var text = new StringBuilder();
+            text.AppendLine($"# laje {Path(renderer.transform)} material {material.name} shader {material.shader.name} escala {F(material.mainTextureScale.x)} {F(material.mainTextureScale.y)} deslocamento {F(material.mainTextureOffset.x)} {F(material.mainTextureOffset.y)}");
+            text.AppendLine("# eixos 2");
+            foreach (var v in vertices) text.AppendLine("v " + Point(toLocal.MultiplyPoint3x4(v)));
+            foreach (var t in uv) text.AppendLine($"vt {F(t.x)} {F(t.y)}");
+            for (int f = 0; f < triangles.Length; f += 3)
+            {
+                int a = triangles[f] + 1, b = triangles[f + 1] + 1, c = triangles[f + 2] + 1;
+                text.AppendLine($"f {a}/{a} {c}/{c} {b}/{b}");
+            }
+            File.WriteAllText(System.IO.Path.Combine(folder, "laje.obj"), text.ToString());
+
+            var texture = material.mainTexture;
+            if (texture == null) return "laje exportada sem textura.";
+            var target = RenderTexture.GetTemporary(texture.width, texture.height, 0, RenderTextureFormat.ARGB32);
+            var previous = RenderTexture.active;
+            Graphics.Blit(texture, target);
+            RenderTexture.active = target;
+            var copy = new Texture2D(texture.width, texture.height, TextureFormat.ARGB32, false);
+            copy.ReadPixels(new Rect(0, 0, texture.width, texture.height), 0, 0);
+            copy.Apply();
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            File.WriteAllBytes(System.IO.Path.Combine(folder, "laje.png"), copy.EncodeToPNG());
+            Object.Destroy(copy);
+            return $"laje exportada: {renderer.name}, material {material.name}, textura {texture.name} {texture.width}x{texture.height} (laje.obj, laje.png).";
         }
 
         internal static Matrix4x4 Frame(GameObject house)
