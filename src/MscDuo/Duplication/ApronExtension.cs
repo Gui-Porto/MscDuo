@@ -206,7 +206,7 @@ namespace MscDuo.Duplication
             else { t.Add(a); t.Add(c); t.Add(b); }
         }
 
-        static bool Inside(Vector3[] c, Vector3 p, float margin)
+        internal static bool Inside(Vector3[] c, Vector3 p, float margin)
         {
             var poly = new[] { c[0], c[1], c[3], c[2] };
             var center = (c[0] + c[1] + c[2] + c[3]) / 4f;

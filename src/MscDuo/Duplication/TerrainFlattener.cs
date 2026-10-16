@@ -17,6 +17,12 @@ namespace MscDuo.Duplication
         const float FlatMargin = 3f;
         const float BlendWidth = 12f;
 
+        const string RoadPath = "MAP/MESH/TERRAIN_OBJ/Road";
+        const string TerrainRoot = "MAP/MESH/TERRAIN_OBJ";
+        const float RoadClear = 0.5f;
+        const float HedgeSink = 0.05f;
+
+        static readonly Dictionary<Transform, Vector3> hedgeOrigins = new Dictionary<Transform, Vector3>();
         static readonly Dictionary<MeshFilter, Mesh> originalMeshes = new Dictionary<MeshFilter, Mesh>();
         static readonly Dictionary<MeshCollider, Mesh> originalColliders = new Dictionary<MeshCollider, Mesh>();
 
@@ -94,11 +100,103 @@ namespace MscDuo.Duplication
                 meshes++;
             }
 
+            var roadCut = CutRoad(house, toHouse, local);
+            var hedges = SettleHedges(house);
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra: {roadCut} triângulos tirados de dentro da casa e da extensão; cerca viva: {hedges} pedaços assentados no chão.");
             ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} pedaços abertos ({uncut} mantidos).");
+        }
+
+        static int CutRoad(GameObject house, Matrix4x4 toHouse, Bounds local)
+        {
+            var go = GameObject.Find(RoadPath);
+            var filter = go != null ? go.GetComponent<MeshFilter>() : null;
+            if (filter == null || filter.sharedMesh == null) return 0;
+            var source = filter.sharedMesh;
+            Vector3[] vertices;
+            try { vertices = source.vertices; }
+            catch { ModConsole.Warning("[MSC Duo] estradinha de terra sem leitura"); return 0; }
+
+            var corners = ApronExtension.Corners(house);
+            var toWorld = go.transform.localToWorldMatrix;
+            var removed = 0;
+            var triangles = new int[source.subMeshCount][];
+            for (int s = 0; s < triangles.Length; s++)
+            {
+                var all = source.GetTriangles(s);
+                var kept = new List<int>(all.Length);
+                for (int t = 0; t < all.Length; t += 3)
+                {
+                    var center = toWorld.MultiplyPoint3x4((vertices[all[t]] + vertices[all[t + 1]] + vertices[all[t + 2]]) / 3f);
+                    var h = toHouse.MultiplyPoint3x4(center);
+                    var inHouse = h.x > local.min.x - RoadClear && h.x < local.max.x + RoadClear && h.z > local.min.z - RoadClear && h.z < local.max.z + RoadClear;
+                    if (inHouse || ApronExtension.Inside(corners, center, 0.6f)) { removed++; continue; }
+                    kept.Add(all[t]); kept.Add(all[t + 1]); kept.Add(all[t + 2]);
+                }
+                triangles[s] = kept.ToArray();
+            }
+            if (removed == 0) return 0;
+
+            var mesh = Object.Instantiate(source);
+            mesh.name = source.name + "_cut";
+            for (int s = 0; s < triangles.Length; s++) mesh.SetTriangles(triangles[s], s);
+            originalMeshes[filter] = source;
+            filter.sharedMesh = mesh;
+            var collider = go.GetComponent<MeshCollider>();
+            if (collider != null && collider.sharedMesh == source)
+            {
+                originalColliders[collider] = source;
+                collider.sharedMesh = null;
+                collider.sharedMesh = mesh;
+            }
+            return removed;
+        }
+
+        static int SettleHedges(GameObject house)
+        {
+            var fence = FindDeep(house.transform, "HedgeFence");
+            var terrain = GameObject.Find(TerrainRoot);
+            if (fence == null || terrain == null) return 0;
+            var moved = 0;
+            foreach (Transform hedge in fence)
+            {
+                var renderers = hedge.GetComponentsInChildren<Renderer>();
+                if (renderers.Length == 0) continue;
+                var b = renderers[0].bounds;
+                foreach (var r in renderers) b.Encapsulate(r.bounds);
+                var ground = float.MaxValue;
+                for (int i = 0; i < 3; i++)
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var x = Mathf.Lerp(b.min.x, b.max.x, 0.2f + 0.3f * i);
+                        var z = Mathf.Lerp(b.min.z, b.max.z, 0.2f + 0.3f * k);
+                        foreach (var hit in Physics.RaycastAll(new Vector3(x, b.max.y + 2f, z), Vector3.down, b.size.y + 6f))
+                            if (hit.collider.transform.IsChildOf(terrain.transform) && hit.point.y < ground) ground = hit.point.y;
+                    }
+                if (ground == float.MaxValue) continue;
+                var drop = b.min.y - ground + HedgeSink;
+                if (drop <= 0.01f) continue;
+                hedgeOrigins[hedge] = hedge.position;
+                hedge.position -= Vector3.up * drop;
+                moved++;
+            }
+            return moved;
+        }
+
+        static Transform FindDeep(Transform t, string name)
+        {
+            if (t.name == name) return t;
+            foreach (Transform child in t)
+            {
+                var found = FindDeep(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         static void Restore()
         {
+            foreach (var pair in hedgeOrigins) if (pair.Key != null) pair.Key.position = pair.Value;
+            hedgeOrigins.Clear();
             foreach (var pair in originalMeshes) if (pair.Key != null) pair.Key.sharedMesh = pair.Value;
             foreach (var pair in originalColliders)
             {
