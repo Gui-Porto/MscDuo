@@ -7,6 +7,7 @@ from mathutils.bvhtree import BVHTree
 RELEVO = os.path.join(os.path.expanduser("~"), "Documents", "MySummerCar", "Mods", "Config", "Mod Settings", "MscDuo", "dumps", "relevo.obj")
 THICKNESS = 0.25
 HIDDEN = ("YARD/", "JONNEZ")
+LONGEST = 15.0
 
 COLORS = {
     "terreno": (0.33, 0.45, 0.25, 1.0),
@@ -79,7 +80,13 @@ def read_relevo(path):
     return verts, corners, groups
 
 
+def compact(verts, face):
+    pts = [verts[i] for i in face]
+    return all(sum((p[k] - q[k]) ** 2 for k in range(3)) < LONGEST ** 2 for p in pts for q in pts)
+
+
 def add_group(col, name, verts, faces):
+    faces = [f for f in faces if compact(verts, f)]
     remap, local = {}, []
     for face in faces:
         for i in face:
