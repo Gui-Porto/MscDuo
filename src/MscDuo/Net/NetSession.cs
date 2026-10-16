@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using MSCLoader;
+using MscDuo.Player;
 using MscDuo.Sync;
 using UnityEngine;
 
@@ -25,6 +26,7 @@ namespace MscDuo.Net
 
         internal ITransport Transport => transport;
         internal IEnumerable<PeerState> Peers => peers.Values;
+        internal bool Connected => knownPeers.Count > 0;
         internal int SentPerSecond { get; private set; }
         internal int ReceivedPerSecond { get; private set; }
         internal int BytesOutPerSecond { get; private set; }
@@ -47,6 +49,7 @@ namespace MscDuo.Net
         internal static void Stop()
         {
             if (Current == null) return;
+            if (!Current.transport.IsHost) PlayerContext.SaveActive();
             foreach (var peer in Current.peers.Values) peer.Player.Dispose();
             Current.transport.Shutdown();
             Current = null;
@@ -91,7 +94,7 @@ namespace MscDuo.Net
                 if (knownPeers.Contains(id)) continue;
                 knownPeers.Add(id);
                 Peer(id);
-                Send(id, MessageType.Hello, w => w.Write(Protocol.Version), Channel.Reliable);
+                Send(id, MessageType.Hello, w => { w.Write(Protocol.Version); w.Write(transport.IsHost); }, Channel.Reliable);
             }
 
             var gone = new List<ulong>();
@@ -147,7 +150,12 @@ namespace MscDuo.Net
                     case MessageType.Hello:
                         var version = reader.ReadUInt16();
                         if (version != Protocol.Version)
+                        {
                             ModConsole.Warning($"[MSC Duo] jogador {packet.From} usa protocolo {version}, este usa {Protocol.Version}.");
+                            break;
+                        }
+                        var fromHost = reader.ReadBoolean();
+                        if (fromHost && !transport.IsHost) PlayerContext.JoinAsGuest();
                         break;
                     case MessageType.Ping:
                         var sentAt = reader.ReadSingle();

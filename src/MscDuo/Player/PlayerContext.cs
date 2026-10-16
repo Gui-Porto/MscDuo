@@ -47,6 +47,13 @@ namespace MscDuo.Player
             ModConsole.Print($"<color=orange>[MSC Duo]</color> agora você é o jogador {Active} ({profiles[Active].Get("PlayerName")}), dinheiro {profiles[Active].Get("PlayerMoney")}.");
         }
 
+        internal static void JoinAsGuest()
+        {
+            if (Active == 2) return;
+            ModConsole.Print("<color=orange>[MSC Duo]</color> conectado ao anfitrião: você joga como jogador 2, na casa 2 com a Satsuma 2.");
+            Switch(2);
+        }
+
         internal static void Tick()
         {
             if (Active != 2 || Time.realtimeSinceStartup < nextAutosave) return;

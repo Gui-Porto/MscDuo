@@ -17,6 +17,7 @@ namespace MscDuo.Net
         internal float LossPercent { get; set; }
 
         public ulong LocalId => 1;
+        public bool IsHost => true;
         public IEnumerable<ulong> Peers { get { yield return GhostId; } }
         public string Name => $"loopback {PingMs:0}ms ±{JitterMs:0} perda {LossPercent:0.#}%";
 

@@ -22,8 +22,10 @@ namespace MscDuo.Net
         Callback<P2PSessionConnectFail_t> sessionFailed;
         CSteamID lobby = CSteamID.Nil;
         string status = "iniciando";
+        bool hosting;
 
         public ulong LocalId => self.m_SteamID;
+        public bool IsHost => hosting;
         public IEnumerable<ulong> Peers => peers;
         public string Name => $"steam {status}";
 
@@ -45,6 +47,7 @@ namespace MscDuo.Net
         {
             var transport = new SteamTransport();
             transport.status = "criando lobby";
+            transport.hosting = true;
             SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, MaxMembers);
             return transport;
         }
