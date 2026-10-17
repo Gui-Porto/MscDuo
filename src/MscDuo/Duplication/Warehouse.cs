@@ -31,6 +31,8 @@ namespace MscDuo.Duplication
 
         static GameObject root;
 
+        internal static Transform LightSwitch { get; private set; }
+
         internal static GameObject Root => root;
 
         internal static void Spawn()
@@ -133,12 +135,13 @@ namespace MscDuo.Duplication
             if (source == null) return false;
 
             var original = source.gameObject;
-            var wallBehind = WallDirection(original.transform);
+            var front = FrontOf(original.transform);
             var copy = (GameObject)Object.Instantiate(original, Local(0.21f, 11.9f, 1.3f), original.transform.rotation);
             copy.name = "Galpao_Interruptor";
             copy.transform.parent = parent;
-            if (wallBehind.HasValue)
-                copy.transform.rotation = Quaternion.FromToRotation(wallBehind.Value, Vector3.back) * original.transform.rotation;
+            copy.transform.rotation = Quaternion.FromToRotation(front, Vector3.forward) * original.transform.rotation;
+            LightSwitch = copy.transform;
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> interruptor do galpão em {HouseCloner.Format(copy.transform.position)}, frente original {HouseCloner.Format(front)}.");
             var map = new Dictionary<Object, Object>();
             SatsumaCloner.MapHierarchy(original.transform, copy.transform, map);
             foreach (var fsm in copy.GetComponents<PlayMakerFSM>())
@@ -156,23 +159,38 @@ namespace MscDuo.Duplication
             return true;
         }
 
-        static Vector3? WallDirection(Transform t)
+        static Vector3 FrontOf(Transform t)
         {
-            Vector3? best = null;
-            var nearest = 0.6f;
-            foreach (var axis in new[] { t.forward, -t.forward, t.right, -t.right })
+            var plate = t.GetComponentInChildren<MeshFilter>();
+            var axis = t.forward;
+            if (plate != null && plate.sharedMesh != null)
             {
-                var flat = new Vector3(axis.x, 0f, axis.z);
-                if (flat.sqrMagnitude < 0.25f) continue;
-                flat.Normalize();
-                RaycastHit hit;
-                if (Physics.Raycast(t.position - flat * 0.05f, flat, out hit, nearest) && !hit.collider.isTrigger)
-                {
-                    nearest = hit.distance;
-                    best = flat;
-                }
+                var size = plate.sharedMesh.bounds.size;
+                var local = size.x <= size.y && size.x <= size.z ? Vector3.right : size.y <= size.z ? Vector3.up : Vector3.forward;
+                axis = plate.transform.TransformDirection(local);
             }
-            return best;
+            axis.y = 0f;
+            if (axis.sqrMagnitude < 1e-4f) axis = t.forward;
+            axis.Normalize();
+            var house = HouseCenter(t);
+            var inward = house - t.position;
+            inward.y = 0f;
+            return Vector3.Dot(axis, inward) >= 0f ? axis : -axis;
+        }
+
+        static Vector3 HouseCenter(Transform t)
+        {
+            var building = t;
+            while (building != null && building.name != "Building") building = building.parent;
+            if (building == null) return t.position;
+            var first = true;
+            var bounds = new Bounds(building.position, Vector3.zero);
+            foreach (var renderer in building.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (first) { bounds = renderer.bounds; first = false; }
+                else bounds.Encapsulate(renderer.bounds);
+            }
+            return bounds.center;
         }
 
         class LampState : MonoBehaviour
