@@ -25,6 +25,11 @@ FLAT_MARGIN = 2.0
 FLAT_BLEND = 6.0
 FLAT_BELOW = 0.04
 FRONT_CLEAR = 12.0
+PLATFORM_CELL = 0.5
+PLATFORM_SLOPE = 0.3
+PLATFORM_REACH = 10.0
+PLATFORM_BELOW = 0.02
+CORE_MARGIN = 1.0
 COLLECTION = "MAPA"
 
 
@@ -216,6 +221,88 @@ def clear_and_flatten(objects, floor, W, D):
     return flattened, removed
 
 
+def platform(col, objects, floor, W, D):
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    grounds = [BVHTree.FromObject(o, dg) for o in objects if o.type == "MESH" and "TERRAIN_OBJ" in o.name]
+    gravel_mat = next((o.material_slots[0].material for o in objects if o.name.endswith("TERRAIN_OBJ/Gravel") and o.material_slots), None)
+    grass_mat = next((o.material_slots[0].material for o in objects if o.name.endswith("TERRAIN_OBJ/Grass1") and o.material_slots), None)
+
+    def ground(x, y):
+        best = None
+        for tree in grounds:
+            hit = tree.ray_cast(Vector((x, y, floor + 30.0)), Vector((0, 0, -1)))
+            if hit[0] is not None and (best is None or hit[0].z > best):
+                best = hit[0].z
+        return best
+
+    cx0, cx1 = FRONT_X - D - CORE_MARGIN, FRONT_X + FRONT_CLEAR
+    cy0, cy1 = LEFT_Y - CORE_MARGIN, LEFT_Y + W + CORE_MARGIN
+    top = floor - PLATFORM_BELOW
+    gx0, gx1 = cx0 - PLATFORM_REACH, cx1 + PLATFORM_REACH
+    gy0, gy1 = cy0 - PLATFORM_REACH, cy1 + PLATFORM_REACH
+    nx = int(round((gx1 - gx0) / PLATFORM_CELL)) + 1
+    ny = int(round((gy1 - gy0) / PLATFORM_CELL)) + 1
+    heights = {}
+    for i in range(nx):
+        for j in range(ny):
+            x, y = gx0 + i * PLATFORM_CELL, gy0 + j * PLATFORM_CELL
+            g = ground(x, y)
+            if g is None:
+                continue
+            d = math.hypot(max(cx0 - x, 0.0, x - cx1), max(cy0 - y, 0.0, y - cy1))
+            want = top - d * PLATFORM_SLOPE
+            heights[(i, j)] = (max(want, g - 0.05), want > g + 0.005, d == 0.0)
+
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    verts = {}
+    faces = 0
+    for i in range(nx - 1):
+        for j in range(ny - 1):
+            quad = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            if any(k not in heights for k in quad) or not any(heights[k][1] for k in quad):
+                continue
+            face_verts = []
+            for k in quad:
+                if k not in verts:
+                    verts[k] = bm.verts.new((gx0 + k[0] * PLATFORM_CELL, gy0 + k[1] * PLATFORM_CELL, heights[k][0]))
+                face_verts.append(verts[k])
+            face = bm.faces.new(face_verts)
+            face.material_index = 0 if all(heights[k][2] for k in quad) else 1
+            for loop in face.loops:
+                loop[uv].uv = (loop.vert.co.x / 4.0, loop.vert.co.y / 4.0)
+            faces += 1
+    me = bpy.data.meshes.new("Plataforma")
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    gravel = gravel_mat or bpy.data.materials.new("plataforma_cascalho")
+    grass = grass_mat or bpy.data.materials.new("plataforma_grama")
+    me.materials.append(gravel)
+    me.materials.append(grass)
+    obj = bpy.data.objects.new("Plataforma", me)
+    col.objects.link(obj)
+    return faces
+
+
+def clear_trees(objects, W, D):
+    x0, x1 = FRONT_X - D - FLAT_MARGIN, FRONT_X + FLAT_MARGIN + FRONT_CLEAR
+    y0, y1 = LEFT_Y - FLAT_MARGIN, LEFT_Y + W + FLAT_MARGIN
+    removed = 0
+    for obj in objects:
+        if obj.type != "MESH" or "FOLIAGE" not in obj.name:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        doomed = [f for f in bm.faces if x0 <= f.calc_center_median().x <= x1 and y0 <= f.calc_center_median().y <= y1]
+        removed += len(doomed)
+        bmesh.ops.delete(bm, geom=doomed, context="FACES")
+        bm.to_mesh(obj.data)
+        bm.free()
+    return removed
+
+
 def save_view():
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -340,8 +427,9 @@ def main():
         imported = import_area(col)
         verts = 0
         floor, (low, high) = place_galpao(grid, xs, zs)
-        flattened, removed = clear_and_flatten(imported, floor, 24.0, 16.0)
-        print(f"[MSC Duo] área do jogo importada: {len(imported)} objetos, {removed} faces de árvores removidas (galpão e pátio da frente)")
+        removed = clear_trees(imported, 24.0, 16.0)
+        flattened = platform(col, imported, floor, 24.0, 16.0)
+        print(f"[MSC Duo] área do jogo importada: {len(imported)} objetos, {removed} faces de árvores removidas, plataforma com {flattened} quadrados")
     else:
         ground = terrain(col, grid, xs, zs, cx, cz, half)
         verts = house2(col)
