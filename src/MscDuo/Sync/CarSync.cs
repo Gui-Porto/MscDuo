@@ -188,6 +188,13 @@ namespace MscDuo.Sync
             foreach (var link in links) link.Resolve(now);
         }
 
+        internal static int Driven()
+        {
+            foreach (var link in links)
+                if (link.Ready && Inside(link)) return link.Index;
+            return 0;
+        }
+
         internal static int IndexOf(Transform t)
         {
             foreach (var link in links)

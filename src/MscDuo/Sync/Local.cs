@@ -23,6 +23,7 @@ namespace MscDuo.Sync
             var pitch = -Mathf.Asin(Mathf.Clamp(forward.y, -1f, 1f)) * Mathf.Rad2Deg;
 
             var vehicle = player.parent != null ? CarSync.IndexOf(player) : 0;
+            if (vehicle == 0) vehicle = CarSync.Driven();
             var root = vehicle != 0 ? CarSync.RootOf(vehicle) : null;
             var head = Passenger.Active ? Passenger.Head : camera != null ? camera.transform.position : player.position;
             byte voice, voiceCount;
