@@ -14,6 +14,17 @@ namespace MscDuo.Duplication
         const string GravelPath = "MAP/MESH/TERRAIN_OBJ/Gravel";
         const string GrassPath = "MAP/MESH/TERRAIN_OBJ/Grass1";
         const float TreeMargin = 2f;
+        const string SwitchSource = "switch_kitchen";
+        const string SwitchTag = "MscDuoGalpaoLuz";
+        static readonly Vector3 Origin = new Vector3(-30f, -0.497f, 13f);
+
+        static readonly Vector4[] Lamps =
+        {
+            new Vector4(6f, 3f, 6f, 14f), new Vector4(12f, 3f, 7f, 14f), new Vector4(18f, 3f, 6f, 14f),
+            new Vector4(6f, 7.5f, 6f, 14f), new Vector4(12f, 7.5f, 7f, 14f), new Vector4(18f, 7.5f, 6f, 14f),
+            new Vector4(3f, 12.9f, 2.8f, 7f), new Vector4(9f, 12.9f, 2.8f, 7f), new Vector4(15f, 12.9f, 2.8f, 7f),
+            new Vector4(4f, 13f, 6f, 9f), new Vector4(12f, 13f, 7f, 9f), new Vector4(20f, 13f, 6f, 9f),
+        };
 
         static readonly string[] Solid = { "Piso", "Paredes", "Mezanino", "Escada", "Salas", "GuardaCorpo", "Estrutura", "Telhado", "Janelas" };
         static readonly string[] Gates = { "Portao1", "Portao2" };
@@ -79,8 +90,122 @@ namespace MscDuo.Duplication
                 parts++;
             }
 
+            var lights = BuildLights(root.transform);
+            var lamp = root.transform.Find("Galpao_Luzes");
+            if (lamp != null) lamp.gameObject.AddComponent<LampState>().Lights = lights;
+            var light = Switch(root.transform, lights);
+
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + 12f, 0f, TreeMargin));
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas; centro {HouseCloner.Format(bounds.center)}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, interruptor {(light ? "ok" : "não encontrado")}; centro {HouseCloner.Format(bounds.center)}.");
+        }
+
+        static Vector3 Local(float x, float y, float z) => new Vector3(Origin.x - y, Origin.y + z, Origin.z + x);
+
+        static GameObject BuildLights(Transform parent)
+        {
+            var group = new GameObject("Galpao_Iluminacao");
+            group.transform.parent = parent;
+            foreach (var lamp in Lamps)
+            {
+                var go = new GameObject("Lampada");
+                go.transform.parent = group.transform;
+                go.transform.position = Local(lamp.x, lamp.y, lamp.z);
+                var light = go.AddComponent<Light>();
+                light.type = LightType.Point;
+                light.range = lamp.w;
+                light.intensity = lamp.w > 10f ? 1.4f : 1.0f;
+                light.color = new Color(1f, 0.97f, 0.9f);
+                light.shadows = LightShadows.None;
+            }
+            group.SetActive(false);
+            return group;
+        }
+
+        static bool Switch(Transform parent, GameObject lights)
+        {
+            PlayMakerFSM source = null;
+            foreach (var fsm in Resources.FindObjectsOfTypeAll<PlayMakerFSM>())
+                if (fsm != null && fsm.gameObject.name == SwitchSource && fsm.FsmName == "Use" && fsm.gameObject.hideFlags == HideFlags.None && fsm.transform.root.name == "YARD")
+                {
+                    source = fsm;
+                    break;
+                }
+            if (source == null) return false;
+
+            var original = source.gameObject;
+            var wallBehind = WallDirection(original.transform);
+            var copy = (GameObject)Object.Instantiate(original, Local(0.21f, 11.9f, 1.3f), original.transform.rotation);
+            copy.name = "Galpao_Interruptor";
+            copy.transform.parent = parent;
+            if (wallBehind.HasValue)
+                copy.transform.rotation = Quaternion.FromToRotation(wallBehind.Value, Vector3.back) * original.transform.rotation;
+            var map = new Dictionary<Object, Object>();
+            SatsumaCloner.MapHierarchy(original.transform, copy.transform, map);
+            foreach (var fsm in copy.GetComponents<PlayMakerFSM>())
+            {
+                FsmTools.EnsureLoaded(fsm);
+                SatsumaCloner.Remap(fsm, map);
+                var tag = fsm.FsmVariables.FindFsmString("UniqueTagSwitch");
+                if (tag != null) tag.Value = SwitchTag;
+                var target = fsm.FsmVariables.FindFsmGameObject("Lights");
+                if (target != null) target.Value = lights;
+                var on = fsm.FsmVariables.FindFsmBool("Switch");
+                if (on != null) on.Value = false;
+            }
+            copy.SetActive(true);
+            return true;
+        }
+
+        static Vector3? WallDirection(Transform t)
+        {
+            Vector3? best = null;
+            var nearest = 0.6f;
+            foreach (var axis in new[] { t.forward, -t.forward, t.right, -t.right })
+            {
+                var flat = new Vector3(axis.x, 0f, axis.z);
+                if (flat.sqrMagnitude < 0.25f) continue;
+                flat.Normalize();
+                RaycastHit hit;
+                if (Physics.Raycast(t.position - flat * 0.05f, flat, out hit, nearest) && !hit.collider.isTrigger)
+                {
+                    nearest = hit.distance;
+                    best = flat;
+                }
+            }
+            return best;
+        }
+
+        class LampState : MonoBehaviour
+        {
+            internal GameObject Lights;
+            Renderer lampRenderer;
+            Material[] lit;
+            Material[] dark;
+            bool shown = true;
+
+            void Start()
+            {
+                lampRenderer = GetComponent<Renderer>();
+                lit = lampRenderer.sharedMaterials;
+                dark = new Material[lit.Length];
+                for (int i = 0; i < lit.Length; i++)
+                {
+                    if (lit[i] != null && lit[i].name.EndsWith("_luz"))
+                    {
+                        var shader = Shader.Find("Diffuse") ?? Shader.Find("Legacy Shaders/Diffuse") ?? lit[i].shader;
+                        dark[i] = new Material(shader) { name = lit[i].name + "_apagada", color = new Color(0.55f, 0.55f, 0.57f), mainTexture = lit[i].mainTexture };
+                    }
+                    else dark[i] = lit[i];
+                }
+            }
+
+            void Update()
+            {
+                var on = Lights != null && Lights.activeSelf;
+                if (on == shown || lampRenderer == null) return;
+                shown = on;
+                lampRenderer.sharedMaterials = on ? lit : dark;
+            }
         }
 
         static Material Template()
