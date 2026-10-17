@@ -10,6 +10,9 @@ FOLDER = os.path.dirname(os.path.abspath(__file__))
 OBJ = os.path.join(FOLDER, "galpao.obj")
 PREVIEW = os.path.join(FOLDER, "galpao-{}.png")
 COLLECTION = "GALPAO"
+TEXTURES = os.path.join(FOLDER, "galpao_tex")
+TILE = {"concreto": 4.0, "parede": 2.0, "chapa": 2.0, "aco": 1.0, "portao": 3.0, "porta": 1.0,
+        "faixa": 1.0, "luz": 1.0, "laje": 4.0, "degrau": 1.0, "vidro": 2.0}
 
 W = 24.0
 D = 16.0
@@ -83,8 +86,36 @@ def material(name):
     if name == "luz":
         bsdf.inputs["Emission Color"].default_value = color
         bsdf.inputs["Emission Strength"].default_value = 6.0
+    image_path = os.path.join(TEXTURES, name + ".png")
+    if os.path.exists(image_path):
+        nodes = mat.node_tree.nodes
+        tex = next((n for n in nodes if n.type == "TEX_IMAGE"), None) or nodes.new("ShaderNodeTexImage")
+        tex.image = bpy.data.images.load(image_path, check_existing=True)
+        tex.location = (-400, 200)
+        links = mat.node_tree.links
+        links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        if name == "luz":
+            links.new(tex.outputs["Color"], bsdf.inputs["Emission Color"])
     mat.diffuse_color = color
     return mat
+
+
+def unwrap(bm, mat):
+    tile = TILE.get(mat, 1.0)
+    uv = bm.loops.layers.uv.verify()
+    bm.normal_update()
+    for face in bm.faces:
+        n = face.normal
+        ax, ay, az = abs(n.x), abs(n.y), abs(n.z)
+        for loop in face.loops:
+            co = loop.vert.co
+            if az >= ax and az >= ay:
+                u, v = (co.y, co.x) if mat == "chapa" else (co.x, co.y)
+            elif ax >= ay:
+                u, v = co.y, co.z
+            else:
+                u, v = co.x, co.z
+            loop[uv].uv = (u / tile, v / tile)
 
 
 class Builder:
@@ -150,6 +181,7 @@ class Builder:
             for index, mat in enumerate(mats):
                 bm = self.parts[(name, mat)]
                 bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+                unwrap(bm, mat)
                 for f in bm.faces:
                     f.material_index = index
                 temp = bpy.data.meshes.new("tmp")
@@ -335,7 +367,8 @@ def export(objects):
     for obj in objects:
         obj.select_set(True)
     bpy.ops.wm.obj_export(filepath=OBJ, export_selected_objects=True, export_materials=True,
-                          export_triangulated_mesh=True, forward_axis="Y", up_axis="Z", apply_modifiers=True)
+                          export_triangulated_mesh=True, forward_axis="Y", up_axis="Z", apply_modifiers=True,
+                          export_uv=True, path_mode="RELATIVE")
 
 
 def camera(name, location, target, lens):
