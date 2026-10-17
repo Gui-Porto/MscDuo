@@ -183,6 +183,11 @@ namespace MscDuo.Sync
             return roots.TryGetValue(name, out go) ? go : null;
         }
 
+        internal static void Resolve(float now)
+        {
+            foreach (var link in links) link.Resolve(now);
+        }
+
         internal static int IndexOf(Transform t)
         {
             foreach (var link in links)

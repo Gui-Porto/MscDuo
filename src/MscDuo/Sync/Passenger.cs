@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using HutongGames.PlayMaker;
+using MscDuo.Net;
 using UnityEngine;
 
 namespace MscDuo.Sync
@@ -8,7 +10,10 @@ namespace MscDuo.Sync
     {
         const float Reach = 0.9f;
         const float BikeBack = 0.4f;
+        const float BikeEyes = 0.3f;
+        const float CarEyes = 0.12f;
         const float StepOut = 1.1f;
+        const float BodyRadius = 0.3f;
         const string Hint = "PASSAGEIRO (ENTER)";
         static readonly string[] SingleSeat = { "kekmet", "combine", "boat", "flatbed" };
         static readonly string[] Movement = { "CharacterMotor", "FPSInputController" };
@@ -16,12 +21,17 @@ namespace MscDuo.Sync
         static Transform player;
         static Transform vehicle;
         static Vector3 seat;
-        static Vector3 localPlayer;
+        static float eyes;
+        static bool seated;
         static FsmString interaction;
+        static FsmBool inCar;
         static bool hinting;
-        static readonly System.Collections.Generic.Dictionary<Transform, Transform> pivots = new System.Collections.Generic.Dictionary<Transform, Transform>();
+        static readonly Dictionary<Transform, Transform> pivots = new Dictionary<Transform, Transform>();
 
         internal static bool Active => vehicle != null;
+
+        // cabeça no banco, sem o ajuste da câmera: é onde o boneco do outro lado senta
+        internal static Vector3 Head => vehicle.TransformPoint(seat);
 
         internal static void Tick(bool pressed)
         {
@@ -30,80 +40,123 @@ namespace MscDuo.Sync
                 var go = GameObject.Find("PLAYER");
                 if (go == null) return;
                 player = go.transform;
+                inCar = null;
             }
             var camera = Camera.main;
             if (camera == null) return;
 
             if (Active)
             {
-                player.localPosition = localPlayer;
+                // o FSM Crouch desce a câmera ao entrar no carro: a posição é refeita todo quadro para os olhos ficarem no banco
+                player.position += Head + vehicle.up * eyes - camera.transform.position;
                 if (pressed) Leave();
                 return;
             }
-            if (vehicle == null && player.parent != null && localPlayer != Vector3.zero) Release();
+            if (seated) GetUp();
 
+            if (NetSession.Current == null) CarSync.Resolve(Time.realtimeSinceStartup);
             Transform near = null;
             var nearSeat = Vector3.zero;
+            var nearBike = false;
             if (player.parent == null)
                 foreach (var link in CarSync.Links)
                 {
                     Vector3 local;
-                    if (link.Root == null || !SeatOf(link, out local)) continue;
-                    var world = link.Root.TransformPoint(local);
-                    if ((world - camera.transform.position).sqrMagnitude > Reach * Reach) continue;
+                    bool bike;
+                    if (link.Root == null || !SeatOf(link, out local, out bike)) continue;
+                    if ((link.Root.TransformPoint(local) - camera.transform.position).sqrMagnitude > Reach * Reach) continue;
                     near = link.Root;
                     nearSeat = local;
+                    nearBike = bike;
                     break;
                 }
             ShowHint(near != null);
-            if (near != null && pressed) Enter(near, nearSeat, camera.transform);
+            if (near != null && pressed) Enter(near, nearSeat, nearBike);
         }
 
-        static bool SeatOf(CarSync.CarLink link, out Vector3 local)
+        static bool SeatOf(CarSync.CarLink link, out Vector3 local, out bool bike)
         {
             local = Vector3.zero;
+            bike = link.Label.StartsWith("jonnez");
             foreach (var single in SingleSeat)
                 if (link.Label.StartsWith(single)) return false;
             Transform pivot;
             if (!pivots.TryGetValue(link.Root, out pivot)) pivots[link.Root] = pivot = Find(link.Root, "DriverHeadPivot");
             if (pivot == null) return false;
             local = link.Root.InverseTransformPoint(pivot.position);
-            if (link.Label.StartsWith("jonnez")) local.z -= BikeBack;
+            if (bike) local.z -= BikeBack;
             else local.x = -local.x;
             return true;
         }
 
-        static void Enter(Transform target, Vector3 local, Transform camera)
+        static void Enter(Transform target, Vector3 local, bool bike)
         {
             ShowHint(false);
             vehicle = target;
             seat = local;
+            eyes = bike ? BikeEyes : CarEyes;
+            seated = true;
             SetMovement(false);
             player.parent = vehicle;
             player.rotation = Quaternion.LookRotation(vehicle.forward, vehicle.up);
-            player.position += vehicle.TransformPoint(seat) - camera.position;
-            localPlayer = player.localPosition;
+            SetInCar(true);
         }
 
         static void Leave()
         {
-            var side = (seat.x >= 0f ? 1f : -1f) * vehicle.right;
-            var outside = vehicle.TransformPoint(seat) + side * StepOut;
-            RaycastHit hit;
-            if (Physics.Raycast(outside + Vector3.up * 1.5f, Vector3.down, out hit, 6f)) outside = hit.point + Vector3.up * 0.3f;
+            var outside = ExitPoint();
             var yaw = Quaternion.Euler(0f, player.eulerAngles.y, 0f);
-            Release();
+            vehicle = null;
+            player.parent = null;
             player.position = outside;
             player.rotation = yaw;
+            GetUp();
         }
 
-        static void Release()
+        // a cápsula só volta depois de fora do veículo: ligada dentro da carroceria ela arremessava a van
+        static void GetUp()
         {
+            seated = false;
             vehicle = null;
-            localPlayer = Vector3.zero;
             if (player.parent != null) player.parent = null;
             SetMovement(true);
+            SetInCar(false);
         }
+
+        // primeiro lugar livre ao lado do carona, do outro lado, atrás ou na frente: sem parede no caminho e com espaço para o corpo
+        static Vector3 ExitPoint()
+        {
+            var head = Head;
+            var side = (seat.x >= 0f ? 1f : -1f) * vehicle.right;
+            foreach (var direction in new[] { side, -side, -vehicle.forward, vehicle.forward })
+                foreach (var distance in new[] { StepOut, StepOut + 0.6f })
+                {
+                    if (Blocked(head, direction, distance)) continue;
+                    var spot = head + direction * distance;
+                    RaycastHit hit;
+                    if (!Physics.Raycast(spot + Vector3.up, Vector3.down, out hit, 4f) || Mine(hit.collider)) continue;
+                    if (Crowded(hit.point)) continue;
+                    return hit.point + Vector3.up * 0.3f;
+                }
+            return head + side * StepOut;
+        }
+
+        static bool Blocked(Vector3 from, Vector3 direction, float distance)
+        {
+            foreach (var hit in Physics.RaycastAll(from, direction, distance + BodyRadius))
+                if (!hit.collider.isTrigger && !Mine(hit.collider)) return true;
+            return false;
+        }
+
+        static bool Crowded(Vector3 feet)
+        {
+            foreach (var height in new[] { BodyRadius + 0.1f, 1.4f })
+                foreach (var collider in Physics.OverlapSphere(feet + Vector3.up * height, BodyRadius))
+                    if (!collider.isTrigger && !Mine(collider)) return true;
+            return false;
+        }
+
+        static bool Mine(Collider collider) => collider.transform.IsChildOf(player) || vehicle != null && collider.transform.IsChildOf(vehicle);
 
         static void SetMovement(bool on)
         {
@@ -114,6 +167,15 @@ namespace MscDuo.Sync
                 var behaviour = player.GetComponent(name) as Behaviour;
                 if (behaviour != null) behaviour.enabled = on;
             }
+        }
+
+        // o FSM Crouch fica no estado Incar enquanto a variável dele PlayerInCar estiver ligada: sem desligar, o jogador saía agachado para sempre
+        static void SetInCar(bool on)
+        {
+            if (inCar == null)
+                foreach (var fsm in player.GetComponents<PlayMakerFSM>())
+                    if (fsm.FsmName == "Crouch") inCar = fsm.FsmVariables.FindFsmBool("PlayerInCar");
+            if (inCar != null) inCar.Value = on;
         }
 
         static void ShowHint(bool on)

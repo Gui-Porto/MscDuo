@@ -25,7 +25,7 @@ namespace MscDuo.Sync
             // sentado: cabeça em coordenadas do veículo, para o outro lado encaixar no banco da cópia dele
             var vehicle = player.parent != null ? CarSync.IndexOf(player) : 0;
             var root = vehicle != 0 ? CarSync.RootOf(vehicle) : null;
-            var head = camera != null ? camera.transform.position : player.position;
+            var head = Passenger.Active ? Passenger.Head : camera != null ? camera.transform.position : player.position;
             byte voice, voiceCount;
             Gestures.CaptureVoice(out voice, out voiceCount);
             var flags = PlayerContext.Active == 2 ? PlayerStateMessage.Player2Flag : (byte)0;

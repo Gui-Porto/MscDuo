@@ -75,7 +75,9 @@ namespace MscDuo.Sync
         SkinnedMeshRenderer mesh;
         Animation legs;
         Animation[] animations;
+        readonly Dictionary<Animation, string> idles = new Dictionary<Animation, string>();
         readonly List<KeyValuePair<Transform, string>> bones = new List<KeyValuePair<Transform, string>>();
+        readonly List<KeyValuePair<Vector3, Quaternion>> rest = new List<KeyValuePair<Vector3, Quaternion>>();
         int skin;
         int wanted = 1;
         bool seated;
@@ -139,6 +141,7 @@ namespace MscDuo.Sync
             var skeleton = body.Find("skeleton");
             legs = skeleton != null ? skeleton.GetComponent<Animation>() : null;
             animations = copy.GetComponentsInChildren<Animation>(true);
+            idles.Clear();
             foreach (var anim in animations)
             {
                 anim.enabled = true;
@@ -146,11 +149,12 @@ namespace MscDuo.Sync
                 anim.wrapMode = WrapMode.Loop;
                 if (anim == legs) continue;
                 // respiração e mãos paradas: o primeiro clipe de cada osso é o de repouso
-                foreach (AnimationState state in anim) { anim.Play(state.name); break; }
+                foreach (AnimationState state in anim) { idles[anim] = state.name; anim.Play(state.name); break; }
             }
             if (legs != null && legs[Stand] != null) legs.Play(Stand);
 
             bones.Clear();
+            rest.Clear();
             if (skeleton != null) Collect(skeleton, "");
 
             collarLeft = Collar("collar_left", out idleLeft);
@@ -197,6 +201,7 @@ namespace MscDuo.Sync
             {
                 var childPath = path.Length == 0 ? child.name : path + "/" + child.name;
                 bones.Add(new KeyValuePair<Transform, string>(child, childPath));
+                rest.Add(new KeyValuePair<Vector3, Quaternion>(child.localPosition, child.localRotation));
                 Collect(child, childPath);
             }
         }
@@ -365,12 +370,18 @@ namespace MscDuo.Sync
         void GetUp()
         {
             seated = false;
+            // a animação de ficar em pé não mexe em todos os ossos: sem isso coxa e joelho ficavam dobrados da pose sentada
+            for (int i = 0; i < bones.Count; i++)
+            {
+                bones[i].Key.localPosition = rest[i].Key;
+                bones[i].Key.localRotation = rest[i].Value;
+            }
             playingLeft = playingRight = null;
             foreach (var anim in animations)
             {
                 anim.enabled = true;
-                if (anim == legs) continue;
-                foreach (AnimationState state in anim) { anim.Play(state.name); break; }
+                string idle;
+                if (anim != legs && idles.TryGetValue(anim, out idle)) anim.Play(idle);
             }
             if (legs != null && legs[Stand] != null) legs.Play(Stand);
         }
