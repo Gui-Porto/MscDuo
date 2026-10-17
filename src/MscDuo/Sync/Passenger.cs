@@ -58,13 +58,19 @@ namespace MscDuo.Sync
             Transform near = null;
             var nearSeat = Vector3.zero;
             var nearBike = false;
-            if (player.parent == null)
+            // o Enter também é a tecla do jogo para dirigir: com a interação do jogo na tela (porta do motorista etc.) o carona não aparece
+            if (interaction == null) interaction = FsmVariables.GlobalVariables.FindFsmString("GUIinteraction");
+            var gameBusy = interaction != null && interaction.Value != "" && interaction.Value != Hint;
+            if (player.parent == null && !gameBusy)
                 foreach (var link in CarSync.Links)
                 {
                     Vector3 local;
                     bool bike;
-                    if (link.Root == null || !SeatOf(link, out local, out bike)) continue;
-                    if ((link.Root.TransformPoint(local) - camera.transform.position).sqrMagnitude > Reach * Reach) continue;
+                    Vector3 driver;
+                    if (link.Root == null || !SeatOf(link, out local, out driver, out bike)) continue;
+                    var toSeat = (link.Root.TransformPoint(local) - camera.transform.position).sqrMagnitude;
+                    // mais perto do banco do motorista é o jogador indo dirigir, não pegar carona
+                    if (toSeat > Reach * Reach || toSeat >= (link.Root.TransformPoint(driver) - camera.transform.position).sqrMagnitude) continue;
                     near = link.Root;
                     nearSeat = local;
                     nearBike = bike;
@@ -74,16 +80,16 @@ namespace MscDuo.Sync
             if (near != null && pressed) Enter(near, nearSeat, nearBike);
         }
 
-        static bool SeatOf(CarSync.CarLink link, out Vector3 local, out bool bike)
+        static bool SeatOf(CarSync.CarLink link, out Vector3 local, out Vector3 driver, out bool bike)
         {
-            local = Vector3.zero;
+            local = driver = Vector3.zero;
             bike = link.Label.StartsWith("jonnez");
             foreach (var single in SingleSeat)
                 if (link.Label.StartsWith(single)) return false;
             Transform pivot;
             if (!pivots.TryGetValue(link.Root, out pivot)) pivots[link.Root] = pivot = Find(link.Root, "DriverHeadPivot");
             if (pivot == null) return false;
-            local = link.Root.InverseTransformPoint(pivot.position);
+            local = driver = link.Root.InverseTransformPoint(pivot.position);
             if (bike) local.z -= BikeBack;
             else local.x = -local.x;
             return true;
