@@ -15,6 +15,8 @@ RELEVO = os.path.join(SETTINGS, "dumps", "relevo.obj")
 AREA = os.path.join(SETTINGS, "dumps", "area", "area.obj")
 BLEND = os.path.join(FOLDER, "mapa-galpao.blend")
 PREVIEW = os.path.join(FOLDER, "mapa-galpao-{}.png")
+GAME_GALPAO = os.path.join(FOLDER, "galpao_jogo.obj")
+GAME_PLATFORM = os.path.join(FOLDER, "plataforma_jogo.obj")
 
 HOUSE2 = (-7.46, 45.43, 0.38, 241.1472)
 FRONT_X = -30.0
@@ -303,6 +305,45 @@ def clear_trees(objects, W, D):
     return removed
 
 
+def export_game(col):
+    galpao = [o for o in bpy.data.collections["GALPAO"].objects if o.type == "MESH"]
+    write_game_simple(GAME_GALPAO, galpao, lambda name, index: name.replace("galpao_", ""))
+    plat = [o for o in col.objects if o.name == "Plataforma"]
+    write_game_simple(GAME_PLATFORM, plat, lambda name, index: "cascalho" if index == 0 else "grama")
+    print("[MSC Duo] exportado para o jogo:", GAME_GALPAO, GAME_PLATFORM)
+
+
+def write_game_simple(path, objects, rename):
+    out = ["# MSC Duo: coordenadas do mundo em eixos do Blender (x, z, y da Unity)"]
+    vbase = 1
+    tbase = 1
+    for obj in objects:
+        me = obj.data
+        uv_layer = me.uv_layers.active
+        matrix = obj.matrix_world
+        out.append("o " + obj.name)
+        for v in me.vertices:
+            w = matrix @ v.co
+            out.append("v %.4f %.4f %.4f" % (w.x, w.y, w.z))
+        for loop in me.loops:
+            u, v = uv_layer.data[loop.index].uv if uv_layer else (0.0, 0.0)
+            out.append("vt %.4f %.4f" % (u, v))
+        groups = {}
+        for poly in me.polygons:
+            groups.setdefault(poly.material_index, []).append(poly)
+        for index, polys in sorted(groups.items()):
+            mat = obj.material_slots[index].material if index < len(obj.material_slots) else None
+            out.append("usemtl " + rename(mat.name if mat else "sem_material", index))
+            for poly in polys:
+                ids = [(me.loops[li].vertex_index + vbase, li + tbase) for li in poly.loop_indices]
+                for k in range(1, len(ids) - 1):
+                    a, b, c = ids[0], ids[k], ids[k + 1]
+                    out.append("f %d/%d %d/%d %d/%d" % (a[0], a[1], b[0], b[1], c[0], c[1]))
+        vbase += len(me.vertices)
+        tbase += len(me.loops)
+    open(path, "w", encoding="utf-8").write(chr(10).join(out) + chr(10))
+
+
 def save_view():
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -439,6 +480,8 @@ def main():
     print(f"[MSC Duo] mapa: terreno {len(xs)}x{len(zs)}, {flattened} pontos nivelados, piso do galpão em {floor:.2f} m (chão entre {low:.2f} e {high:.2f})")
     if "--render" in sys.argv:
         render()
+    if os.path.exists(AREA):
+        export_game(col)
     if "--save" in sys.argv:
         save_view()
         bpy.ops.file.pack_all()
