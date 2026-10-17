@@ -73,7 +73,7 @@ def material(name):
         mat = bpy.data.materials.new("galpao_" + name)
         mat.use_nodes = True
     color = COLORS[name]
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Roughness"].default_value = {"concreto": 0.25, "aco": 0.45, "chapa": 0.6, "vidro": 0.05, "portao": 0.4}.get(name, 0.7)
     bsdf.inputs["Metallic"].default_value = {"aco": 0.6, "chapa": 0.5, "portao": 0.3}.get(name, 0.0)
@@ -362,8 +362,9 @@ def render():
     world = scene.world or bpy.data.worlds.new("World")
     scene.world = world
     world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs[0].default_value = (0.55, 0.65, 0.8, 1.0)
-    world.node_tree.nodes["Background"].inputs[1].default_value = 0.9
+    background = next(n for n in world.node_tree.nodes if n.type == "BACKGROUND")
+    background.inputs[0].default_value = (0.55, 0.65, 0.8, 1.0)
+    background.inputs[1].default_value = 0.9
     ground = bpy.data.objects.get("GalpaoChao")
     if ground is None:
         me = bpy.data.meshes.new("GalpaoChao")
@@ -375,7 +376,7 @@ def render():
         scene.collection.objects.link(ground)
         mat = bpy.data.materials.new("galpao_grama")
         mat.use_nodes = True
-        mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.2, 0.3, 0.12, 1.0)
+        next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.2, 0.3, 0.12, 1.0)
         me.materials.append(mat)
     ground.location = (W / 2, D / 2, -0.02)
     scene.render.engine = "CYCLES"
@@ -401,11 +402,28 @@ def render():
 
 
 def main():
+    cube = bpy.data.objects.get("Cube")
+    if cube is not None and cube.type == "MESH" and len(cube.data.vertices) == 8:
+        bpy.data.objects.remove(cube, do_unlink=True)
     objects = build()
     export(objects)
     print("[MSC Duo] galpão:", len(objects), "objetos ->", OBJ)
     if "--render" in sys.argv:
         render()
+    elif not bpy.app.background:
+        bpy.app.timers.register(show, first_interval=1.0)
+
+
+def show():
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            area.spaces.active.shading.type = "MATERIAL"
+            region = next(r for r in area.regions if r.type == "WINDOW")
+            with bpy.context.temp_override(window=window, area=area, region=region):
+                bpy.ops.view3d.view_all()
+    return None
 
 
 main()
