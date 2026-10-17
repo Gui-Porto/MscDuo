@@ -22,7 +22,6 @@ namespace MscDuo.Sync
             var yaw = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
             var pitch = -Mathf.Asin(Mathf.Clamp(forward.y, -1f, 1f)) * Mathf.Rad2Deg;
 
-            // sentado: cabeça em coordenadas do veículo, para o outro lado encaixar no banco da cópia dele
             var vehicle = player.parent != null ? CarSync.IndexOf(player) : 0;
             var root = vehicle != 0 ? CarSync.RootOf(vehicle) : null;
             var head = Passenger.Active ? Passenger.Head : camera != null ? camera.transform.position : player.position;

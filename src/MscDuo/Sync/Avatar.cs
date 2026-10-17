@@ -4,7 +4,6 @@ using UnityEngine;
 
 namespace MscDuo.Sync
 {
-    // corpo de um pedestre do próprio jogo, com as animações dele e a pose sentada dos motoristas NPC
     internal class Avatar
     {
         const string WalkerPath = "Randomizer/Walkers/Kale/Pivot/Char";
@@ -25,7 +24,6 @@ namespace MscDuo.Sync
             { 2, new[] { "char_shirt13", "char_pants05", "char_face03" } },
         };
 
-        // na moto as pernas descem até a pedaleira e as mãos vão para as manoplas, em vez da pose de volante do carro
         internal static readonly Dictionary<string, Vector3> BikePose = new Dictionary<string, Vector3>
         {
             { "thig_left", new Vector3(0f, 0f, 20f) },
@@ -36,7 +34,6 @@ namespace MscDuo.Sync
             { "pelvis/spine_middle/spine_upper/collar_right/shoulder_right", new Vector3(0f, -30f, 0f) },
         };
 
-        // carona: mãos no colo em vez de no volante ou no guidão
         internal static readonly Dictionary<string, Vector3> PassengerArms = new Dictionary<string, Vector3>
         {
             { "pelvis/spine_middle/spine_upper/collar_left/shoulder_left", new Vector3(0f, 50f, 0f) },
@@ -54,7 +51,6 @@ namespace MscDuo.Sync
         const string FingerHandPath = "Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/MiddleFinger/Pivot";
         const string WatchPath = "Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/Watch/Animate/BreathAnim/WristwatchHand";
 
-        // mão do dedo do meio (a do próprio jogador, em primeira pessoa) e relógio no pulso: posição, giro e escala no antebraço do boneco
         internal static Vector3 FingerOffset = new Vector3(-0.34f, 0f, 0f);
         internal static Vector3 FingerRotation = new Vector3(0f, 0f, -90f);
         internal static float FingerScale = 1.6f;
@@ -62,7 +58,6 @@ namespace MscDuo.Sync
         internal static Vector3 WatchRotation = new Vector3(90f, 0f, 0f);
         internal static float WatchScale = 1f;
 
-        // clipes de gesto emprestados de outros NPCs com o mesmo esqueleto (raiz, caminho do osso com a Animation, clipe)
         static readonly string[][] GestureSources =
         {
             new[] { "HUMANS", "FighterPub/Fighter2/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Punch },
@@ -170,14 +165,12 @@ namespace MscDuo.Sync
                 anim.cullingType = AnimationCullingType.AlwaysAnimate;
                 anim.wrapMode = WrapMode.Loop;
                 if (anim == legs) continue;
-                // respiração e mãos paradas: o primeiro clipe de cada osso é o de repouso
                 foreach (AnimationState state in anim) { idles[anim] = state.name; anim.Play(state.name); break; }
             }
             if (legs != null && legs[Stand] != null) legs.Play(Stand);
 
             bones.Clear();
             rest.Clear();
-            // repouso da animação de ficar em pé: o NPC copiado pode estar no meio de um passo, com uma perna à frente
             if (skeleton != null && legs != null && legs[Stand] != null) legs[Stand].clip.SampleAnimation(skeleton.gameObject, 0f);
             if (skeleton != null) Collect(skeleton, "");
 
@@ -189,7 +182,6 @@ namespace MscDuo.Sync
             var sourceHand = player != null ? player.transform.Find(FingerHandPath) : null;
             if (sourceHand != null && upperRight != null)
             {
-                // a animação da mão em primeira pessoa leva a mão para a frente da câmera: fica congelada com o dedo levantado, presa num suporte no punho
                 fingerHand = new GameObject("MiddleFingerHand");
                 fingerHand.transform.parent = upperRight;
                 var hand = (GameObject)Object.Instantiate(sourceHand.gameObject);
@@ -338,7 +330,6 @@ namespace MscDuo.Sync
                     var adjusted = passenger && PassengerArms.TryGetValue(bone.Value, out bend) || bike && BikePose.TryGetValue(bone.Value, out bend);
                     bone.Key.localRotation = adjusted ? pose.Value * Quaternion.Euler(bend) : pose.Value;
                 }
-            // preso ao veículo local: acompanha a carroceria sem tremer entre pacotes
             root.transform.parent = vehicle;
             root.transform.rotation = vehicle.rotation;
             root.transform.position = headWorld;
@@ -347,7 +338,6 @@ namespace MscDuo.Sync
             FaceCamera();
         }
 
-        // mãos nas manoplas: dobra ombro e cotovelo para o punho cair na ponta do guidão, que gira com a direção
         void HoldHandlebar(Transform vehicle)
         {
             Transform[] ends;
@@ -381,7 +371,6 @@ namespace MscDuo.Sync
             upper.rotation = Quaternion.FromToRotation(hand.position - upper.position, target.position - upper.position) * upper.rotation;
         }
 
-        // gestos, voz e xixi do outro jogador, com as animações e sons do próprio jogo
         internal void Express(ushort flags, byte voiceId, byte count)
         {
             if (root == null || body == null) return;
@@ -394,7 +383,6 @@ namespace MscDuo.Sync
             Drive(collarRight, right, idleRight, ref playingRight);
             Drive(collarLeft, (flags & Gestures.Smoke) != 0 ? Smoke : (flags & Gestures.Watch) != 0 ? LookWatch : null, idleLeft, ref playingLeft);
 
-            // dedo do meio: o antebraço do NPC some e entra o antebraço do jogo, com a mão e o dedo levantado, saindo do cotovelo
             var finger = (flags & Gestures.MiddleFinger) != 0 && fingerHand != null;
             if (fingerHand != null && finger != fingerHand.activeSelf) fingerHand.SetActive(finger);
             if (handRight != null) handRight.localScale = finger ? Vector3.zero : Vector3.one;
@@ -443,7 +431,6 @@ namespace MscDuo.Sync
             }
         }
 
-        // agachar: as pernas vão para uma fração da pose sentada do motorista e o corpo desce até o pé tocar o chão
         void Crouch(float amount)
         {
             if (seated || seatedPose == null) return;
@@ -461,7 +448,6 @@ namespace MscDuo.Sync
             {
                 KeyValuePair<Vector3, Quaternion> pose;
                 if (!seatedPose.TryGetValue(bones[i].Value, out pose)) continue;
-                // meio agachado dobra mais o joelho que a coxa, para o pé ficar embaixo do corpo
                 var share = bones[i].Value.Contains("knee") ? Mathf.Min(1f, amount * 1.8f) : amount;
                 bones[i].Key.localRotation = Quaternion.Slerp(rest[i].Value, pose.Value, share);
             }
@@ -488,7 +474,6 @@ namespace MscDuo.Sync
         void GetUp()
         {
             seated = false;
-            // a animação de ficar em pé não mexe em todos os ossos: sem isso coxa e joelho ficavam dobrados da pose sentada
             for (int i = 0; i < bones.Count; i++)
             {
                 bones[i].Key.localPosition = rest[i].Key;

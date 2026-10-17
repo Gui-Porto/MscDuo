@@ -5,7 +5,6 @@ using UnityEngine;
 
 namespace MscDuo.Sync
 {
-    // banco do carona: o jogador fica preso ao banco olhando em volta, sem andar e sem os comandos do veículo
     internal static class Passenger
     {
         const float Reach = 0.9f;
@@ -30,7 +29,6 @@ namespace MscDuo.Sync
 
         internal static bool Active => vehicle != null;
 
-        // cabeça no banco, sem o ajuste da câmera: é onde o boneco do outro lado senta
         internal static Vector3 Head => vehicle.TransformPoint(seat);
 
         internal static void Tick(bool pressed)
@@ -47,7 +45,6 @@ namespace MscDuo.Sync
 
             if (Active)
             {
-                // o FSM Crouch desce a câmera ao entrar no carro: a posição é refeita todo quadro para os olhos ficarem no banco
                 player.position += Head + vehicle.up * eyes - camera.transform.position;
                 if (pressed) Leave();
                 return;
@@ -58,7 +55,6 @@ namespace MscDuo.Sync
             Transform near = null;
             var nearSeat = Vector3.zero;
             var nearBike = false;
-            // o Enter também é a tecla do jogo para dirigir: com a interação do jogo na tela (porta do motorista etc.) o carona não aparece
             if (interaction == null) interaction = FsmVariables.GlobalVariables.FindFsmString("GUIinteraction");
             var gameBusy = interaction != null && interaction.Value != "" && interaction.Value != Hint;
             if (player.parent == null && !gameBusy)
@@ -69,7 +65,6 @@ namespace MscDuo.Sync
                     Vector3 driver;
                     if (link.Root == null || !SeatOf(link, out local, out driver, out bike)) continue;
                     var toSeat = (link.Root.TransformPoint(local) - camera.transform.position).sqrMagnitude;
-                    // mais perto do banco do motorista é o jogador indo dirigir, não pegar carona
                     if (toSeat > Reach * Reach || toSeat >= (link.Root.TransformPoint(driver) - camera.transform.position).sqrMagnitude) continue;
                     near = link.Root;
                     nearSeat = local;
@@ -119,7 +114,6 @@ namespace MscDuo.Sync
             GetUp();
         }
 
-        // a cápsula só volta depois de fora do veículo: ligada dentro da carroceria ela arremessava a van
         static void GetUp()
         {
             seated = false;
@@ -129,7 +123,6 @@ namespace MscDuo.Sync
             SetInCar(false);
         }
 
-        // primeiro lugar livre ao lado do carona, do outro lado, atrás ou na frente: sem parede no caminho e com espaço para o corpo
         static Vector3 ExitPoint()
         {
             var head = Head;
@@ -175,7 +168,6 @@ namespace MscDuo.Sync
             }
         }
 
-        // o FSM Crouch fica no estado Incar enquanto a variável dele PlayerInCar estiver ligada: sem desligar, o jogador saía agachado para sempre
         static void SetInCar(bool on)
         {
             if (inCar == null)

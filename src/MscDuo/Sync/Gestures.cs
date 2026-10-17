@@ -2,7 +2,6 @@ using UnityEngine;
 
 namespace MscDuo.Sync
 {
-    // gestos do jogador: o jogo liga um objeto da mão na câmera enquanto o gesto dura, e as vozes saem dos grupos do MasterAudio
     internal static class Gestures
     {
         internal const ushort MiddleFinger = 1;
@@ -35,6 +34,7 @@ namespace MscDuo.Sync
             if (camera != main.transform)
             {
                 camera = main.transform;
+                voices = null;
                 for (int i = 0; i < Hands.Length; i++) hands[i] = camera.Find(Hands[i]);
                 pee = camera.parent != null ? camera.parent.Find("Piss/Fluid") : null;
                 crouch = null;
@@ -45,14 +45,12 @@ namespace MscDuo.Sync
             for (int i = 0; i < hands.Length; i++)
                 if (hands[i] != null && hands[i].gameObject.activeInHierarchy) flags |= HandFlags[i];
             if (pee != null && pee.gameObject.activeInHierarchy) flags |= Pee;
-            // agachado: os estados do FSM Crouch do jogo, meio agachado e agachado no fundo
             var state = crouch != null ? crouch.ActiveStateName : "";
             if (state == "Move down 1" || state == "Crouched 1") flags |= Crouch;
             else if (state == "Move down 2" || state == "Crouched 2") flags |= CrouchLow;
             return flags;
         }
 
-        // voz nova: id = grupo * 16 + variação, e o contador avisa o outro lado que ela começou de novo
         internal static void CaptureVoice(out byte voice, out byte count)
         {
             if (voices == null) FindVoices();
