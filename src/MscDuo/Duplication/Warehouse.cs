@@ -13,7 +13,6 @@ namespace MscDuo.Duplication
         const string TexturePrefix = "MscDuo.galpao.";
         const string GravelPath = "MAP/MESH/TERRAIN_OBJ/Gravel";
         const string GrassPath = "MAP/MESH/TERRAIN_OBJ/Grass1";
-        const float GateLift = 4.45f;
         const float TreeMargin = 2f;
 
         static readonly string[] Solid = { "Piso", "Paredes", "Mezanino", "Escada", "Salas", "GuardaCorpo", "Estrutura", "Telhado", "Janelas" };
@@ -46,7 +45,7 @@ namespace MscDuo.Duplication
                 foreach (var name in part.Materials) materials.Add(BuildingMaterial(name, template, textures));
                 var go = Create(part, materials.ToArray(), root.transform);
                 parts++;
-                if (System.Array.IndexOf(Gates, part.Name) >= 0) go.transform.position += Vector3.up * GateLift;
+                if (System.Array.IndexOf(Gates, part.Name) >= 0) go.SetActive(false);
                 else if (System.Array.IndexOf(Solid, part.Name) >= 0)
                 {
                     go.AddComponent<MeshCollider>().sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
