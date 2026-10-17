@@ -143,6 +143,30 @@ def import_area(col):
     before = set(bpy.data.objects)
     bpy.ops.wm.obj_import(filepath=AREA, forward_axis="Y", up_axis="Z")
     imported = [o for o in bpy.data.objects if o not in before]
+    fixed = set()
+    for obj in imported:
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat is None or mat in fixed or not mat.use_nodes:
+                continue
+            fixed.add(mat)
+            tex = next((n for n in mat.node_tree.nodes if n.type == "TEX_IMAGE" and n.image is not None), None)
+            bsdf = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if tex is None or bsdf is None:
+                continue
+            bsdf.inputs["Roughness"].default_value = 0.85
+            bsdf.inputs["Specular IOR Level"].default_value = 0.2
+            if "road_map" in tex.image.name.lower():
+                for link in list(bsdf.inputs["Base Color"].links):
+                    mat.node_tree.links.remove(link)
+                bsdf.inputs["Base Color"].default_value = (0.36, 0.32, 0.27, 1.0)
+                continue
+            if "FOLIAGE" in obj.name or tex.image.name.lower().startswith(("tree", "bush", "spruce", "birch", "pine", "leaf", "grass")):
+                mat.node_tree.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+                if hasattr(mat, "surface_render_method"):
+                    mat.surface_render_method = "DITHERED"
+                else:
+                    mat.blend_method = "HASHED"
     for obj in imported:
         for c in list(obj.users_collection):
             c.objects.unlink(obj)

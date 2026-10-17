@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using MSCLoader;
+using MscDuo.Duplication;
 using UnityEngine;
 
 namespace MscDuo.Tools
@@ -44,7 +45,8 @@ namespace MscDuo.Tools
             var materials = new Dictionary<Material, string>();
             var images = new Dictionary<Texture, string>();
             var doneBatches = new HashSet<Mesh>();
-            int offset = 1, objects = 0, triangles = 0, unreadable = 0;
+            int offset = 1, objects = 0, triangles = 0, unreadable = 0, rebuilt = 0;
+            var extractor = new StaticBatchExtractor();
 
             foreach (var renderer in Object.FindObjectsOfType<MeshRenderer>())
             {
@@ -56,7 +58,18 @@ namespace MscDuo.Tools
                 var mesh = filter != null ? filter.sharedMesh : null;
                 if (mesh == null) continue;
                 var batched = renderer.isPartOfStaticBatch;
-                if (batched && !doneBatches.Add(mesh)) continue;
+                if (batched)
+                {
+                    Mesh extracted = null;
+                    try { extracted = extractor.Extract(renderer, mesh); } catch { extracted = null; }
+                    if (extracted != null)
+                    {
+                        mesh = extracted;
+                        batched = false;
+                        rebuilt++;
+                    }
+                    else if (!doneBatches.Add(mesh)) continue;
+                }
 
                 Vector3[] vertices;
                 try { vertices = mesh.vertices; } catch { vertices = null; }
@@ -107,9 +120,10 @@ namespace MscDuo.Tools
                 }
             }
 
+            extractor.Dispose();
             File.WriteAllText(Path.Combine(folder, "area.obj"), obj.ToString());
             File.WriteAllText(Path.Combine(folder, "area.mtl"), mtl.ToString());
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> área exportada: {objects} objetos, {triangles} triângulos, {materials.Count} materiais, {images.Count} texturas{(unreadable > 0 ? $", {unreadable} sem leitura" : "")}. Pasta: {folder}");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> área exportada: {objects} objetos, {triangles} triângulos, {materials.Count} materiais, {images.Count} texturas, {rebuilt} peças agrupadas reconstruídas{(unreadable > 0 ? $", {unreadable} sem leitura" : "")}. Pasta: {folder}");
         }
 
         static string MaterialName(Material material, Dictionary<Material, string> materials, Dictionary<Texture, string> images, StringBuilder mtl, string folder)
