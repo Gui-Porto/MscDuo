@@ -24,6 +24,7 @@ FLOOR_LIFT = 0.1
 FLAT_MARGIN = 2.0
 FLAT_BLEND = 6.0
 FLAT_BELOW = 0.04
+FRONT_CLEAR = 12.0
 COLLECTION = "MAPA"
 
 
@@ -207,7 +208,7 @@ def clear_and_flatten(objects, floor, W, D):
         elif "FOLIAGE" in obj.name:
             bm = bmesh.new()
             bm.from_mesh(obj.data)
-            doomed = [f for f in bm.faces if x0 <= f.calc_center_median().x <= x1 and y0 <= f.calc_center_median().y <= y1]
+            doomed = [f for f in bm.faces if x0 <= f.calc_center_median().x <= x1 + FRONT_CLEAR and y0 <= f.calc_center_median().y <= y1]
             removed += len(doomed)
             bmesh.ops.delete(bm, geom=doomed, context="FACES")
             bm.to_mesh(obj.data)
@@ -337,17 +338,17 @@ def main():
     col = collection(COLLECTION)
     if os.path.exists(AREA):
         imported = import_area(col)
-        verts = len(imported)
+        verts = 0
         floor, (low, high) = place_galpao(grid, xs, zs)
         flattened, removed = clear_and_flatten(imported, floor, 24.0, 16.0)
-        print(f"[MSC Duo] área do jogo importada: {len(imported)} objetos, {removed} faces de árvores removidas")
+        print(f"[MSC Duo] área do jogo importada: {len(imported)} objetos, {removed} faces de árvores removidas (galpão e pátio da frente)")
     else:
         ground = terrain(col, grid, xs, zs, cx, cz, half)
         verts = house2(col)
         floor, (low, high) = place_galpao(grid, xs, zs)
         flattened = flatten(ground, floor, 24.0, 16.0)
     lighting()
-    print(f"[MSC Duo] mapa: terreno {len(xs)}x{len(zs)}, casa 2 com {verts} vértices, {flattened} pontos nivelados, piso do galpão em {floor:.2f} m (chão entre {low:.2f} e {high:.2f})")
+    print(f"[MSC Duo] mapa: terreno {len(xs)}x{len(zs)}, {flattened} pontos nivelados, piso do galpão em {floor:.2f} m (chão entre {low:.2f} e {high:.2f})")
     if "--render" in sys.argv:
         render()
     if "--save" in sys.argv:
