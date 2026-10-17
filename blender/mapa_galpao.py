@@ -19,7 +19,10 @@ HOUSE2 = (-7.46, 45.43, 0.38, 241.1472)
 FRONT_X = -30.0
 LEFT_Y = 13.0
 YAW = 90.0
-FLOOR_LIFT = 0.15
+FLOOR_LIFT = 0.1
+FLAT_MARGIN = 2.0
+FLAT_BLEND = 6.0
+FLAT_BELOW = 0.04
 COLLECTION = "MAPA"
 
 
@@ -116,6 +119,25 @@ def house2(col):
     return len(used)
 
 
+def flatten(terrain_obj, floor, W, D):
+    x0, x1 = FRONT_X - D - FLAT_MARGIN, FRONT_X + FLAT_MARGIN
+    y0, y1 = LEFT_Y - FLAT_MARGIN, LEFT_Y + W + FLAT_MARGIN
+    target = floor - FLAT_BELOW
+    changed = 0
+    for v in terrain_obj.data.vertices:
+        dx = max(x0 - v.co.x, 0.0, v.co.x - x1)
+        dy = max(y0 - v.co.y, 0.0, v.co.y - y1)
+        distance = math.hypot(dx, dy)
+        if distance >= FLAT_BLEND:
+            continue
+        t = 1.0 - distance / FLAT_BLEND
+        weight = t * t * (3 - 2 * t)
+        v.co.z = v.co.z + (target - v.co.z) * weight
+        changed += 1
+    terrain_obj.data.update()
+    return changed
+
+
 def ground_at(grid, xs, zs, x, y):
     def nearest(values, v):
         return min(values, key=lambda a: abs(a - v))
@@ -135,7 +157,7 @@ def place_galpao(grid, xs, zs):
             h = ground_at(grid, xs, zs, FRONT_X - v, LEFT_Y + u)
             if h is not None:
                 samples.append(h)
-    floor = max(samples) + FLOOR_LIFT if samples else 0.0
+    floor = sum(samples) / len(samples) + FLOOR_LIFT if samples else 0.0
     anchor = bpy.data.objects.get("GalpaoPosicao")
     if anchor is None:
         anchor = bpy.data.objects.new("GalpaoPosicao", None)
@@ -167,7 +189,7 @@ def lighting():
         sun = bpy.data.objects.new("MapaSol", bpy.data.lights.new("MapaSol", "SUN"))
         scene.collection.objects.link(sun)
     sun.data.energy = 3.5
-    sun.rotation_euler = (math.radians(45), math.radians(15), math.radians(200))
+    sun.rotation_euler = (math.radians(50), math.radians(0), math.radians(-60))
     world = scene.world or bpy.data.worlds.new("World")
     scene.world = world
     world.use_nodes = True
@@ -220,11 +242,12 @@ def main():
     cx, cz, half = meta()
     grid, xs, zs = heights()
     col = collection(COLLECTION)
-    terrain(col, grid, xs, zs, cx, cz, half)
+    ground = terrain(col, grid, xs, zs, cx, cz, half)
     verts = house2(col)
     floor, (low, high) = place_galpao(grid, xs, zs)
+    flattened = flatten(ground, floor, 24.0, 16.0)
     lighting()
-    print(f"[MSC Duo] mapa: terreno {len(xs)}x{len(zs)}, casa 2 com {verts} vértices, piso do galpão em {floor:.2f} m (chão entre {low:.2f} e {high:.2f})")
+    print(f"[MSC Duo] mapa: terreno {len(xs)}x{len(zs)}, casa 2 com {verts} vértices, {flattened} pontos nivelados, piso do galpão em {floor:.2f} m (chão entre {low:.2f} e {high:.2f})")
     if "--render" in sys.argv:
         render()
     if "--save" in sys.argv:

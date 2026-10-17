@@ -204,7 +204,7 @@ def roof_z(x):
 
 
 def floor(b):
-    b.box("Piso", "concreto", -0.3, -0.3, -0.3, W + 0.3, D + 0.3, 0.0)
+    b.box("Piso", "concreto", -0.3, -0.3, -1.2, W + 0.3, D + 0.3, 0.0)
     for x0, x1 in GATES:
         for y in (1.0, 9.5):
             b.box("Faixas", "faixa", x0, y - 0.06, 0.001, x1, y + 0.06, 0.004)
