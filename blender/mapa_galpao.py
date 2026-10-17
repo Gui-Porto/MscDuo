@@ -12,6 +12,7 @@ FOLDER = os.path.dirname(os.path.abspath(__file__))
 SETTINGS = os.path.join(os.path.expanduser("~"), "Documents", "MySummerCar", "Mods", "Config", "Mod Settings", "MscDuo")
 MAP = os.path.join(SETTINGS, "maps", "20261014-112211")
 RELEVO = os.path.join(SETTINGS, "dumps", "relevo.obj")
+AREA = os.path.join(SETTINGS, "dumps", "area", "area.obj")
 BLEND = os.path.join(FOLDER, "mapa-galpao.blend")
 PREVIEW = os.path.join(FOLDER, "mapa-galpao-{}.png")
 
@@ -138,6 +139,74 @@ def flatten(terrain_obj, floor, W, D):
     return changed
 
 
+def import_area(col):
+    before = set(bpy.data.objects)
+    bpy.ops.wm.obj_import(filepath=AREA, forward_axis="Y", up_axis="Z")
+    imported = [o for o in bpy.data.objects if o not in before]
+    for obj in imported:
+        for c in list(obj.users_collection):
+            c.objects.unlink(obj)
+        col.objects.link(obj)
+    return imported
+
+
+def area_ground(objects, x, y):
+    best = None
+    for obj in objects:
+        if "TERRAIN_OBJ" not in obj.name and "Road" not in obj.name:
+            continue
+        for v in obj.data.vertices:
+            if abs(v.co.x - x) < 1.5 and abs(v.co.y - y) < 1.5:
+                best = v.co.z if best is None else max(best, v.co.z)
+    return best
+
+
+def clear_and_flatten(objects, floor, W, D):
+    x0, x1 = FRONT_X - D - FLAT_MARGIN, FRONT_X + FLAT_MARGIN
+    y0, y1 = LEFT_Y - FLAT_MARGIN, LEFT_Y + W + FLAT_MARGIN
+    target = floor - FLAT_BELOW
+    flattened = removed = 0
+    for obj in objects:
+        if obj.type != "MESH":
+            continue
+        if "TERRAIN_OBJ" in obj.name:
+            for v in obj.data.vertices:
+                dx = max(x0 - v.co.x, 0.0, v.co.x - x1)
+                dy = max(y0 - v.co.y, 0.0, v.co.y - y1)
+                distance = math.hypot(dx, dy)
+                if distance >= FLAT_BLEND:
+                    continue
+                t = 1.0 - distance / FLAT_BLEND
+                v.co.z += (target - v.co.z) * t * t * (3 - 2 * t)
+                flattened += 1
+            obj.data.update()
+        elif "FOLIAGE" in obj.name:
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            doomed = [f for f in bm.faces if x0 <= f.calc_center_median().x <= x1 and y0 <= f.calc_center_median().y <= y1]
+            removed += len(doomed)
+            bmesh.ops.delete(bm, geom=doomed, context="FACES")
+            bm.to_mesh(obj.data)
+            bm.free()
+    return flattened, removed
+
+
+def save_view():
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            space = area.spaces.active
+            space.shading.type = "MATERIAL"
+            space.clip_end = 2000.0
+            space.overlay.show_floor = False
+            region = space.region_3d
+            region.view_perspective = "PERSP"
+            region.view_location = (FRONT_X - 4.0, LEFT_Y + 12.0, 0.0)
+            region.view_distance = 70.0
+            region.view_rotation = Vector((-0.6, 0.55, -0.58)).normalized().to_track_quat("-Z", "Y")
+
+
 def ground_at(grid, xs, zs, x, y):
     def nearest(values, v):
         return min(values, key=lambda a: abs(a - v))
@@ -242,15 +311,23 @@ def main():
     cx, cz, half = meta()
     grid, xs, zs = heights()
     col = collection(COLLECTION)
-    ground = terrain(col, grid, xs, zs, cx, cz, half)
-    verts = house2(col)
-    floor, (low, high) = place_galpao(grid, xs, zs)
-    flattened = flatten(ground, floor, 24.0, 16.0)
+    if os.path.exists(AREA):
+        imported = import_area(col)
+        verts = len(imported)
+        floor, (low, high) = place_galpao(grid, xs, zs)
+        flattened, removed = clear_and_flatten(imported, floor, 24.0, 16.0)
+        print(f"[MSC Duo] área do jogo importada: {len(imported)} objetos, {removed} faces de árvores removidas")
+    else:
+        ground = terrain(col, grid, xs, zs, cx, cz, half)
+        verts = house2(col)
+        floor, (low, high) = place_galpao(grid, xs, zs)
+        flattened = flatten(ground, floor, 24.0, 16.0)
     lighting()
     print(f"[MSC Duo] mapa: terreno {len(xs)}x{len(zs)}, casa 2 com {verts} vértices, {flattened} pontos nivelados, piso do galpão em {floor:.2f} m (chão entre {low:.2f} e {high:.2f})")
     if "--render" in sys.argv:
         render()
     if "--save" in sys.argv:
+        save_view()
         bpy.ops.file.pack_all()
         bpy.ops.wm.save_as_mainfile(filepath=BLEND)
     if not bpy.app.background:
