@@ -5,26 +5,30 @@ namespace MscDuo.Sync
     // gestos do jogador: o jogo liga um objeto da mão na câmera enquanto o gesto dura, e as vozes saem dos grupos do MasterAudio
     internal static class Gestures
     {
-        internal const byte MiddleFinger = 1;
-        internal const byte Punch = 2;
-        internal const byte Wave = 4;
-        internal const byte Smoke = 8;
-        internal const byte Drink = 16;
-        internal const byte Pee = 32;
+        internal const ushort MiddleFinger = 1;
+        internal const ushort Punch = 2;
+        internal const ushort Wave = 4;
+        internal const ushort Smoke = 8;
+        internal const ushort Drink = 16;
+        internal const ushort Pee = 32;
+        internal const ushort Watch = 64;
+        internal const ushort Crouch = 128;
+        internal const ushort CrouchLow = 256;
 
-        static readonly string[] Hands = { "MiddleFinger", "Fist", "Hello", "Smoking", "Drink/Hand" };
-        static readonly byte[] HandFlags = { MiddleFinger, Punch, Wave, Smoke, Drink };
+        static readonly string[] Hands = { "MiddleFinger", "Fist", "Hello", "Smoking", "Drink/Hand", "Watch" };
+        static readonly ushort[] HandFlags = { MiddleFinger, Punch, Wave, Smoke, Drink, Watch };
         static readonly string[] VoiceGroups = { "Swearing", "Fuck" };
 
         static Transform camera;
         static readonly Transform[] hands = new Transform[Hands.Length];
         static Transform pee;
+        static PlayMakerFSM crouch;
         static AudioSource[][] voices;
         static bool[][] playing;
         static byte lastVoice;
         static byte voiceCount;
 
-        internal static byte Capture()
+        internal static ushort Capture()
         {
             var main = Camera.main;
             if (main == null) return 0;
@@ -33,11 +37,18 @@ namespace MscDuo.Sync
                 camera = main.transform;
                 for (int i = 0; i < Hands.Length; i++) hands[i] = camera.Find(Hands[i]);
                 pee = camera.parent != null ? camera.parent.Find("Piss/Fluid") : null;
+                crouch = null;
+                var player = GameObject.Find("PLAYER");
+                if (player != null) foreach (var fsm in player.GetComponents<PlayMakerFSM>()) if (fsm.FsmName == "Crouch") crouch = fsm;
             }
-            byte flags = 0;
+            ushort flags = 0;
             for (int i = 0; i < hands.Length; i++)
                 if (hands[i] != null && hands[i].gameObject.activeInHierarchy) flags |= HandFlags[i];
             if (pee != null && pee.gameObject.activeInHierarchy) flags |= Pee;
+            // agachado: os estados do FSM Crouch do jogo, meio agachado e agachado no fundo
+            var state = crouch != null ? crouch.ActiveStateName : "";
+            if (state == "Move down 1" || state == "Crouched 1") flags |= Crouch;
+            else if (state == "Move down 2" || state == "Crouched 2") flags |= CrouchLow;
             return flags;
         }
 

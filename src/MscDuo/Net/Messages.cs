@@ -24,7 +24,7 @@ namespace MscDuo.Net
 
     internal static class Protocol
     {
-        internal const ushort Version = 15;
+        internal const ushort Version = 16;
     }
 
     internal struct PlayerStateMessage
@@ -40,7 +40,7 @@ namespace MscDuo.Net
         internal byte Flags;
         internal byte Vehicle;
         internal Vector3 Head;
-        internal byte Gestures;
+        internal ushort Gestures;
         internal byte Voice;
         internal byte VoiceCount;
 
@@ -73,7 +73,7 @@ namespace MscDuo.Net
             Flags = r.ReadByte(),
             Vehicle = r.ReadByte(),
             Head = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
-            Gestures = r.ReadByte(),
+            Gestures = r.ReadUInt16(),
             Voice = r.ReadByte(),
             VoiceCount = r.ReadByte(),
         };

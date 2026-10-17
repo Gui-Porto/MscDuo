@@ -45,19 +45,33 @@ namespace MscDuo.Sync
 
         const string Arms = "skeleton/pelvis/spine_middle/spine_upper/";
         const string Punch = "fighter_right_hit_jaw";
-        const string Finger = "fat_handsright_pocket_offer_on";
+        const string Finger = "fighter_right_fightpos_on";
+        const float FingerFrame = 0.6f;
         const string Wave = "fat_waving_hello";
         const string Drink = "fat_handsright_drink";
         const string Smoke = "fat_handsleft_smoke";
+        const string LookWatch = "fat_handsleft_offer_on";
+        const string FingerHandPath = "Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/MiddleFinger/Pivot";
+        const string WatchPath = "Pivot/AnimPivot/Camera/FPSCamera/FPSCamera/Watch/Animate/BreathAnim/WristwatchHand";
+
+        // mão do dedo do meio (a do próprio jogador, em primeira pessoa) e relógio no pulso: posição, giro e escala no antebraço do boneco
+        internal static Vector3 FingerOffset = new Vector3(-0.34f, 0f, 0f);
+        internal static Vector3 FingerRotation = new Vector3(0f, 0f, -90f);
+        internal static float FingerScale = 1.6f;
+        internal static Vector3 WatchOffset = new Vector3(-0.22f, 0f, 0f);
+        internal static Vector3 WatchRotation = new Vector3(90f, 0f, 0f);
+        internal static float WatchScale = 1f;
 
         // clipes de gesto emprestados de outros NPCs com o mesmo esqueleto (raiz, caminho do osso com a Animation, clipe)
         static readonly string[][] GestureSources =
         {
             new[] { "HUMANS", "FighterPub/Fighter2/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Punch },
             new[] { "DANCEHALL", "Functions/FIGHTER/Fighter/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Punch },
-            new[] { "JOBS", "HouseDrunk/Moving/JokkeHiker1/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Finger },
+            new[] { "HUMANS", "FighterPub/Fighter2/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Finger },
+            new[] { "DANCEHALL", "Functions/FIGHTER/Fighter/Pivot/Char/skeleton/pelvis/spine_middle/spine_upper/collar_right", Finger },
             new[] { "JOBS", "HouseShit1/LOD/ShitNPC/ShitMan1/skeleton/pelvis/RotationPivot/spine_middle/spine_upper/collar_right", Drink },
             new[] { "JOBS", "HouseShit1/LOD/ShitNPC/ShitMan1/skeleton/pelvis/RotationPivot/spine_middle/spine_upper/collar_left", Smoke },
+            new[] { "JOBS", "HouseShit1/LOD/ShitNPC/ShitMan1/skeleton/pelvis/RotationPivot/spine_middle/spine_upper/collar_left", LookWatch },
         };
         static readonly Dictionary<string, AnimationClip> gestureClips = new Dictionary<string, AnimationClip>();
         static AudioClip peeClip;
@@ -93,6 +107,14 @@ namespace MscDuo.Sync
         AudioSource peeAudio;
         AudioSource voice;
         readonly Dictionary<Transform, Transform[]> grips = new Dictionary<Transform, Transform[]>();
+        GameObject fingerHand;
+        Transform handRight;
+        Transform watch;
+        readonly List<int> legBones = new List<int>();
+        Transform ankleLeft;
+        Transform ankleRight;
+        float restAnkle;
+        bool crouching;
         Vector3 lastFeet;
         bool hasLast;
         float speed;
@@ -155,10 +177,53 @@ namespace MscDuo.Sync
 
             bones.Clear();
             rest.Clear();
+            // repouso da animação de ficar em pé: o NPC copiado pode estar no meio de um passo, com uma perna à frente
+            if (skeleton != null && legs != null && legs[Stand] != null) legs[Stand].clip.SampleAnimation(skeleton.gameObject, 0f);
             if (skeleton != null) Collect(skeleton, "");
 
             collarLeft = Collar("collar_left", out idleLeft);
             collarRight = Collar("collar_right", out idleRight);
+            handRight = body.Find(Arms + "collar_right/shoulder_right/arm_right");
+            var upperRight = body.Find(Arms + "collar_right/shoulder_right");
+            var player = GameObject.Find("PLAYER");
+            var sourceHand = player != null ? player.transform.Find(FingerHandPath) : null;
+            if (sourceHand != null && upperRight != null)
+            {
+                // a animação da mão em primeira pessoa leva a mão para a frente da câmera: fica congelada com o dedo levantado, presa num suporte no punho
+                fingerHand = new GameObject("MiddleFingerHand");
+                fingerHand.transform.parent = upperRight;
+                var hand = (GameObject)Object.Instantiate(sourceHand.gameObject);
+                var anim = hand.GetComponent<Animation>();
+                if (anim != null)
+                {
+                    foreach (AnimationState state in anim) { state.clip.SampleAnimation(hand, state.clip.length * FingerFrame); break; }
+                    Object.Destroy(anim);
+                }
+                hand.transform.parent = fingerHand.transform;
+                hand.transform.localPosition = Vector3.zero;
+                hand.transform.localRotation = Quaternion.identity;
+                hand.SetActive(true);
+                foreach (var renderer in hand.GetComponentsInChildren<SkinnedMeshRenderer>(true)) { renderer.enabled = true; renderer.updateWhenOffscreen = true; }
+                fingerHand.SetActive(false);
+            }
+            var forearmLeft = body.Find(Arms + "collar_left/shoulder_left/arm_left");
+            var sourceWatch = player != null ? player.transform.Find(WatchPath) : null;
+            if (sourceWatch != null && forearmLeft != null)
+            {
+                var watchCopy = (GameObject)Object.Instantiate(sourceWatch.gameObject);
+                watchCopy.name = "Wristwatch";
+                watch = watchCopy.transform;
+                watch.parent = forearmLeft;
+                watchCopy.SetActive(true);
+                foreach (var renderer in watchCopy.GetComponentsInChildren<Renderer>(true)) renderer.enabled = true;
+            }
+            legBones.Clear();
+            for (int i = 0; i < bones.Count; i++)
+                if (bones[i].Value.StartsWith("thig_")) legBones.Add(i);
+            ankleLeft = body.Find("skeleton/thig_left/knee_left/ankle_left");
+            ankleRight = body.Find("skeleton/thig_right/knee_right/ankle_right");
+            restAnkle = ankleLeft != null && ankleRight != null ? Mathf.Min(ankleLeft.position.y, ankleRight.position.y) - root.transform.position.y : 0.08f;
+            crouching = false;
             playingLeft = playingRight = null;
             pelvis = body.Find("skeleton/pelvis");
             head = head ?? body;
@@ -168,7 +233,7 @@ namespace MscDuo.Sync
             pee = stream.AddComponent<LineRenderer>();
             pee.material = new Material(Shader.Find("Sprites/Default") ?? Shader.Find("Diffuse"));
             pee.SetColors(new Color(1f, 0.92f, 0.35f, 0.75f), new Color(1f, 0.92f, 0.35f, 0.35f));
-            pee.SetWidth(0.012f, 0.02f);
+            pee.SetWidth(0.03f, 0.045f);
             pee.SetVertexCount(PeePoints);
             pee.enabled = false;
             peeAudio = stream.AddComponent<AudioSource>();
@@ -317,16 +382,24 @@ namespace MscDuo.Sync
         }
 
         // gestos, voz e xixi do outro jogador, com as animações e sons do próprio jogo
-        internal void Express(byte flags, byte voiceId, byte count)
+        internal void Express(ushort flags, byte voiceId, byte count)
         {
             if (root == null || body == null) return;
+            Attach();
             string right = null;
             if ((flags & Gestures.Punch) != 0) right = Punch;
             else if ((flags & Gestures.MiddleFinger) != 0) right = Finger;
             else if ((flags & Gestures.Wave) != 0) right = Wave;
             else if ((flags & Gestures.Drink) != 0) right = Drink;
             Drive(collarRight, right, idleRight, ref playingRight);
-            Drive(collarLeft, (flags & Gestures.Smoke) != 0 ? Smoke : null, idleLeft, ref playingLeft);
+            Drive(collarLeft, (flags & Gestures.Smoke) != 0 ? Smoke : (flags & Gestures.Watch) != 0 ? LookWatch : null, idleLeft, ref playingLeft);
+
+            // dedo do meio: o antebraço do NPC some e entra o antebraço do jogo, com a mão e o dedo levantado, saindo do cotovelo
+            var finger = (flags & Gestures.MiddleFinger) != 0 && fingerHand != null;
+            if (fingerHand != null && finger != fingerHand.activeSelf) fingerHand.SetActive(finger);
+            if (handRight != null) handRight.localScale = finger ? Vector3.zero : Vector3.one;
+
+            Crouch((flags & Gestures.CrouchLow) != 0 ? 1f : (flags & Gestures.Crouch) != 0 ? 0.5f : 0f);
 
             var peeing = (flags & Gestures.Pee) != 0 && pelvis != null;
             pee.enabled = peeing;
@@ -350,6 +423,51 @@ namespace MscDuo.Sync
                 if (clip != null) voice.PlayOneShot(clip);
             }
             voiceCount = count;
+        }
+
+        internal Transform Bone(string path) => body != null ? body.Find(path) : null;
+
+        void Attach()
+        {
+            if (fingerHand != null)
+            {
+                fingerHand.transform.localPosition = FingerOffset;
+                fingerHand.transform.localRotation = Quaternion.Euler(FingerRotation);
+                fingerHand.transform.localScale = Vector3.one * FingerScale;
+            }
+            if (watch != null)
+            {
+                watch.localPosition = WatchOffset;
+                watch.localRotation = Quaternion.Euler(WatchRotation);
+                watch.localScale = Vector3.one * WatchScale;
+            }
+        }
+
+        // agachar: as pernas vão para uma fração da pose sentada do motorista e o corpo desce até o pé tocar o chão
+        void Crouch(float amount)
+        {
+            if (seated || seatedPose == null) return;
+            if (amount <= 0f)
+            {
+                if (!crouching) return;
+                crouching = false;
+                foreach (var i in legBones) { bones[i].Key.localPosition = rest[i].Key; bones[i].Key.localRotation = rest[i].Value; }
+                if (legs != null) { legs.enabled = true; if (legs[Stand] != null) legs.CrossFade(Stand, 0.2f); }
+                return;
+            }
+            crouching = true;
+            if (legs != null) legs.enabled = false;
+            foreach (var i in legBones)
+            {
+                KeyValuePair<Vector3, Quaternion> pose;
+                if (!seatedPose.TryGetValue(bones[i].Value, out pose)) continue;
+                // meio agachado dobra mais o joelho que a coxa, para o pé ficar embaixo do corpo
+                var share = bones[i].Value.Contains("knee") ? Mathf.Min(1f, amount * 1.8f) : amount;
+                bones[i].Key.localRotation = Quaternion.Slerp(rest[i].Value, pose.Value, share);
+            }
+            if (ankleLeft == null || ankleRight == null) return;
+            var lowest = Mathf.Min(ankleLeft.position.y, ankleRight.position.y) - root.transform.position.y;
+            root.transform.position += Vector3.up * (restAnkle - lowest);
         }
 
         void Drive(Animation anim, string clip, string idle, ref string current)
