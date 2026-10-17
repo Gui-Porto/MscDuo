@@ -62,6 +62,19 @@
     <EmbeddedResource Include="../../blender/extensao.obj" LogicalName="MscDuo.extensao.obj" />
     <EmbeddedResource Include="../../blender/extensao.png" LogicalName="MscDuo.extensao.png" />
     <EmbeddedResource Include="../../blender/aterro.obj" LogicalName="MscDuo.aterro.obj" />
+    <EmbeddedResource Include="../../blender/galpao_jogo.obj" LogicalName="MscDuo.galpao_jogo.obj" />
+    <EmbeddedResource Include="../../blender/plataforma_jogo.obj" LogicalName="MscDuo.plataforma_jogo.obj" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/aco.png" LogicalName="MscDuo.galpao.aco.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/chapa.png" LogicalName="MscDuo.galpao.chapa.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/concreto.png" LogicalName="MscDuo.galpao.concreto.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/degrau.png" LogicalName="MscDuo.galpao.degrau.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/faixa.png" LogicalName="MscDuo.galpao.faixa.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/laje.png" LogicalName="MscDuo.galpao.laje.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/luz.png" LogicalName="MscDuo.galpao.luz.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/parede.png" LogicalName="MscDuo.galpao.parede.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/porta.png" LogicalName="MscDuo.galpao.porta.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/portao.png" LogicalName="MscDuo.galpao.portao.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/vidro.png" LogicalName="MscDuo.galpao.vidro.png" />
   </ItemGroup>
 
   <Target Name="DeployToMods" AfterTargets="Build">

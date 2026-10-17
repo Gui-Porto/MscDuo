@@ -64,6 +64,44 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> árvores: {pieces} removidas de {meshes} malhas, {colliders} colisões removidas, {unreadable} malhas sem leitura.");
         }
 
+        internal static int ClearArea(Vector3 min, Vector3 max)
+        {
+            var foliage = GameObject.Find(FoliagePath);
+            if (foliage == null) return 0;
+            var zone = new ZoneBox(min, max);
+            var pieces = 0;
+            foreach (var filter in foliage.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var mesh = filter.sharedMesh;
+                if (mesh == null) continue;
+                Mesh cleared;
+                int removed;
+                if (!TryClear(mesh, filter.transform, zone, out cleared, out removed) || removed == 0) continue;
+                if (!originalMeshes.ContainsKey(filter)) originalMeshes[filter] = mesh;
+                filter.sharedMesh = cleared;
+                pieces += removed;
+            }
+            foreach (var col in TreeColliders())
+            {
+                var mc = col as MeshCollider;
+                if (mc != null && mc.sharedMesh != null)
+                {
+                    Mesh cleared;
+                    int removed;
+                    if (TryClear(mc.sharedMesh, mc.transform, zone, out cleared, out removed) && removed > 0)
+                    {
+                        if (!originalColliders.ContainsKey(mc)) originalColliders[mc] = mc.sharedMesh;
+                        mc.sharedMesh = cleared;
+                    }
+                    continue;
+                }
+                if (!col.enabled || !zone.Contains(col.bounds.center)) continue;
+                col.enabled = false;
+                disabledColliders.Add(col);
+            }
+            return pieces;
+        }
+
         static IEnumerable<Collider> TreeColliders()
         {
             var map = GameObject.Find("MAP");
