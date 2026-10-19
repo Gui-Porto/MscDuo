@@ -25,6 +25,8 @@ namespace MscDuo.Tools
 
         static readonly bool[] frozen = new bool[Needs.Length];
         static bool noMosquitos;
+        static bool loaded;
+        const string PrefsFile = "painel.txt";
         static PlayMakerFSM mosquito;
         static bool open;
         static int tab;
@@ -55,8 +57,41 @@ namespace MscDuo.Tools
             }
         }
 
+        static string PrefsPath => System.IO.Path.Combine(MscDuo.Instance.SettingsFolder, PrefsFile);
+
+        static void LoadPrefs()
+        {
+            loaded = true;
+            try
+            {
+                if (!System.IO.File.Exists(PrefsPath)) return;
+                foreach (var raw in System.IO.File.ReadAllLines(PrefsPath))
+                {
+                    var parts = raw.Split('=');
+                    if (parts.Length != 2) continue;
+                    var key = parts[0].Trim();
+                    var on = parts[1].Trim() == "1";
+                    if (key == "mosquitos") noMosquitos = on;
+                    for (int i = 0; i < Needs.Length; i++) if (key == Needs[i]) frozen[i] = on;
+                }
+            }
+            catch (System.Exception e) { ModConsole.Warning("[MSC Duo] não foi possível ler " + PrefsFile + ": " + e.Message); }
+        }
+
+        static void SavePrefs()
+        {
+            try
+            {
+                var lines = new List<string> { "mosquitos=" + (noMosquitos ? "1" : "0") };
+                for (int i = 0; i < Needs.Length; i++) lines.Add(Needs[i] + "=" + (frozen[i] ? "1" : "0"));
+                System.IO.File.WriteAllLines(PrefsPath, lines.ToArray());
+            }
+            catch (System.Exception e) { ModConsole.Warning("[MSC Duo] não foi possível gravar " + PrefsFile + ": " + e.Message); }
+        }
+
         internal static void Tick()
         {
+            if (!loaded) LoadPrefs();
             for (int i = 0; i < Needs.Length; i++)
             {
                 if (!frozen[i]) continue;
@@ -100,15 +135,21 @@ namespace MscDuo.Tools
         static void PlayerTab()
         {
             GUILayout.Label("Necessidades travadas em zero");
+            var changed = false;
             for (int i = 0; i < Needs.Length; i++)
-                frozen[i] = GUILayout.Toggle(frozen[i], " " + NeedLabels[i]);
+            {
+                var need = GUILayout.Toggle(frozen[i], " " + NeedLabels[i]);
+                if (need != frozen[i]) { frozen[i] = need; changed = true; }
+            }
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Travar todas")) for (int i = 0; i < frozen.Length; i++) frozen[i] = true;
-            if (GUILayout.Button("Soltar todas")) for (int i = 0; i < frozen.Length; i++) frozen[i] = false;
+            if (GUILayout.Button("Travar todas")) { for (int i = 0; i < frozen.Length; i++) frozen[i] = true; changed = true; }
+            if (GUILayout.Button("Soltar todas")) { for (int i = 0; i < frozen.Length; i++) frozen[i] = false; changed = true; }
             GUILayout.EndHorizontal();
 
             GUILayout.Space(6f);
-            noMosquitos = GUILayout.Toggle(noMosquitos, " Sem mosquitos (como se tivesse passado spray)");
+            var mosquitos = GUILayout.Toggle(noMosquitos, " Sem mosquitos (como se tivesse passado spray)");
+            if (mosquitos != noMosquitos) { noMosquitos = mosquitos; changed = true; }
+            if (changed) SavePrefs();
 
             GUILayout.Space(10f);
             var money = FsmVariables.GlobalVariables.FindFsmFloat("PlayerMoney");

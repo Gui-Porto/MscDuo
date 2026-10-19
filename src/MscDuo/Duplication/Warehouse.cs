@@ -160,7 +160,7 @@ namespace MscDuo.Duplication
 
         static PlayMakerFSM Copy(GameObject original, Vector3 front, Vector3 wallPoint, Vector3 facing, float gap, string name, string tag, Transform parent, GameObject lights)
         {
-            var copy = (GameObject)Object.Instantiate(original, wallPoint + facing * gap, original.transform.rotation);
+            var copy = (GameObject)Object.Instantiate(original, wallPoint + facing * (gap + PlateDepth), original.transform.rotation);
             copy.name = name;
             copy.transform.parent = parent;
             copy.transform.rotation = Quaternion.AngleAxis(WarehouseConfig.Get("interruptor_giro"), Vector3.up) * Quaternion.FromToRotation(front, facing) * original.transform.rotation;
