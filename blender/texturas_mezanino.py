@@ -88,4 +88,5 @@ if __name__ == "__main__":
     rug("tapete_sala", (128, 36, 30), (60, 26, 22), (200, 150, 80), "medalhao")
     rug("tapete_jogos", (34, 40, 66), (18, 20, 34), (90, 110, 170), "listras")
     rug("tapete_escritorio", (70, 84, 62), (40, 48, 36), (120, 132, 100), "xadrez")
+    rug("tapete_lounge", (150, 118, 82), (82, 58, 38), (205, 180, 140), "listras")
     print("ok")

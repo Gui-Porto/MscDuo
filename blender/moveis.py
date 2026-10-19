@@ -19,6 +19,7 @@ ITEMS = [
     {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (0.95, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512, "door": ["Material.007", "Material.008"], "glass": ["Material.007"]},
     {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (3.9, 12.3), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
     {"name": "mesinha", "file": "mesinha.glb", "length": 1.0, "front": 0, "facing": "-y", "at": (3.9, 13.75), "floor": MEZ_Z, "tris": 2000, "tex": 512},
+    {"name": "mesinha_lounge", "file": "mesinha.glb", "length": 1.0, "front": 0, "facing": "-y", "at": (11.0, 12.3), "floor": 0.0, "tris": 2000, "tex": 512},
     {"name": "rack", "file": "rack.glb", "scale": 0.01, "front": 0, "facing": "-y", "at": (3.9, 15.5), "floor": MEZ_Z, "tris": 2000, "tex": 64, "color": (0.16, 0.11, 0.08, 1.0)},
     {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (3.9, 15.74), "floor": MEZ_Z + 0.75, "tris": 1000, "tex": 512, "screen_front": 0.035},
     {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (10.15, 15.32), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "screen_object": "ArcadeMachine_Screen_01", "drop": ["ArcadeMachine_Glass"]},

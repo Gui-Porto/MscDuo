@@ -80,6 +80,7 @@
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/portao.png" LogicalName="MscDuo.galpao.portao.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/vidro.png" LogicalName="MscDuo.galpao.vidro.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/azulejo.png" LogicalName="MscDuo.galpao.azulejo.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/tapete_lounge.png" LogicalName="MscDuo.galpao.tapete_lounge.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/piso_banheiro.png" LogicalName="MscDuo.galpao.piso_banheiro.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/lambri.png" LogicalName="MscDuo.galpao.lambri.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/tapete_sala.png" LogicalName="MscDuo.galpao.tapete_sala.png" />

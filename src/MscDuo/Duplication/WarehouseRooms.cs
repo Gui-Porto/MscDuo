@@ -284,7 +284,7 @@ namespace MscDuo.Duplication
             }
         }
 
-        static List<GameObject> Fixture(string[] paths, string name, Vector2 wallPoint, Vector2 front)
+        internal static List<GameObject> Fixture(string[] paths, string name, Vector2 wallPoint, Vector2 front, float? surface = null)
         {
             var sources = new List<GameObject>();
             foreach (var path in paths)
@@ -302,10 +302,11 @@ namespace MscDuo.Duplication
             wanted.y = 0f;
             var turn = Quaternion.FromToRotation(hf.normalized, wanted.normalized);
             var target = frame.TransformPoint(L(wallPoint.x, wallPoint.y, 0f)) + wanted.normalized * houseFront.Value.w;
+            if (surface.HasValue) target.y = surface.Value;
             return Place(sources, anchor, floor, turn, target, name);
         }
 
-        static List<GameObject> Place(List<GameObject> sources, Transform anchor, float floor, Quaternion turn, Vector3 target, string name)
+        internal static List<GameObject> Place(List<GameObject> sources, Transform anchor, float floor, Quaternion turn, Vector3 target, string name)
         {
             var holder = new GameObject(Prefix + "_" + name);
             holder.transform.parent = root;
@@ -421,7 +422,7 @@ namespace MscDuo.Duplication
             return new Vector4(best.x, 0f, best.z, Mathf.Max(0.02f, bestDistance));
         }
 
-        static float Floor(Transform anchor, List<GameObject> group)
+        internal static float Floor(Transform anchor, List<GameObject> group)
         {
             foreach (var hit in Physics.RaycastAll(anchor.position + Vector3.up * 0.3f, Vector3.down, 3f))
             {
