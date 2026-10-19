@@ -16,11 +16,16 @@ ITEMS = [
     {"name": "bancada", "file": "bancada.glb", "scale": 0.01, "front": -90, "facing": "-y", "at": (2.6, 15.4), "floor": 0.0, "tris": 12000, "tex": 1024},
     {"name": "armario_ferramentas", "file": "armario_ferramentas.glb", "height": 1.05, "front": 0, "facing": "-y", "at": (5.25, 15.5), "floor": 0.0, "tris": 10000, "tex": 1024},
     {"name": "sofa_grande", "file": "sofa_grande.glb", "height": 0.8, "front": 180, "facing": "-y", "at": (11.0, 14.3), "floor": 0.0, "tris": 60000, "tex": 1024},
-    {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (1.3, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512},
-    {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (5.0, 12.2), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
-    {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (5.0, 15.74), "floor": MEZ_Z + 1.0, "tris": 1000, "tex": 512},
-    {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (10.8, 15.3), "floor": MEZ_Z, "tris": 8000, "tex": 1024},
-    {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (12.5, 13.1), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
+    {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (0.75, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512},
+    {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (3.9, 12.3), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
+    {"name": "mesinha", "file": "mesinha.glb", "length": 1.0, "front": 0, "facing": "-y", "at": (3.9, 13.75), "floor": MEZ_Z, "tris": 2000, "tex": 512},
+    {"name": "rack", "file": "rack.glb", "scale": 0.01, "front": 0, "facing": "-y", "at": (3.9, 15.5), "floor": MEZ_Z, "tris": 2000, "tex": 64, "color": (0.16, 0.11, 0.08, 1.0)},
+    {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (3.9, 15.74), "floor": MEZ_Z + 0.75, "tris": 1000, "tex": 512},
+    {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (8.6, 15.32), "floor": MEZ_Z, "tris": 8000, "tex": 1024},
+    {"name": "fliperama2", "file": "fliperama2.glb", "height": 1.78, "front": 0, "facing": "-y", "at": (9.4, 15.38), "floor": MEZ_Z, "tris": 6000, "tex": 1024},
+    {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (10.15, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024},
+    {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (11.6, 12.8), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
+    {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (13.4, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
 ]
 
 FACING = {"+x": 90.0, "-x": -90.0, "+y": 180.0, "-y": 0.0}
@@ -60,6 +65,8 @@ def import_item(item):
 
 def place(obj, item):
     me = obj.data
+    if item.get("pitch"):
+        me.transform(Matrix.Rotation(math.radians(item["pitch"]), 4, "X"))
     xs = [v.co.x for v in me.vertices]
     ys = [v.co.y for v in me.vertices]
     zs = [v.co.z for v in me.vertices]
@@ -74,6 +81,38 @@ def place(obj, item):
     matrix = Matrix.Translation(target) @ Matrix.Rotation(turn, 4, "Z") @ Matrix.Scale(scale, 4) @ Matrix.Translation(-center)
     me.transform(matrix)
     me.update()
+
+
+def keep_main(obj):
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    seen, parts = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        part, stack = [], [v]
+        while stack:
+            cur = stack.pop()
+            if cur.index in seen:
+                continue
+            seen.add(cur.index)
+            part.append(cur)
+            for e in cur.link_edges:
+                stack.append(e.other_vert(cur))
+        parts.append(part)
+    def box(part):
+        lo = Vector((min(p.co.x for p in part), min(p.co.y for p in part), min(p.co.z for p in part)))
+        hi = Vector((max(p.co.x for p in part), max(p.co.y for p in part), max(p.co.z for p in part)))
+        return lo, hi
+    lo, hi = box(max(parts, key=lambda q: (box(q)[1] - box(q)[0]).length))
+    center, radius = (lo + hi) / 2, (hi - lo).length / 2
+    away = [q for q in parts if ((box(q)[0] + box(q)[1]) / 2 - center).length > radius * 1.0]
+    for q in away:
+        bmesh.ops.delete(bm, geom=q, context="VERTS")
+    bm.to_mesh(obj.data)
+    bm.free()
+    return len(away)
 
 
 def strip_thin(obj):
@@ -141,6 +180,8 @@ def bake_textures(obj, item):
     for index, slot in enumerate(obj.material_slots):
         name = "%s_%d" % (item["name"], index)
         image, color = base_image(slot.material)
+        if item.get("color"):
+            image, color = None, item["color"]
         path = os.path.join(TEXTURES, name + ".png")
         if image is not None:
             copy = image.copy()
@@ -200,6 +241,8 @@ def build():
     objects, names = [], {}
     for item in ITEMS:
         obj = import_item(item)
+        if item.get("board"):
+            print("%s: %d peças soltas removidas" % (item["name"], keep_main(obj)))
         if item.get("thin"):
             print("%s: %d peças finas removidas" % (item["name"], strip_thin(obj)))
         place(obj, item)

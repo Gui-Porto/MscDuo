@@ -101,6 +101,8 @@ namespace MscDuo.Duplication
             var lamp = root.transform.Find("Galpao_Luzes");
             if (lamp != null) lamp.gameObject.AddComponent<LampState>().Lights = lights;
             var switches = Switches(root.transform, lights);
+            try { MezzanineDecor.Build(root.transform, template, lights); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] decoração do mezanino falhou: {e}"); }
             var light = switches.Count > 0;
             if (lamp != null) lamp.GetComponent<LampState>().Switches = switches;
             try { SlotCloner.Build(root.transform); }
@@ -351,6 +353,8 @@ namespace MscDuo.Duplication
             }
             return parts.Count;
         }
+
+        internal static Material Textured(string name, Material template) => BuildingMaterial(name, template, new Dictionary<string, Material>(), "galpao_tex_jogo", TexturePrefix);
 
         static Material BuildingMaterial(string name, Material template, Dictionary<string, Material> cache, string folder, string prefix)
         {

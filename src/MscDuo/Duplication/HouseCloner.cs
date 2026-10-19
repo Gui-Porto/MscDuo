@@ -174,6 +174,8 @@ namespace MscDuo.Duplication
             }
         }
 
+        internal static void FixStaticBatching(GameObject original, GameObject clone) => FixStaticBatching(original, clone, new CloneStats());
+
         static void FixStaticBatching(GameObject original, GameObject clone, CloneStats stats)
         {
             var originals = original.GetComponentsInChildren<MeshFilter>(true);
