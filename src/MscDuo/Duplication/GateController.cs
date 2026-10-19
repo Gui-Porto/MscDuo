@@ -190,11 +190,14 @@ namespace MscDuo.Duplication
             var root = Warehouse.Root != null ? Warehouse.Root.transform : null;
             var reach = Mathf.Min(0.07f + Speed * dt * 3f, Position + 0.015f);
             if (reach > 0.01f)
-                for (int i = 0; i < 7; i++)
+            {
+                var count = Mathf.CeilToInt(Width / 0.7f);
+                for (int i = 0; i < count; i++)
                 {
-                    var origin = transform.TransformPoint(new Vector3(Width * (i + 0.5f) / 7f, Position + 0.02f, CurtainZ));
+                    var origin = transform.TransformPoint(new Vector3(Width * (i + 0.5f) / count, Position + 0.02f, CurtainZ));
                     if (Hit(origin, Vector3.down, reach, root)) return true;
                 }
+            }
             foreach (var height in new[] { 0.3f, 1.0f })
             {
                 if (Position < height + 0.05f) continue;

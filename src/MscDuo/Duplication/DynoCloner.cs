@@ -14,7 +14,7 @@ namespace MscDuo.Duplication
         const string CollidersPath = "REPAIRSHOP/Dyno";
         const string MeasurePath = "Sheets/DynoSheet/Dyno/Measure";
         const float WaitSeconds = 180f;
-        static readonly float[] Bays = { 4.5f, 19.5f };
+        static readonly float[] Bays = { 8.75f, 15.25f };
         static readonly HashSet<int> injected = new HashSet<int>();
 
         internal static bool InDyno(Transform t)

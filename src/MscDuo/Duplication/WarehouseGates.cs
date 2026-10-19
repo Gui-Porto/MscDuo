@@ -15,7 +15,7 @@ namespace MscDuo.Duplication
         const string SoundPrefix = "MscDuo.portao.";
         const float RemoteRange = 40f;
         const float RequestSeconds = 2f;
-        static readonly float[][] Openings = { new[] { 2f, 7f }, new[] { 17f, 22f } };
+        static readonly float[][] Openings = { new[] { 6f, 18f } };
 
         static readonly List<GateController> gates = new List<GateController>();
         static readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();

@@ -23,7 +23,9 @@ SLAB = 0.25
 OVERHANG = 0.5
 ROOF = 0.12
 
-GATES = [(2.0, 7.0), (17.0, 22.0)]
+GATES = [(6.0, 18.0)]
+DYNO_BAYS = [(7.0, 10.5), (13.5, 17.0)]
+DYNO_Y = (1.0, 12.8)
 GATE_H = 4.5
 SIDE_DOOR = (12.5, 13.5)
 DOOR_H = 2.15
@@ -205,11 +207,12 @@ def roof_z(x):
 
 def floor(b):
     b.box("Piso", "concreto", -0.3, -0.3, -1.2, W + 0.3, D + 0.3, 0.0)
-    for x0, x1 in GATES:
-        for y in (1.0, 9.5):
+    y0, y1 = DYNO_Y
+    for x0, x1 in DYNO_BAYS:
+        for y in (y0, y1):
             b.box("Faixas", "faixa", x0, y - 0.06, 0.001, x1, y + 0.06, 0.004)
         for x in (x0, x1):
-            b.box("Faixas", "faixa", x - 0.06, 1.0, 0.001, x + 0.06, 9.5, 0.004)
+            b.box("Faixas", "faixa", x - 0.06, y0, 0.001, x + 0.06, y1, 0.004)
 
 
 def front_back(b):
