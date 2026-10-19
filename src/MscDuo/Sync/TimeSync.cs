@@ -46,6 +46,20 @@ namespace MscDuo.Sync
                         blocks++;
                     }
             }
+            var roofChecks = 0;
+            foreach (var fsm in Resources.FindObjectsOfTypeAll<PlayMakerFSM>())
+            {
+                if (fsm == null || fsm.FsmName != "RaycastAndFog") continue;
+                FsmTools.EnsureLoaded(fsm);
+                foreach (var state in fsm.FsmStates)
+                    foreach (var action in state.Actions)
+                        if (action is HutongGames.PlayMaker.Actions.Raycast ray && ray.repeatInterval != null && ray.repeatInterval.Value > 1)
+                        {
+                            ray.repeatInterval.Value = 1;
+                            roofChecks++;
+                        }
+            }
+            if (roofChecks > 0) ModConsole.Print($"<color=orange>[MSC Duo]</color> chuva: checagem de telhado e nuvem a cada 1 s ({roofChecks} raios).");
             if (weather != null)
             {
                 FsmTools.EnsureLoaded(weather);

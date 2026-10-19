@@ -167,6 +167,9 @@ namespace MscDuo.Duplication
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             go.AddComponent<MeshRenderer>().sharedMaterial = material;
             normal = Vector3.Cross(q[3] - q[0], q[2] - q[0]).normalized;
+            var center = new GameObject("Centro");
+            center.transform.parent = go.transform;
+            center.transform.position = (q[0] + q[2]) / 2f + normal * 0.02f;
             return go;
         }
 
@@ -188,7 +191,7 @@ namespace MscDuo.Duplication
             tv.Renderer = go.GetComponent<Renderer>();
             tv.On = on;
             tv.Off = off;
-            tv.Audio = Source(go, 0.35f, 1f, 9f);
+            tv.Audio = Source(go.transform.Find("Centro").gameObject, 0.35f, 1f, 9f);
             var lightGo = new GameObject("TV_Luz");
             lightGo.transform.parent = go.transform;
             lightGo.transform.position = center + normal * 0.5f;
@@ -287,7 +290,8 @@ namespace MscDuo.Duplication
             var screen = go.AddComponent<ArcadeScreen>();
             screen.Canvas = canvas;
             screen.Kind = kind;
-            var audio = Source(go, 0.22f, 0.7f, 6f);
+            screen.Center = go.transform.Find("Centro");
+            var audio = Source(screen.Center.gameObject, 0.22f, 0.7f, 6f);
             audio.clip = Clip(sound);
             if (audio.clip != null) audio.Play();
             var lightGo = new GameObject("Fliperama_Luz");
@@ -306,6 +310,7 @@ namespace MscDuo.Duplication
             internal PixelCanvas Canvas;
             internal ArcadeKind Kind;
             internal Light Glow;
+            internal Transform Center;
             float next;
             int[] stars;
 
@@ -322,7 +327,7 @@ namespace MscDuo.Duplication
                 if (Time.time < next) return;
                 next = Time.time + 1f / 12f;
                 var cam = Camera.main;
-                if (cam != null && (cam.transform.position - transform.position).sqrMagnitude > 900f) return;
+                if (cam != null && Center != null && (cam.transform.position - Center.position).sqrMagnitude > 900f) return;
                 var t = Time.time;
                 if (Kind == ArcadeKind.Invaders) Invaders(t);
                 else if (Kind == ArcadeKind.Defender) Defender(t);
