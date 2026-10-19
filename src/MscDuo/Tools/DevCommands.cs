@@ -15,6 +15,7 @@ namespace MscDuo.Tools
             var current = field != null ? field.GetValue(null) : null;
             if (current == null || ReferenceEquals(current, console)) return;
             console = current;
+            ConsoleCommand.Add(new DynoProbeCommand());
             ConsoleCommand.Add(new DumpCommand());
             ConsoleCommand.Add(new MapCommand());
             ConsoleCommand.Add(new HouseCommand());
