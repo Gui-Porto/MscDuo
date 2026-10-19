@@ -22,7 +22,7 @@ ITEMS = [
     {"name": "rack", "file": "rack.glb", "scale": 0.01, "front": 0, "facing": "-y", "at": (3.9, 15.5), "floor": MEZ_Z, "tris": 2000, "tex": 64, "color": (0.16, 0.11, 0.08, 1.0)},
     {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (3.9, 15.74), "floor": MEZ_Z + 0.75, "tris": 1000, "tex": 512, "screen_front": 0.035},
     {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (10.15, 15.32), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "screen_object": "ArcadeMachine_Screen_01", "drop": ["ArcadeMachine_Glass"]},
-    {"name": "fliperama2", "file": "fliperama2.glb", "height": 1.78, "front": 0, "facing": "-y", "at": (10.95, 15.38), "floor": MEZ_Z, "tris": 6000, "tex": 1024, "screen_model": [(79.0, -28.2, 120.0), (79.0, 19.9, 120.0), (79.0, 19.9, 157.4), (79.0, -28.2, 157.4)]},
+    {"name": "fliperama2", "file": "fliperama2.glb", "height": 1.78, "front": 0, "facing": "-y", "at": (10.95, 15.38), "floor": MEZ_Z, "tris": 6000, "tex": 1024, "screen_model": [(79.0, -28.2, 120.0), (79.0, 19.9, 120.0), (79.0, 19.9, 157.4), (79.0, -28.2, 157.4)], "screen_flat": True},
     {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (11.7, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024, "screen_model": [(-0.123, 2.333, 1.026), (-0.534, 2.333, 1.026), (-0.534, 2.333, 1.345), (-0.123, 2.333, 1.345)]},
     {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (11.3, 12.8), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
     {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (14.1, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
@@ -130,7 +130,7 @@ def screen_quad(obj, item, matrix):
     return [o + u * u0 + w * w0, o + u * u1 + w * w0, o + u * u1 + w * w1, o + u * u0 + w * w1]
 
 
-def snap_screen(obj, quad):
+def snap_screen(obj, quad, flat=False):
     from mathutils.bvhtree import BVHTree
     me = obj.data
     bvh = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [list(p.vertices) for p in me.polygons])
@@ -151,7 +151,7 @@ def snap_screen(obj, quad):
     plane = a.cross(b).normalized()
     if plane.dot(normal) < 0:
         plane = -plane
-    if plane.dot(normal) < 0.8:
+    if plane.dot(normal) < 0.8 or flat:
         plane = normal
     lift = max(0.0, max((h - c).dot(plane) for h in hits)) + 0.004
     out = []
@@ -375,7 +375,7 @@ def build():
         matrix = place(obj, item)
         quad = screen_quad(obj, item, matrix)
         if quad and not item.get("screen_front"):
-            quad = snap_screen(obj, quad)
+            quad = snap_screen(obj, quad, item.get("screen_flat", False))
         if quad and quad[1].y < quad[0].y:
             quad = [quad[1], quad[0], quad[3], quad[2]]
         if quad:
