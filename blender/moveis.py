@@ -182,21 +182,21 @@ def bake_textures(obj, item):
         image, color = base_image(slot.material)
         if item.get("color"):
             image, color = None, item["color"]
-        path = os.path.join(TEXTURES, name + ".png")
+        path = os.path.join(TEXTURES, name + ".jpg")
         if image is not None:
             copy = image.copy()
             size = item["tex"]
             if max(copy.size) > size:
                 copy.scale(size, size)
             copy.filepath_raw = path
-            copy.file_format = "PNG"
+            copy.file_format = "JPEG"
             copy.save()
             bpy.data.images.remove(copy)
         else:
             img = bpy.data.images.new(name, 4, 4)
             img.pixels = list(color) * 16
             img.filepath_raw = path
-            img.file_format = "PNG"
+            img.file_format = "JPEG"
             img.save()
             bpy.data.images.remove(img)
         if slot.material:
@@ -229,7 +229,8 @@ def write_obj(objects, names):
                     out.append("f %d/%d %d/%d %d/%d" % (a[0], a[1], b[0], b[1], c[0], c[1]))
         vbase += len(me.vertices)
         tbase += len(me.loops)
-    with open(OBJ, "w", encoding="utf-8") as f:
+    import gzip
+    with gzip.open(OBJ + ".gz", "wt", encoding="utf-8", compresslevel=9) as f:
         f.write("\n".join(out) + "\n")
 
 
