@@ -96,6 +96,18 @@ def programa():
     return mix(seq(melody, step, duty=0.5, vol=0.14), seq(chords, step, "tri", vol=0.22))
 
 
+def interruptor():
+    n = int(0.12 * SR)
+    t = np.arange(n) / SR
+    out = np.zeros(n)
+    for at, amp in ((0, 1.0), (int(0.012 * SR), 0.45)):
+        k = np.arange(n - at) / SR
+        burst = rng.standard_normal(n - at) * np.exp(-k / 0.0012)
+        ring = (np.sin(2 * np.pi * 3200 * k) * 0.6 + np.sin(2 * np.pi * 1450 * k) * 0.4) * np.exp(-k / 0.006)
+        out[at:] += amp * (burst * 0.7 + ring)
+    return out
+
+
 def write(name, data):
     data = data / (np.abs(data).max() + 1e-9) * 0.8
     pcm = np.clip(data * 32767, -32768, 32767).astype("<i2")
@@ -115,3 +127,4 @@ if __name__ == "__main__":
     write("tv_estatica", estatica())
     write("tv_tom", tom())
     write("tv_programa", programa())
+    write("interruptor", interruptor())

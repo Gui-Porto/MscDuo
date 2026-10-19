@@ -74,9 +74,12 @@ namespace MscDuo.Duplication
 
         static AudioClip GameClip(string name)
         {
+            foreach (var source in Resources.FindObjectsOfTypeAll<AudioSource>())
+                if (source != null && source.clip != null && source.gameObject.name == name && source.transform.parent != null && source.transform.parent.name == "HouseFoley") return source.clip;
             foreach (var clip in Resources.FindObjectsOfTypeAll<AudioClip>())
                 if (clip != null && clip.name == name) return clip;
-            return null;
+            var bytes = Warehouse.Bytes(System.IO.Path.Combine("sons_galpao", "interruptor.wav"), "MscDuo.galpao_som.interruptor.wav");
+            return bytes != null ? WarehouseGates.Wav("interruptor", bytes) : null;
         }
 
         internal static void Switch(string key, Vector2[] walls, Vector2[] normals, float height, Action<int> apply, int initial, string offLabel, string onLabel)
@@ -338,7 +341,7 @@ namespace MscDuo.Duplication
             Bounds? result = null;
             foreach (var r in t.GetComponentsInChildren<Renderer>(true))
             {
-                if (!r.enabled || r is ParticleRenderer) continue;
+                if (!r.enabled || r is ParticleRenderer || r.isPartOfStaticBatch) continue;
                 if (result.HasValue) { var b = result.Value; b.Encapsulate(r.bounds); result = b; }
                 else result = r.bounds;
             }
@@ -358,20 +361,22 @@ namespace MscDuo.Duplication
                 var size = sink.transform.InverseTransformVector(b.size);
                 box.size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
             }
-            var tapBounds = tap != null ? RendererBounds(tap) : null;
             var kitchen = DynoCloner.Find("YARD/Building/KITCHEN/KitchenWaterTap");
-            if (!tapBounds.HasValue || kitchen == null) return;
+            if (!bowlBounds.HasValue || kitchen == null) return;
             var sources = new List<GameObject> { kitchen };
             var kitchenFront = HouseFront(kitchen.transform, sources);
             if (!kitchenFront.HasValue) return;
             var wanted = frame.TransformDirection(L(-1f, 0f, 0f));
             var turn = Quaternion.FromToRotation(new Vector3(kitchenFront.Value.x, 0f, kitchenFront.Value.z), wanted);
             var baseMesh = kitchen.transform.Find("kitchen_tap_base");
-            var kitchenBase = baseMesh != null ? RendererBounds(baseMesh) : null;
-            if (!kitchenBase.HasValue) return;
-            var t = tapBounds.Value;
-            var anchorOffset = new Vector3(kitchenBase.Value.center.x, kitchenBase.Value.min.y, kitchenBase.Value.center.z) - kitchen.transform.position;
-            var targetBase = new Vector3(t.center.x, t.min.y, t.center.z);
+            var baseCollider = baseMesh != null ? baseMesh.GetComponent<Collider>() : null;
+            if (baseCollider == null) return;
+            var kb = baseCollider.bounds;
+            var anchorOffset = new Vector3(kb.center.x, kb.min.y, kb.center.z) - kitchen.transform.position;
+            var bb = bowlBounds.Value;
+            var toWall = -wanted.normalized;
+            var depth = Mathf.Abs(Vector3.Dot(bb.size, new Vector3(Mathf.Abs(toWall.x), 0f, Mathf.Abs(toWall.z))));
+            var targetBase = new Vector3(bb.center.x, bb.max.y, bb.center.z) + toWall * Mathf.Max(0f, depth / 2f - 0.07f);
             var position = targetBase - turn * anchorOffset;
             var copy = (GameObject)Object.Instantiate(kitchen, position, turn * kitchen.transform.rotation);
             copy.name = kitchen.name;
@@ -386,7 +391,7 @@ namespace MscDuo.Duplication
                 DynoCloner.StripHooks(fsm);
                 SatsumaCloner.Remap(fsm, map);
             }
-            foreach (var r in tap.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+            if (tap != null) foreach (var r in tap.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
         }
 
         static Vector4? HouseFront(Transform anchor, List<GameObject> group)
