@@ -73,6 +73,8 @@ namespace MscDuo.Duplication
                 if (first) { bounds = b; first = false; } else bounds.Encapsulate(b);
             }
 
+            var shelter = Shelter(root.transform);
+
             var gravel = GameObject.Find(GravelPath);
             var grass = GameObject.Find(GrassPath);
             foreach (var part in platform)
@@ -123,7 +125,34 @@ namespace MscDuo.Duplication
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] animações do galpão falharam: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, {furniture} móveis, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, telhado {(shelter ? "protege da chuva" : "SEM proteção de chuva")}, {furniture} móveis, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
+        }
+
+        static bool Shelter(Transform parent)
+        {
+            Collider sample = null;
+            foreach (var c in Resources.FindObjectsOfTypeAll<Collider>())
+                if (c != null && c.hideFlags == HideFlags.None && c.gameObject.name == "NoRain" && c.transform.root.name == "YARD") { sample = c; break; }
+            var roof = parent.Find("Galpao_Telhado");
+            if (sample == null || roof == null) return false;
+            var go = new GameObject("NoRain");
+            go.transform.parent = parent;
+            go.transform.position = roof.position;
+            go.transform.rotation = roof.rotation;
+            go.layer = sample.gameObject.layer;
+            go.tag = sample.gameObject.tag;
+            var mesh = roof.GetComponent<MeshFilter>().sharedMesh;
+            if (sample.isTrigger)
+            {
+                var box = go.AddComponent<BoxCollider>();
+                var b = mesh.bounds;
+                box.center = new Vector3(b.center.x, (b.max.y + Origin.y) / 2f, b.center.z);
+                box.size = new Vector3(b.size.x, b.max.y - Origin.y, b.size.z);
+                box.isTrigger = true;
+            }
+            else go.AddComponent<MeshCollider>().sharedMesh = mesh;
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> telhado contra chuva na camada {LayerMask.LayerToName(go.layer)} ({go.layer}), tag {go.tag}, trigger {sample.isTrigger}.");
+            return true;
         }
 
         internal static Vector3 ToLocal(Vector3 world) => new Vector3(world.z - Origin.z, Origin.x - world.x, world.y - Origin.y);
