@@ -52,10 +52,6 @@ namespace MscDuo.Duplication
             var plastic = Lit(template, "luz_externa_seletor", new Color(0.82f, 0.82f, 0.79f));
             var white = Lit(template, "luz_externa_marca", new Color(0.95f, 0.95f, 0.95f));
 
-            var strip = new GateShape();
-            strip.Use(0).Box(new Vector3(0.6f, 5.86f, -0.05f), new Vector3(23.4f, 5.9f, 0f));
-            strip.Use(1).Box(new Vector3(0.62f, 5.84f, -0.045f), new Vector3(23.38f, 5.86f, -0.005f));
-            var stripGo = Part(t, "Fita", strip.ToMesh("MscDuo_fita_externa"), new[] { aluminum, glowOff });
 
             var lamp = new GateShape();
             lamp.Use(0).Box(new Vector3(-0.09f, 2.37f, 12.86f), new Vector3(0f, 2.53f, 13.14f));
@@ -72,11 +68,9 @@ namespace MscDuo.Duplication
             group.transform.parent = t;
             group.transform.localPosition = Vector3.zero;
             group.transform.localRotation = Quaternion.identity;
-            for (int i = 0; i < 5; i++)
-            {
-                var x = 2.4f + i * 4.8f;
-                Spot(group.transform, t.TransformPoint(new Vector3(x, 5.75f, -0.25f)), t.TransformPoint(new Vector3(x, 0f, -2.8f)));
-            }
+            var floods = new List<Renderer>();
+            foreach (var side in new[] { new Vector2(0.7f, 7f), new Vector2(23.3f, 17f) })
+                floods.Add(Flood(t, group.transform, new Vector3(side.x, 5.55f, -0.2f), new Vector3(side.y, 0f, -8f), dark, aluminum, glowOff));
             var door = new GameObject("Arandela_Luz");
             door.transform.parent = group.transform;
             door.transform.position = t.TransformPoint(new Vector3(-0.35f, 2.4f, 13f));
@@ -109,7 +103,8 @@ namespace MscDuo.Duplication
 
             lights = frame.AddComponent<ExteriorLights>();
             lights.Group = group;
-            lights.Renderers = new[] { stripGo.GetComponent<Renderer>(), lampGo.GetComponent<Renderer>() };
+            floods.Add(lampGo.GetComponent<Renderer>());
+            lights.Renderers = floods.ToArray();
             lights.On = glowOn;
             lights.Off = glowOff;
             lights.KnobTransform = knobGo.transform;
@@ -120,19 +115,44 @@ namespace MscDuo.Duplication
             input.Buttons.Add(new GateButton { Collider = collider, Cap = knobGo.transform, Rest = knobGo.transform.localPosition, Click = Cycle, Text = Label });
         }
 
-        static void Spot(Transform parent, Vector3 position, Vector3 target)
+        static Renderer Flood(Transform frame, Transform group, Vector3 local, Vector3 aim, Material body, Material metal, Material lens)
         {
+            var arm = new GateShape();
+            arm.Box(new Vector3(local.x - 0.025f, local.y - 0.02f, local.z), new Vector3(local.x + 0.025f, local.y + 0.02f, 0f));
+            arm.Box(new Vector3(local.x - 0.06f, local.y - 0.08f, -0.008f), new Vector3(local.x + 0.06f, local.y + 0.08f, 0f));
+            Part(frame, "Refletor_Suporte", arm.ToMesh("MscDuo_refletor_suporte"), new[] { metal });
+
+            var position = frame.TransformPoint(local);
+            var rotation = Quaternion.LookRotation(frame.TransformPoint(aim) - position, Vector3.up);
+            var shape = new GateShape();
+            shape.Use(0).Box(new Vector3(-0.17f, -0.12f, -0.06f), new Vector3(0.17f, 0.12f, 0.02f));
+            for (int i = 0; i < 7; i++)
+            {
+                var x = -0.15f + i * 0.05f;
+                shape.Box(new Vector3(x - 0.006f, -0.11f, -0.1f), new Vector3(x + 0.006f, 0.11f, -0.06f));
+            }
+            shape.Box(new Vector3(-0.17f, 0.12f, -0.02f), new Vector3(0.17f, 0.135f, 0.05f));
+            shape.Use(1).Box(new Vector3(-0.15f, -0.1f, 0.02f), new Vector3(0.15f, 0.1f, 0.026f));
             var go = new GameObject("Refletor");
-            go.transform.parent = parent;
+            go.transform.parent = frame;
             go.transform.position = position;
-            go.transform.rotation = Quaternion.LookRotation(target - position, Vector3.up);
-            var light = go.AddComponent<Light>();
+            go.transform.rotation = rotation;
+            go.AddComponent<MeshFilter>().sharedMesh = shape.ToMesh("MscDuo_refletor");
+            var renderer = go.AddComponent<MeshRenderer>();
+            renderer.sharedMaterials = new[] { body, lens };
+
+            var lightGo = new GameObject("Refletor_Luz");
+            lightGo.transform.parent = group;
+            lightGo.transform.position = position + rotation * new Vector3(0f, 0f, 0.05f);
+            lightGo.transform.rotation = rotation;
+            var light = lightGo.AddComponent<Light>();
             light.type = LightType.Spot;
-            light.color = new Color(1f, 0.93f, 0.8f);
-            light.spotAngle = 115f;
-            light.range = 9f;
-            light.intensity = 1.3f;
+            light.color = new Color(1f, 0.95f, 0.85f);
+            light.spotAngle = 95f;
+            light.range = 20f;
+            light.intensity = 1.8f;
             light.shadows = LightShadows.None;
+            return renderer;
         }
 
         static GameObject Part(Transform parent, string name, Mesh mesh, Material[] materials)
