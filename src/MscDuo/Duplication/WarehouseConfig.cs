@@ -28,6 +28,7 @@ namespace MscDuo.Duplication
             new[] { "patio_arvores", "12", "metros sem árvores na frente dos portões" },
             new[] { "dinamometro1_fim", "12.5", "dinamômetro 1 (esquerda): onde termina a ponta do fundo, medido a partir do portão" },
             new[] { "dinamometro2_fim", "12.5", "dinamômetro 2 (direita): onde termina a ponta do fundo, medido a partir do portão" },
+            new[] { "luz_externa_sol", "0.1", "luz externa no automático: acende quando o sol fica abaixo desta altura (0 = horizonte, maior = acende mais cedo)" },
             new[] { "portao_velocidade", "0.45", "velocidade dos portões de enrolar, em metros por segundo" },
             new[] { "portao_volume", "1", "volume dos sons dos portões (0 a 2)" },
         };

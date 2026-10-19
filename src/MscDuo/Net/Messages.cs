@@ -22,11 +22,12 @@ namespace MscDuo.Net
         TrafficState = 21,
         GateState = 22,
         GateRequest = 23,
+        ExteriorLight = 24,
     }
 
     internal static class Protocol
     {
-        internal const ushort Version = 14;
+        internal const ushort Version = 15;
     }
 
     internal struct PlayerStateMessage

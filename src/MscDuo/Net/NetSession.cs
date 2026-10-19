@@ -67,6 +67,11 @@ namespace MscDuo.Net
                 if (!session.Connected || session.transport is LoopbackTransport) return;
                 session.Broadcast(MessageType.GateState, gate.Write, Channel.Reliable);
             });
+            WarehouseExterior.Bind(() =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.ExteriorLight, WarehouseExterior.Write, Channel.Reliable);
+            });
             ItemRegistry.Forget();
             ModConsole.Print($"<color=orange>[MSC Duo]</color> sessão iniciada ({transport.Name}).");
         }
@@ -76,6 +81,7 @@ namespace MscDuo.Net
             if (Current == null) return;
             InteractionSync.Bind(null);
             WarehouseGates.Bind(null);
+            WarehouseExterior.Bind(null);
             if (!Current.transport.IsHost)
             {
                 PlayerContext.SaveActive();
@@ -259,10 +265,14 @@ namespace MscDuo.Net
                     case MessageType.GateState:
                         WarehouseGates.Read(reader);
                         break;
+                    case MessageType.ExteriorLight:
+                        WarehouseExterior.Read(reader);
+                        break;
                     case MessageType.GateRequest:
                         if (transport.IsHost)
                             foreach (var gate in WarehouseGates.All)
                                 if (gate != null) Send(packet.From, MessageType.GateState, gate.Write, Channel.Reliable);
+                        if (transport.IsHost) Send(packet.From, MessageType.ExteriorLight, WarehouseExterior.Write, Channel.Reliable);
                         break;
                     case MessageType.SaveRequest:
                         if (transport.IsHost) Send(packet.From, MessageType.SaveData, SaveTransfer.WriteSave, Channel.Reliable);

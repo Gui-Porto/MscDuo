@@ -107,6 +107,8 @@ namespace MscDuo.Duplication
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] dinamômetros do galpão falharam: {e}"); }
             try { WarehouseGates.Build(root.transform, template); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] portões do galpão falharam: {e}"); }
+            try { WarehouseExterior.Build(root.transform, template, WarehouseGates.Load()); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] luz externa do galpão falhou: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
             ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, {furniture} móveis, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");

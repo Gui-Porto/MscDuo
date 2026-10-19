@@ -46,7 +46,8 @@ namespace MscDuo.Duplication
             for (int i = 0; i < Openings.Length; i++)
             {
                 var gate = Create(i, Openings[i][0], Openings[i][1], i == 0 ? -1f : 1f, root, materials, input);
-                gate.SetPosition(i < saved.Count ? saved[i] : 0f);
+                float position;
+                gate.SetPosition(saved.TryGetValue("portao" + (i + 1), out position) ? position : 0f);
                 gates.Add(gate);
             }
             Acoustics(root);
@@ -59,18 +60,19 @@ namespace MscDuo.Duplication
             var sb = new StringBuilder();
             for (int i = 0; i < gates.Count; i++)
                 if (gates[i] != null) sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "portao{0} = {1:0.0000}", i + 1, gates[i].Position));
+            sb.AppendLine("luz_externa = " + (int)WarehouseExterior.Mode);
             File.WriteAllText(SavePath, sb.ToString());
         }
 
-        static List<float> Load()
+        internal static Dictionary<string, float> Load()
         {
-            var result = new List<float>();
+            var result = new Dictionary<string, float>();
             if (!File.Exists(SavePath)) return result;
             foreach (var raw in File.ReadAllLines(SavePath))
             {
                 var eq = raw.IndexOf('=');
                 float value;
-                if (eq > 0 && float.TryParse(raw.Substring(eq + 1).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value)) result.Add(value);
+                if (eq > 0 && float.TryParse(raw.Substring(eq + 1).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value)) result[raw.Substring(0, eq).Trim()] = value;
             }
             return result;
         }
@@ -422,16 +424,22 @@ namespace MscDuo.Duplication
         internal GateController Gate;
         internal int Command;
         internal string Label;
+        internal Action Click;
+        internal Func<string> Text;
         internal float PressedAt = -10f;
+
+        internal string Current => Text != null ? Text() : Label;
 
         internal void Press()
         {
             PressedAt = Time.time;
-            if (Gate != null) Gate.Command(Command);
+            if (Click != null) Click();
+            else if (Gate != null) Gate.Command(Command);
         }
 
         internal void Animate(float now)
         {
+            if (Cap == null || Click != null) return;
             var t = now - PressedAt;
             if (t > 0.4f) return;
             var depth = t < 0.05f ? t / 0.05f : t < 0.14f ? 1f : t < 0.24f ? 1f - (t - 0.14f) / 0.1f : 0f;
@@ -480,7 +488,7 @@ namespace MscDuo.Duplication
             if (found != null)
             {
                 if (use != null) use.Value = true;
-                if (text != null) text.Value = found.Label;
+                if (text != null) text.Value = found.Current;
                 hovered = found;
             }
             else if (hovered != null)
