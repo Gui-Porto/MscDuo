@@ -16,7 +16,7 @@ ITEMS = [
     {"name": "bancada", "file": "bancada.glb", "scale": 0.01, "front": -90, "facing": "-y", "at": (2.6, 15.4), "floor": 0.0, "tris": 12000, "tex": 1024},
     {"name": "armario_ferramentas", "file": "armario_ferramentas.glb", "height": 1.05, "front": 0, "facing": "-y", "at": (5.25, 15.5), "floor": 0.0, "tris": 10000, "tex": 1024},
     {"name": "sofa_grande", "file": "sofa_grande.glb", "height": 0.8, "front": 180, "facing": "-y", "at": (11.0, 14.3), "floor": 0.0, "tris": 60000, "tex": 1024},
-    {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (0.75, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512, "door": ["Material.007", "Material.008"], "glass": ["Material.007"]},
+    {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (0.95, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512, "door": ["Material.007", "Material.008"], "glass": ["Material.007"]},
     {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (3.9, 12.3), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
     {"name": "mesinha", "file": "mesinha.glb", "length": 1.0, "front": 0, "facing": "-y", "at": (3.9, 13.75), "floor": MEZ_Z, "tris": 2000, "tex": 512},
     {"name": "rack", "file": "rack.glb", "scale": 0.01, "front": 0, "facing": "-y", "at": (3.9, 15.5), "floor": MEZ_Z, "tris": 2000, "tex": 64, "color": (0.16, 0.11, 0.08, 1.0)},
