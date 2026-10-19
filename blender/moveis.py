@@ -254,8 +254,7 @@ def write_obj(objects, names):
                     out.append("f %d/%d %d/%d %d/%d" % (a[0], a[1], b[0], b[1], c[0], c[1]))
         vbase += len(me.vertices)
         tbase += len(me.loops)
-    import gzip
-    with gzip.open(OBJ + ".gz", "wt", encoding="utf-8", compresslevel=9) as f:
+    with open(OBJ, "w", encoding="utf-8") as f:
         f.write("\n".join(out) + "\n")
 
 

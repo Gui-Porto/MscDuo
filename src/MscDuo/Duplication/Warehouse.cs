@@ -11,7 +11,7 @@ namespace MscDuo.Duplication
         const string BuildingResource = "MscDuo.galpao_jogo.obj";
         const string PlatformResource = "MscDuo.plataforma_jogo.obj";
         const string TexturePrefix = "MscDuo.galpao.";
-        const string FurnitureResource = "MscDuo.moveis_jogo.obj.gz";
+        const string FurnitureResource = "MscDuo.moveis_jogo.obj";
         const string FurniturePrefix = "MscDuo.moveis.";
         const string GravelPath = "MAP/MESH/TERRAIN_OBJ/Gravel";
         const string GrassPath = "MAP/MESH/TERRAIN_OBJ/Grass1";
@@ -95,7 +95,9 @@ namespace MscDuo.Duplication
                 parts++;
             }
 
-            var furniture = Furniture(root.transform, template, textures);
+            var furniture = 0;
+            try { furniture = Furniture(root.transform, template, textures); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] móveis do galpão falharam: {e}"); }
 
             var lights = BuildLights(root.transform);
             var lamp = root.transform.Find("Galpao_Luzes");
@@ -339,8 +341,7 @@ namespace MscDuo.Duplication
 
         static int Furniture(Transform parent, Material template, Dictionary<string, Material> cache)
         {
-            var packed = Bytes("moveis_jogo.obj.gz", FurnitureResource);
-            var parts = packed != null ? Parse(System.Text.Encoding.UTF8.GetString(Gunzip(packed))) : null;
+            var parts = Parse(Text("moveis_jogo.obj", FurnitureResource));
             if (parts == null) return 0;
             var group = new GameObject("Galpao_Moveis");
             group.transform.parent = parent;
@@ -474,18 +475,6 @@ namespace MscDuo.Duplication
                 }
             }
             return parts;
-        }
-
-        static byte[] Gunzip(byte[] data)
-        {
-            using (var input = new System.IO.Compression.GZipStream(new MemoryStream(data), System.IO.Compression.CompressionMode.Decompress))
-            using (var output = new MemoryStream())
-            {
-                var buffer = new byte[65536];
-                int read;
-                while ((read = input.Read(buffer, 0, buffer.Length)) > 0) output.Write(buffer, 0, read);
-                return output.ToArray();
-            }
         }
 
         static float F(string s) => float.Parse(s, CultureInfo.InvariantCulture);
