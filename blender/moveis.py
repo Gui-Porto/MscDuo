@@ -13,10 +13,13 @@ ORIGIN = (-30.0, -0.497, 13.0)
 MEZ_Z = 3.2
 
 ITEMS = [
-    {"name": "bancada", "file": "bancada.glb", "scale": 0.01, "front": -90, "facing": "+x", "at": (0.6, 3.1), "floor": 0.0, "tris": 12000, "tex": 1024},
-    {"name": "armario_ferramentas", "file": "armario_ferramentas.glb", "height": 1.05, "front": 0, "facing": "+x", "at": (0.5, 7.1), "floor": 0.0, "tris": 10000, "tex": 1024},
+    {"name": "bancada", "file": "bancada.glb", "scale": 0.01, "front": -90, "facing": "-y", "at": (2.6, 15.4), "floor": 0.0, "tris": 12000, "tex": 1024},
+    {"name": "armario_ferramentas", "file": "armario_ferramentas.glb", "height": 1.05, "front": 0, "facing": "-y", "at": (5.25, 15.5), "floor": 0.0, "tris": 10000, "tex": 1024},
+    {"name": "sofa_grande", "file": "sofa_grande.glb", "height": 0.8, "front": 180, "facing": "-y", "at": (11.0, 14.3), "floor": 0.0, "tris": 60000, "tex": 1024},
     {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (1.3, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512},
-    {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "-y", "at": (7.0, 14.95), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
+    {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (5.0, 12.2), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
+    {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (5.0, 15.74), "floor": MEZ_Z + 1.0, "tris": 1000, "tex": 512},
+    {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (12.5, 13.1), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
 ]
 
 FACING = {"+x": 90.0, "-x": -90.0, "+y": 180.0, "-y": 0.0}
@@ -60,13 +63,45 @@ def place(obj, item):
     ys = [v.co.y for v in me.vertices]
     zs = [v.co.z for v in me.vertices]
     height = max(zs) - min(zs)
-    scale = item.get("scale") or item["height"] / height
+    if "length" in item:
+        scale = item["length"] / max(max(xs) - min(xs), max(ys) - min(ys))
+    else:
+        scale = item.get("scale") or item["height"] / height
     center = Vector(((max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2, min(zs)))
     turn = math.radians(FACING[item["facing"]] - item["front"])
     target = local_to_blender(item["at"][0], item["at"][1], item["floor"])
     matrix = Matrix.Translation(target) @ Matrix.Rotation(turn, 4, "Z") @ Matrix.Scale(scale, 4) @ Matrix.Translation(-center)
     me.transform(matrix)
     me.update()
+
+
+def strip_thin(obj):
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    seen, parts = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        part, stack = [], [v]
+        while stack:
+            cur = stack.pop()
+            if cur.index in seen:
+                continue
+            seen.add(cur.index)
+            part.append(cur)
+            for e in cur.link_edges:
+                stack.append(e.other_vert(cur))
+        parts.append(part)
+    body = max(parts, key=len)
+    top = max(p.co.z for p in body)
+    floating = [part for part in parts if min(p.co.z for p in part) > top + 0.02 * (top - min(p.co.z for p in body))]
+    for part in floating:
+        bmesh.ops.delete(bm, geom=part, context="VERTS")
+    bm.to_mesh(obj.data)
+    bm.free()
+    return len(floating)
 
 
 def decimate(obj, target):
@@ -164,6 +199,8 @@ def build():
     objects, names = [], {}
     for item in ITEMS:
         obj = import_item(item)
+        if item.get("thin"):
+            print("%s: %d peças finas removidas" % (item["name"], strip_thin(obj)))
         place(obj, item)
         count = decimate(obj, item["tris"])
         names[obj.name] = bake_textures(obj, item)
