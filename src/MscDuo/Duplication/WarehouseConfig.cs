@@ -26,6 +26,8 @@ namespace MscDuo.Duplication
             new[] { "luz_mezanino_intensidade", "1.0", "lâmpadas em cima do mezanino" },
             new[] { "luz_mezanino_alcance", "9", "" },
             new[] { "patio_arvores", "12", "metros sem árvores na frente dos portões" },
+            new[] { "dinamometro1_fim", "11.7", "dinamômetro 1 (portão esquerdo): onde termina a ponta do fundo, medido a partir dos portões" },
+            new[] { "dinamometro2_fim", "10", "dinamômetro 2 (portão direito): onde termina a ponta do fundo (as salas começam em 12)" },
             new[] { "portao_velocidade", "0.45", "velocidade dos portões de enrolar, em metros por segundo" },
             new[] { "portao_volume", "1", "volume dos sons dos portões (0 a 2)" },
         };

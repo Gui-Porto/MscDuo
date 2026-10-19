@@ -13,7 +13,6 @@ namespace MscDuo.Duplication
         const string VisualPath = "REPAIRSHOP/LOD/Dyno";
         const string CollidersPath = "REPAIRSHOP/Dyno";
         const string MeasurePath = "Sheets/DynoSheet/Dyno/Measure";
-        const float FarEnd = 11.7f;
         const float WaitSeconds = 180f;
         static readonly float[] Bays = { 4.5f, 19.5f };
         static readonly HashSet<int> injected = new HashSet<int>();
@@ -96,7 +95,7 @@ namespace MscDuo.Duplication
                     foreach (var corner in new[] { b.min, b.max, new Vector3(b.min.x, b.min.y, b.max.z), new Vector3(b.max.x, b.min.y, b.min.z) })
                         far = Mathf.Max(far, Warehouse.ToLocal(corner).y);
                 }
-            var shift = Warehouse.Local(0f, FarEnd - far, 0f) - Warehouse.Local(0f, 0f, 0f);
+            var shift = Warehouse.Local(0f, WarehouseConfig.Get("dinamometro" + (index + 1) + "_fim") - far, 0f) - Warehouse.Local(0f, 0f, 0f);
             foreach (var copy in copies) copy.transform.position += shift;
 
             int fsms = 0, remapped = 0;
