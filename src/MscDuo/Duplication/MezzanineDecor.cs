@@ -34,9 +34,6 @@ namespace MscDuo.Duplication
             Rug("tapete_jogos", 9.6f, 11.3f, 13.6f, 14.3f);
             Rug("tapete_escritorio", 16.4f, 10.9f, 21.2f, 13.4f);
             Pendant(11.6f, 12.8f, lights);
-            Shelf(1.5f, 2.6f, 1.8f, 5, 1);
-            Shelf(5.2f, 6.3f, 1.8f, 5, 2);
-            Shelf(15.6f, 19.2f, 2.0f, 5, 3);
             HighTable(14.4f, 11.0f);
             Neon("ARCADE", 9.6f, 2.35f, lights);
             Office(18.4f, 11.8f);
@@ -137,55 +134,6 @@ namespace MscDuo.Duplication
             light.intensity = 1.6f;
             light.color = new Color(1f, 0.9f, 0.72f);
             light.shadows = LightShadows.None;
-        }
-
-        static void Shelf(float x0, float x1, float height, int levels, int seed)
-        {
-            var depth = 0.45f;
-            var y1 = Back - 0.03f;
-            var y0 = y1 - depth;
-            var shape = new GateShape();
-            shape.Use(0);
-            foreach (var x in new[] { x0, x1 - 0.035f })
-                foreach (var y in new[] { y0, y1 - 0.035f })
-                    shape.Box(L(x, y, Floor), L(x + 0.035f, y + 0.035f, Floor + height));
-            var bays = Mathf.Max(1, Mathf.RoundToInt((x1 - x0) / 1.2f));
-            for (int b = 1; b < bays; b++)
-            {
-                var x = x0 + (x1 - x0) * b / bays;
-                foreach (var y in new[] { y0, y1 - 0.035f })
-                    shape.Box(L(x - 0.017f, y, Floor), L(x + 0.017f, y + 0.035f, Floor + height));
-            }
-            shape.Use(1);
-            for (int i = 0; i < levels; i++)
-            {
-                var z = Floor + 0.12f + (height - 0.2f) * i / (levels - 1);
-                shape.Box(L(x0, y0, z), L(x1, y1, z + 0.02f));
-            }
-            shape.Use(2);
-            var rng = new System.Random(seed * 97);
-            for (int i = 0; i < levels - 1; i++)
-            {
-                var z = Floor + 0.14f + (height - 0.2f) * i / (levels - 1);
-                var gap = (height - 0.2f) / (levels - 1) - 0.06f;
-                var x = x0 + 0.06f;
-                while (x < x1 - 0.25f)
-                {
-                    var w = 0.22f + (float)rng.NextDouble() * 0.28f;
-                    if (x + w > x1 - 0.05f) break;
-                    if (rng.NextDouble() < 0.7)
-                    {
-                        var h = Mathf.Min(gap, 0.12f + (float)rng.NextDouble() * 0.2f);
-                        var d = 0.25f + (float)rng.NextDouble() * 0.15f;
-                        shape.Box(L(x, y1 - 0.04f - d, z), L(x + w, y1 - 0.04f, z + h));
-                    }
-                    x += w + 0.04f + (float)rng.NextDouble() * 0.12f;
-                }
-            }
-            var part = Part("Estante", shape, Color("estante_coluna", new Color(0.18f, 0.32f, 0.55f)), Color("estante_prateleira", new Color(0.62f, 0.5f, 0.32f)), Color("caixa", new Color(0.58f, 0.43f, 0.26f)));
-            var box = part.AddComponent<BoxCollider>();
-            box.center = L((x0 + x1) / 2f, (y0 + y1) / 2f, Floor + height / 2f);
-            box.size = L(x1 - x0, depth, height);
         }
 
         static void HighTable(float x, float y)
