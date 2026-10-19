@@ -19,6 +19,11 @@ namespace MscDuo.Tools
 
         public override void Run(string[] args)
         {
+            if (args.Length > 0)
+            {
+                Probe(args, "sonda");
+                return;
+            }
             var sb = new StringBuilder();
             var roots = new List<Transform>();
             foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
@@ -35,6 +40,36 @@ namespace MscDuo.Tools
             var file = System.IO.Path.Combine(System.IO.Path.Combine(MscDuo.Instance.SettingsFolder, "dumps"), "dino.txt");
             File.WriteAllText(file, sb.ToString());
             ModConsole.Print($"<color=orange>[MSC Duo]</color> dinamômetro: {roots.Count} objetos levantados em {file}");
+        }
+
+        internal static void Probe(string[] paths, string file)
+        {
+            var sb = new StringBuilder();
+            var found = 0;
+            foreach (var path in paths)
+            {
+                Transform target = null;
+                foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+                    if (t != null && t.hideFlags == HideFlags.None && Path(t) == path) { target = t; break; }
+                if (target == null)
+                {
+                    var name = path.Substring(path.LastIndexOf('/') + 1);
+                    var root = path.Substring(0, path.IndexOf('/') < 0 ? path.Length : path.IndexOf('/'));
+                    foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+                        if (t != null && t.hideFlags == HideFlags.None && t.name == name && t.root.name == root) { target = t; break; }
+                }
+                if (target == null)
+                {
+                    sb.AppendLine("==== " + path + " NÃO ENCONTRADO");
+                    continue;
+                }
+                found++;
+                sb.AppendLine("==== " + path + (target.gameObject.activeInHierarchy ? "" : " [inativo]"));
+                Tree(sb, target, 1, 14);
+            }
+            var output = System.IO.Path.Combine(System.IO.Path.Combine(MscDuo.Instance.SettingsFolder, "dumps"), file + ".txt");
+            File.WriteAllText(output, sb.ToString());
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> {found} de {paths.Length} objetos levantados em {output}");
         }
 
         static void Tree(StringBuilder sb, Transform t, int depth, int max)

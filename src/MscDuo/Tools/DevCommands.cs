@@ -16,6 +16,7 @@ namespace MscDuo.Tools
             if (current == null || ReferenceEquals(current, console)) return;
             console = current;
             ConsoleCommand.Add(new DynoProbeCommand());
+            ConsoleCommand.Add(new ComputerProbeCommand());
             ConsoleCommand.Add(new DumpCommand());
             ConsoleCommand.Add(new MapCommand());
             ConsoleCommand.Add(new HouseCommand());
