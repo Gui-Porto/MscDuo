@@ -11,6 +11,8 @@ namespace MscDuo.Duplication
         const string BuildingResource = "MscDuo.galpao_jogo.obj";
         const string PlatformResource = "MscDuo.plataforma_jogo.obj";
         const string TexturePrefix = "MscDuo.galpao.";
+        const string FurnitureResource = "MscDuo.moveis_jogo.obj";
+        const string FurniturePrefix = "MscDuo.moveis.";
         const string GravelPath = "MAP/MESH/TERRAIN_OBJ/Gravel";
         const string GrassPath = "MAP/MESH/TERRAIN_OBJ/Grass1";
         const float TreeMargin = 2f;
@@ -56,7 +58,7 @@ namespace MscDuo.Duplication
             foreach (var part in building)
             {
                 var materials = new List<Material>();
-                foreach (var name in part.Materials) materials.Add(BuildingMaterial(name, template, textures));
+                foreach (var name in part.Materials) materials.Add(BuildingMaterial(name, template, textures, "galpao_tex_jogo", TexturePrefix));
                 var go = Create(part, materials.ToArray(), root.transform);
                 parts++;
                 if (System.Array.IndexOf(Gates, part.Name) >= 0) go.SetActive(false);
@@ -93,6 +95,8 @@ namespace MscDuo.Duplication
                 parts++;
             }
 
+            var furniture = Furniture(root.transform, template, textures);
+
             var lights = BuildLights(root.transform);
             var lamp = root.transform.Find("Galpao_Luzes");
             if (lamp != null) lamp.gameObject.AddComponent<LampState>().Lights = lights;
@@ -103,7 +107,7 @@ namespace MscDuo.Duplication
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] portões do galpão falharam: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, {furniture} móveis, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
         }
 
         internal static Vector3 ToLocal(Vector3 world) => new Vector3(world.z - Origin.z, Origin.x - world.x, world.y - Origin.y);
@@ -321,7 +325,27 @@ namespace MscDuo.Duplication
             return new Material(Shader.Find("Diffuse"));
         }
 
-        static Material BuildingMaterial(string name, Material template, Dictionary<string, Material> cache)
+        static int Furniture(Transform parent, Material template, Dictionary<string, Material> cache)
+        {
+            var parts = Parse(Text("moveis_jogo.obj", FurnitureResource));
+            if (parts == null) return 0;
+            var group = new GameObject("Galpao_Moveis");
+            group.transform.parent = parent;
+            foreach (var part in parts)
+            {
+                var materials = new List<Material>();
+                foreach (var name in part.Materials) materials.Add(BuildingMaterial(name, template, cache, "moveis_tex_jogo", FurniturePrefix));
+                var go = Create(part, materials.ToArray(), group.transform);
+                go.name = "Movel_" + part.Name;
+                var bounds = go.GetComponent<MeshFilter>().sharedMesh.bounds;
+                var box = go.AddComponent<BoxCollider>();
+                box.center = bounds.center;
+                box.size = bounds.size;
+            }
+            return parts.Count;
+        }
+
+        static Material BuildingMaterial(string name, Material template, Dictionary<string, Material> cache, string folder, string prefix)
         {
             Material material;
             if (cache.TryGetValue(name, out material)) return material;
@@ -333,7 +357,7 @@ namespace MscDuo.Duplication
             material.mainTextureScale = Vector2.one;
             material.mainTextureOffset = Vector2.zero;
             material.color = name == "vidro" ? new Color(0.75f, 0.85f, 0.9f, 0.35f) : Color.white;
-            var bytes = Bytes(Path.Combine("galpao_tex_jogo", name + ".png"), TexturePrefix + name + ".png");
+            var bytes = Bytes(Path.Combine(folder, name + ".png"), prefix + name + ".png");
             if (bytes != null)
             {
                 var texture = new Texture2D(2, 2, TextureFormat.RGB24, true) { name = "MscDuo_galpao_" + name, wrapMode = TextureWrapMode.Repeat };
