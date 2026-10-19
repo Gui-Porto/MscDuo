@@ -172,6 +172,12 @@ namespace MscDuo.Tools
             }
 
             player.position = target + Vector3.up * 2f;
+            if (args.Length == 1 && args[0] == "luz" && Warehouse.LightSwitch != null)
+            {
+                var look = Warehouse.LightSwitch.position - player.position;
+                look.y = 0f;
+                if (look.sqrMagnitude > 1e-4f) player.rotation = Quaternion.LookRotation(look);
+            }
             ModConsole.Print($"<color=orange>[MSC Duo]</color> teleportado para {HouseCloner.Format(target)}");
         }
     }

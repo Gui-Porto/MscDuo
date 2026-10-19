@@ -141,12 +141,17 @@ namespace MscDuo.Duplication
 
             var original = source.gameObject;
             var front = FrontOf(original.transform);
-            var copy = (GameObject)Object.Instantiate(original, Local(WarehouseConfig.Get("interruptor_x"), WarehouseConfig.Get("interruptor_y"), WarehouseConfig.Get("interruptor_altura")), original.transform.rotation);
+            var gap = GapToWall(original.transform, front);
+            var spot = Local(WALL_INNER, WarehouseConfig.Get("interruptor_y"), WarehouseConfig.Get("interruptor_altura")) + Vector3.forward * (gap + WarehouseConfig.Get("interruptor_x"));
+            var copy = (GameObject)Object.Instantiate(original, spot, original.transform.rotation);
             copy.name = "Galpao_Interruptor";
             copy.transform.parent = parent;
             copy.transform.rotation = Quaternion.AngleAxis(WarehouseConfig.Get("interruptor_giro"), Vector3.up) * Quaternion.FromToRotation(front, Vector3.forward) * original.transform.rotation;
             LightSwitch = copy.transform;
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> interruptor do galpão em {HouseCloner.Format(copy.transform.position)}, frente original {HouseCloner.Format(front)}.");
+            foreach (var t in copy.GetComponentsInChildren<Transform>(true)) t.gameObject.SetActive(true);
+            var shown = 0;
+            foreach (var renderer in copy.GetComponentsInChildren<Renderer>(true)) { renderer.enabled = true; shown++; }
+            ModConsole.Print(string.Format(CultureInfo.InvariantCulture, "<color=orange>[MSC Duo]</color> interruptor do galpão em {0}, {1:0.000} m da parede (como na cozinha), {2} partes visíveis, frente original {3}.", HouseCloner.Format(copy.transform.position), gap, shown, HouseCloner.Format(front)));
             var map = new Dictionary<Object, Object>();
             SatsumaCloner.MapHierarchy(original.transform, copy.transform, map);
             foreach (var fsm in copy.GetComponents<PlayMakerFSM>())
@@ -162,6 +167,22 @@ namespace MscDuo.Duplication
             }
             copy.SetActive(true);
             return true;
+        }
+
+        const float WALL_INNER = 0.2f;
+
+        static float GapToWall(Transform t, Vector3 front)
+        {
+            var best = 0.05f;
+            var found = false;
+            foreach (var hit in Physics.RaycastAll(t.position + front * 0.3f, -front, 0.8f))
+            {
+                if (hit.collider.isTrigger || hit.collider.transform.IsChildOf(t)) continue;
+                var gap = 0.3f - hit.distance;
+                if (gap < -0.2f || gap > 0.3f) continue;
+                if (!found || gap < best) { best = gap; found = true; }
+            }
+            return Mathf.Clamp(best, 0f, 0.15f);
         }
 
         static Vector3 FrontOf(Transform t)
