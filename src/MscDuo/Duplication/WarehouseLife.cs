@@ -19,11 +19,14 @@ namespace MscDuo.Duplication
         static Transform root;
         static GameObject lights;
         static readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
+        internal static readonly string[] Remembered = { "fliperama", "fliperama2", "fliperama3" };
+        static Dictionary<string, float> Saved = new Dictionary<string, float>();
 
         internal static void Build(Transform warehouse, Material baseMaterial, GameObject lightGroup, Dictionary<string, Vector3[]> screens)
         {
             template = baseMaterial;
             lights = lightGroup;
+            Saved = WarehouseGates.Load();
             root = warehouse;
             var go = new GameObject("Galpao_Vida");
             go.transform.parent = warehouse;
@@ -313,7 +316,8 @@ namespace MscDuo.Duplication
             var box = go.AddComponent<BoxCollider>();
             box.center = (q[0] + q[2]) / 2f + normal * 0.01f;
             box.size = new Vector3(Mathf.Abs(right.x) + Mathf.Abs(up.x) + 0.03f, Mathf.Abs(right.y) + Mathf.Abs(up.y) + 0.03f, Mathf.Abs(right.z) + Mathf.Abs(up.z) + 0.03f);
-            WarehouseToggles.Register(sound, 1, screen.SetPower);
+            float saved;
+            WarehouseToggles.Register(sound, Saved.TryGetValue(sound, out saved) && saved > 0.5f ? 1 : 0, screen.SetPower);
             input.Buttons.Add(new GateButton { Collider = box, Cap = go.transform, Click = () => WarehouseToggles.Set(sound, WarehouseToggles.Get(sound) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(sound) == 0 ? "Ligar fliperama" : "Desligar fliperama" });
         }
 
