@@ -21,7 +21,6 @@ namespace MscDuo.Duplication
         const float Damping = 5f;
         const float StartDelay = 0.15f;
         const float ReverseDelay = 0.5f;
-        const float BeaconAfter = 1.5f;
         const float Accelerate = 0.35f;
 
         internal int Index;
@@ -37,28 +36,14 @@ namespace MscDuo.Duplication
         internal Transform Shaft;
         internal BoxCollider Curtain;
         internal AudioSource MotorLoop;
-        internal AudioSource SlatLoop;
-        internal AudioSource MotorFx;
-        internal AudioSource BarFx;
-        internal AudioClip StartClip;
-        internal AudioClip BrakeClip;
-        internal AudioClip HitClip;
-        internal Transform Beacon;
-        internal Light BeaconLight;
-        internal Renderer Dome;
-        internal Material DomeOn;
-        internal Material DomeOff;
 
         float velocity;
         float sag;
         float sagVelocity;
         float startAt;
         float reverseAt;
-        float beaconUntil;
-        float spin;
         int pending;
         bool dirty = true;
-        bool beaconShown = true;
         readonly Vector2[] points = new Vector2[SlatCount + 1];
 
         internal bool Busy => Motion != 0 || pending != 0 || reverseAt > 0f;
@@ -74,7 +59,6 @@ namespace MscDuo.Duplication
             {
                 Motion = pending;
                 pending = 0;
-                OneShot(MotorFx, StartClip, 1f);
             }
             if (reverseAt > 0f && now >= reverseAt)
             {
@@ -93,11 +77,7 @@ namespace MscDuo.Duplication
             if (Position <= 0f)
             {
                 Position = 0f;
-                if (Motion < 0)
-                {
-                    Halt(false, 0.6f);
-                    OneShot(BarFx, HitClip, 1f);
-                }
+                if (Motion < 0) Halt(false);
             }
             if (Motion < 0 && Blocked(dt))
             {
@@ -127,7 +107,6 @@ namespace MscDuo.Duplication
                 dirty = false;
             }
             Sounds();
-            BeaconTick(now, dt);
         }
 
         internal void Command(int command)
@@ -167,15 +146,12 @@ namespace MscDuo.Duplication
             if (notify) WarehouseGates.Notify(this);
         }
 
-        void Halt(bool notify, float brake = 1f)
+        void Halt(bool notify)
         {
-            var moving = Motion != 0;
             Motion = 0;
             pending = 0;
             reverseAt = 0f;
             velocity = 0f;
-            if (moving) OneShot(MotorFx, BrakeClip, brake);
-            beaconUntil = Time.time + BeaconAfter;
             if (notify) WarehouseGates.Notify(this);
         }
 
@@ -291,7 +267,6 @@ namespace MscDuo.Duplication
             Shaft.localRotation = Quaternion.AngleAxis(90f - end * Mathf.Rad2Deg, Vector3.right);
             Curtain.center = new Vector3(Width / 2f, (Position + GuideTop) / 2f, CurtainZ);
             Curtain.size = new Vector3(Width + 0.1f, Mathf.Max(GuideTop - Position, 0.05f), 0.05f);
-            BarFx.transform.localPosition = new Vector3(Width / 2f, Position, CurtainZ);
         }
 
         static void Tangent(Vector2 from, Vector2 center, float radius, out Vector2 point, out float theta)
@@ -306,7 +281,6 @@ namespace MscDuo.Duplication
         {
             var frac = Mathf.Clamp01(Mathf.Abs(velocity) / Speed);
             Loop(MotorLoop, frac, 0.55f * Mathf.Sqrt(frac), 0.72f + 0.28f * frac);
-            Loop(SlatLoop, frac, 0.5f * frac, 0.85f + 0.2f * frac);
         }
 
         void Loop(AudioSource source, float frac, float volume, float pitch)
@@ -319,26 +293,6 @@ namespace MscDuo.Duplication
                 if (!source.isPlaying) source.Play();
             }
             else if (source.isPlaying) source.Stop();
-        }
-
-        void OneShot(AudioSource source, AudioClip clip, float volume)
-        {
-            if (source != null && clip != null) source.PlayOneShot(clip, volume * Volume);
-        }
-
-        void BeaconTick(float now, float dt)
-        {
-            if (Beacon == null) return;
-            var active = Busy || now < beaconUntil;
-            if (active != beaconShown)
-            {
-                beaconShown = active;
-                if (BeaconLight != null) BeaconLight.enabled = active;
-                if (Dome != null) Dome.sharedMaterial = active ? DomeOn : DomeOff;
-            }
-            if (!active) return;
-            spin = Mathf.Repeat(spin + dt * 540f, 360f);
-            Beacon.localRotation = Quaternion.Euler(12f, spin, 0f);
         }
     }
 }

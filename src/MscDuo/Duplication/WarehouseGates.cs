@@ -213,16 +213,9 @@ namespace MscDuo.Duplication
             rb.useGravity = false;
 
             gate.MotorLoop = Source(t, new Vector3(X(0.4f), dy, dz), Clip("motor"), true, 1.5f, 45f);
-            gate.MotorFx = Source(t, new Vector3(X(0.3f), dy, dz), null, false, 1.5f, 45f);
-            gate.SlatLoop = Source(t, new Vector3(width / 2f, GateController.GuideTop, cz), Clip("laminas"), true, 2f, 40f);
-            gate.BarFx = Source(t, new Vector3(width / 2f, 0f, cz), null, false, 2f, 45f);
-            gate.StartClip = Clip("partida");
-            gate.BrakeClip = Clip("freio");
-            gate.HitClip = Clip("batida");
 
             Panel(t, gate, input, m, new Vector3(px, 1.4f, 0.2f), Quaternion.identity);
             Panel(t, gate, input, m, new Vector3(px, 1.4f, 0f), Quaternion.Euler(0f, 180f, 0f));
-            Beacon(t, gate, m, new Vector3(X(0.35f), 4.7f, 0f));
             return gate;
         }
 
@@ -257,14 +250,12 @@ namespace MscDuo.Duplication
             box.Cylinder(new Vector3(0f, -0.095f, 0.03f), new Vector3(0f, -0.11f, 0.03f), 0.012f, 12);
             foreach (var y in new[] { 0.05f, 0f, -0.05f }) box.Cylinder(new Vector3(0f, y, 0.055f), new Vector3(0f, y, 0.06f), 0.019f, 20);
             Part(go.transform, "Caixa", box.ToMesh("MscDuo_botoeira"), new[] { m.Panel, m.Dark });
-            var fx = Source(go.transform, new Vector3(0f, 0f, 0.07f), null, false, 0.8f, 12f);
-            var click = Clip("botao");
-            Button(go.transform, gate, input, fx, click, 0.05f, 0.0135f, m.Green, m.White, 1, "Abrir portao");
-            Button(go.transform, gate, input, fx, click, 0f, 0.016f, m.Red, null, 0, "Parar portao");
-            Button(go.transform, gate, input, fx, click, -0.05f, 0.0135f, m.Black, m.White, -1, "Fechar portao");
+            Button(go.transform, gate, input, 0.05f, 0.0135f, m.Green, m.White, 1, "Abrir portao");
+            Button(go.transform, gate, input, 0f, 0.016f, m.Red, null, 0, "Parar portao");
+            Button(go.transform, gate, input, -0.05f, 0.0135f, m.Black, m.White, -1, "Fechar portao");
         }
 
-        static void Button(Transform panel, GateController gate, GateInput input, AudioSource fx, AudioClip click, float y, float radius, Material color, Material mark, int command, string label)
+        static void Button(Transform panel, GateController gate, GateInput input, float y, float radius, Material color, Material mark, int command, string label)
         {
             var shape = new GateShape();
             shape.Use(0).Cylinder(Vector3.zero, new Vector3(0f, 0f, 0.012f), radius, 24);
@@ -279,41 +270,7 @@ namespace MscDuo.Duplication
             var collider = cap.AddComponent<BoxCollider>();
             collider.center = new Vector3(0f, 0f, 0.006f);
             collider.size = new Vector3(0.04f, 0.044f, 0.03f);
-            input.Buttons.Add(new GateButton { Collider = collider, Cap = cap.transform, Rest = cap.transform.localPosition, Gate = gate, Command = command, Label = label, Fx = fx, Click = click });
-        }
-
-        static void Beacon(Transform gateTransform, GateController gate, GateMaterials m, Vector3 position)
-        {
-            var go = new GameObject("Galpao_Portao_Giroflex");
-            go.transform.parent = gateTransform;
-            go.transform.localPosition = position;
-            go.transform.localRotation = Quaternion.identity;
-            var shape = new GateShape();
-            shape.Use(0);
-            shape.Box(new Vector3(-0.03f, 0f, -0.13f), new Vector3(0.03f, 0.025f, 0f));
-            shape.Box(new Vector3(-0.03f, -0.06f, -0.008f), new Vector3(0.03f, 0.025f, 0f));
-            shape.Cylinder(new Vector3(0f, 0.025f, -0.085f), new Vector3(0f, 0.07f, -0.085f), 0.048f, 24);
-            Part(go.transform, "Base", shape.ToMesh("MscDuo_giroflex_base"), new[] { m.Dark });
-            var dome = new GateShape();
-            dome.Cylinder(new Vector3(0f, 0.07f, -0.085f), new Vector3(0f, 0.15f, -0.085f), 0.04f, 24);
-            dome.Cylinder(new Vector3(0f, 0.15f, -0.085f), new Vector3(0f, 0.158f, -0.085f), 0.03f, 24);
-            var domeGo = Part(go.transform, "Cupula", dome.ToMesh("MscDuo_giroflex_cupula"), new[] { m.DomeOff });
-            var spin = new GameObject("Giro");
-            spin.transform.parent = go.transform;
-            spin.transform.localPosition = new Vector3(0f, 0.11f, -0.085f);
-            var light = spin.AddComponent<Light>();
-            light.type = LightType.Spot;
-            light.color = new Color(1f, 0.55f, 0.08f);
-            light.range = 14f;
-            light.spotAngle = 65f;
-            light.intensity = 3f;
-            light.shadows = LightShadows.None;
-            light.enabled = false;
-            gate.Beacon = spin.transform;
-            gate.BeaconLight = light;
-            gate.Dome = domeGo.GetComponent<Renderer>();
-            gate.DomeOn = m.DomeOn;
-            gate.DomeOff = m.DomeOff;
+            input.Buttons.Add(new GateButton { Collider = collider, Cap = cap.transform, Rest = cap.transform.localPosition, Gate = gate, Command = command, Label = label });
         }
 
         static void Acoustics(Transform root)
@@ -375,7 +332,7 @@ namespace MscDuo.Duplication
         {
             foreach (var clip in clips.Values) if (clip != null) UnityEngine.Object.Destroy(clip);
             clips.Clear();
-            foreach (var name in new[] { "motor", "laminas", "partida", "freio", "batida", "botao" })
+            foreach (var name in new[] { "motor" })
             {
                 var bytes = Warehouse.Bytes(Path.Combine("sons_portao", name + ".wav"), SoundPrefix + name + ".wav");
                 var clip = bytes != null ? Wav(name, bytes) : null;
@@ -418,7 +375,7 @@ namespace MscDuo.Duplication
     internal class GateMaterials
     {
         internal readonly Material[] Galvanized;
-        internal readonly Material Steel, Gear, Motor, Dark, Conduit, Aluminum, Rubber, Panel, Green, Red, Black, White, DomeOn, DomeOff;
+        internal readonly Material Steel, Gear, Motor, Dark, Conduit, Aluminum, Rubber, Panel, Green, Red, Black, White;
 
         internal GateMaterials(Material template)
         {
@@ -440,8 +397,6 @@ namespace MscDuo.Duplication
             Red = Lit(template, "vermelho", new Color(0.82f, 0.07f, 0.05f), 0.5f);
             Black = Lit(template, "botao_preto", new Color(0.07f, 0.07f, 0.07f), 0.5f);
             White = Lit(template, "branco", new Color(0.95f, 0.95f, 0.95f), 0.2f);
-            DomeOn = Unlit("giroflex_aceso", new Color(1f, 0.62f, 0.12f), template);
-            DomeOff = Lit(template, "giroflex_apagado", new Color(0.55f, 0.28f, 0.04f), 0.7f);
         }
 
         static Material Lit(Material template, string name, Color color, float gloss)
@@ -457,16 +412,6 @@ namespace MscDuo.Duplication
             if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0f);
             return m;
         }
-
-        static Material Unlit(string name, Color color, Material template)
-        {
-            var shader = Shader.Find("Unlit/Texture");
-            if (shader == null) return Lit(template, name, color, 0.8f);
-            var texture = new Texture2D(2, 2, TextureFormat.RGB24, false) { name = "MscDuo_portao_" + name };
-            texture.SetPixels(new[] { color, color, color, color });
-            texture.Apply();
-            return new Material(shader) { name = "MscDuo_portao_" + name, mainTexture = texture };
-        }
     }
 
     internal class GateButton
@@ -477,14 +422,11 @@ namespace MscDuo.Duplication
         internal GateController Gate;
         internal int Command;
         internal string Label;
-        internal AudioSource Fx;
-        internal AudioClip Click;
         internal float PressedAt = -10f;
 
         internal void Press()
         {
             PressedAt = Time.time;
-            if (Fx != null && Click != null) Fx.PlayOneShot(Click, 0.8f * (Gate != null ? Gate.Volume : 1f));
             if (Gate != null) Gate.Command(Command);
         }
 
