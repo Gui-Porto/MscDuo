@@ -26,11 +26,8 @@ ITEMS = [
     {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (10.15, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024},
     {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (11.6, 12.8), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
     {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (13.4, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
-    {"name": "estante_livros1", "file": "estante_livros.glb", "height": 1.8, "front": 180, "facing": "-y", "at": (2.05, 15.6), "floor": MEZ_Z, "tris": 20000, "tex": 1024},
-    {"name": "estante_livros2", "file": "estante_livros.glb", "height": 1.8, "front": 180, "facing": "-y", "at": (5.75, 15.6), "floor": MEZ_Z, "tris": 20000, "tex": 1024},
-    {"name": "estante_garagem1", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "-y", "at": (16.2, 15.3), "floor": MEZ_Z, "tris": 20000, "tex": 1024},
-    {"name": "estante_garagem2", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "-y", "at": (17.4, 15.3), "floor": MEZ_Z, "tris": 20000, "tex": 1024},
-    {"name": "estante_garagem3", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "-y", "at": (18.6, 15.3), "floor": MEZ_Z, "tris": 20000, "tex": 1024},
+    {"name": "estante_livros", "file": "estante_livros.glb", "height": 1.8, "front": 180, "facing": "-y", "at": (2.05, 15.6), "floor": MEZ_Z, "tris": 20000, "tex": 1024, "copies": [(5.75, 15.6)]},
+    {"name": "estante_garagem", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "-y", "at": (16.2, 15.3), "floor": MEZ_Z, "tris": 20000, "tex": 1024, "copies": [(17.4, 15.3), (18.6, 15.3)]},
     {"name": "planta_sala", "file": "plantas.glb", "object": "Pot_4_", "height": 1.3, "front": 0, "facing": "-y", "at": (0.65, 11.0), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
     {"name": "planta_escada", "file": "plantas.glb", "object": "Pot_12_", "height": 1.0, "front": 0, "facing": "-y", "at": (23.35, 12.3), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
     {"name": "planta_escritorio", "file": "plantas.glb", "object": "Pot_9_", "height": 1.1, "front": 0, "facing": "-y", "at": (20.2, 11.6), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
@@ -205,7 +202,11 @@ def base_image(mat):
     return None, (0.6, 0.6, 0.6, 1.0)
 
 
+HASHES = {}
+
+
 def bake_textures(obj, item):
+    import hashlib
     names = []
     for index, slot in enumerate(obj.material_slots):
         name = "%s_%d%s" % (item["name"], index, "_alfa" if item.get("alpha") else "")
@@ -229,13 +230,20 @@ def bake_textures(obj, item):
             img.file_format = "JPEG"
             img.save()
             bpy.data.images.remove(img)
+        with open(path, "rb") as f:
+            digest = hashlib.md5(f.read()).hexdigest()
+        if digest in HASHES:
+            os.remove(path)
+            name = HASHES[digest]
+        else:
+            HASHES[digest] = name
         if slot.material:
             slot.material.name = name
         names.append(name)
     return names
 
 
-def write_obj(objects, names):
+def write_obj(objects, names, copies):
     out = ["# MSC Duo: móveis do galpão em coordenadas do mundo (eixos do Blender)"]
     vbase = tbase = 1
     for obj in objects:
@@ -259,6 +267,8 @@ def write_obj(objects, names):
                     out.append("f %d/%d %d/%d %d/%d" % (a[0], a[1], b[0], b[1], c[0], c[1]))
         vbase += len(me.vertices)
         tbase += len(me.loops)
+        for d in copies.get(obj.name, []):
+            out.append("copy %s %.4f %.4f %.4f" % (obj.name, d.x, d.y, d.z))
     with open(OBJ, "w", encoding="utf-8") as f:
         f.write("\n".join(out) + "\n")
 
@@ -268,7 +278,8 @@ def build():
     os.makedirs(TEXTURES, exist_ok=True)
     for f in os.listdir(TEXTURES):
         os.remove(os.path.join(TEXTURES, f))
-    objects, names = [], {}
+    HASHES.clear()
+    objects, names, copies = [], {}, {}
     for item in ITEMS:
         obj = import_item(item)
         if item.get("board"):
@@ -285,7 +296,9 @@ def build():
         zs = [v.co.z for v in obj.data.vertices]
         print("%s: %d triângulos, %.2f x %.2f x %.2f m, %d materiais" % (obj.name, count, max(ys) - min(ys), max(xs) - min(xs), max(zs) - min(zs), len(names[obj.name])))
         objects.append(obj)
-    write_obj(objects, names)
+        base = local_to_blender(item["at"][0], item["at"][1], item["floor"])
+        copies[obj.name] = [local_to_blender(x, y, item["floor"]) - base for x, y in item.get("copies", [])]
+    write_obj(objects, names, copies)
     return objects
 
 

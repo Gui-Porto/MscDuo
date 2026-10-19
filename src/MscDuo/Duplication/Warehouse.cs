@@ -360,6 +360,12 @@ namespace MscDuo.Duplication
                     box.size = new Vector3(b.size.x * 0.6f, b.size.y * 0.4f, b.size.z * 0.6f);
                 }
                 else go.AddComponent<MeshCollider>().sharedMesh = mesh;
+                foreach (var offset in part.Copies)
+                {
+                    var twin = (GameObject)Object.Instantiate(go, go.transform.position + offset, go.transform.rotation);
+                    twin.name = go.name;
+                    twin.transform.parent = group.transform;
+                }
             }
             return parts.Count;
         }
@@ -416,6 +422,7 @@ namespace MscDuo.Duplication
             internal readonly List<string> Materials = new List<string>();
             internal readonly List<List<int>> Triangles = new List<List<int>>();
             internal readonly Dictionary<long, int> Index = new Dictionary<long, int>();
+            internal readonly List<Vector3> Copies = new List<Vector3>();
         }
 
         static List<Part> Parse(string text)
@@ -438,6 +445,10 @@ namespace MscDuo.Duplication
                         break;
                     case "vt":
                         uvs.Add(new Vector2(F(p[1]), F(p[2])));
+                        break;
+                    case "copy":
+                        foreach (var part in parts)
+                            if (part.Name == p[1]) part.Copies.Add(new Vector3(F(p[2]), F(p[4]), F(p[3])));
                         break;
                     case "o":
                         current = new Part { Name = line.Substring(2).Trim() };
