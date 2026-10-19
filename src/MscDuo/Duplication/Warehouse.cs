@@ -221,6 +221,55 @@ namespace MscDuo.Duplication
 
         internal static readonly Dictionary<string, Vector3[]> Screens = new Dictionary<string, Vector3[]>();
 
+        static void Hinged(GameObject door, string name)
+        {
+            var b = door.GetComponent<MeshFilter>().sharedMesh.bounds;
+            var pivot = new GameObject(door.name + "_Dobradica");
+            pivot.transform.parent = door.transform.parent;
+            pivot.transform.position = new Vector3(b.max.x, b.center.y, b.min.z);
+            pivot.transform.rotation = Quaternion.identity;
+            door.transform.parent = pivot.transform;
+            var box = door.AddComponent<BoxCollider>();
+            box.center = b.center;
+            box.size = b.size;
+            var swing = pivot.AddComponent<DoorSwing>();
+            var key = name;
+            WarehouseToggles.Register(key, 0, v => swing.Target = v != 0 ? 100f : 0f);
+            var input = root.GetComponent<GateInput>() ?? root.AddComponent<GateInput>();
+            input.Buttons.Add(new GateButton { Collider = box, Cap = door.transform, Click = () => WarehouseToggles.Set(key, WarehouseToggles.Get(key) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(key) == 0 ? "Abrir porta" : "Fechar porta" });
+        }
+
+        class DoorSwing : MonoBehaviour
+        {
+            internal float Target;
+            float angle;
+
+            void Update()
+            {
+                if (Mathf.Approximately(angle, Target)) return;
+                angle = Mathf.MoveTowards(angle, Target, Time.deltaTime * 160f);
+                transform.localRotation = Quaternion.Euler(0f, angle, 0f);
+            }
+        }
+
+        static void Cooler(GameObject fridge)
+        {
+            var b = fridge.GetComponent<MeshFilter>().sharedMesh.bounds;
+            var inside = new GameObject("Geladeira_Frio");
+            inside.transform.parent = fridge.transform;
+            inside.transform.position = new Vector3(b.center.x, b.min.y + b.size.y * 0.55f, b.center.z);
+            House2Fridge.Extra = inside.transform;
+            var lamp = new GameObject("Geladeira_Luz");
+            lamp.transform.parent = fridge.transform;
+            lamp.transform.position = new Vector3(b.center.x, b.min.y + b.size.y * 0.8f, b.center.z);
+            var light = lamp.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.range = 1.0f;
+            light.intensity = 1.2f;
+            light.color = new Color(0.85f, 0.95f, 1f);
+            light.shadows = LightShadows.None;
+        }
+
         static int Furniture(Transform parent, Material template, Dictionary<string, Material> cache)
         {
             var parts = Parse(Text("moveis_jogo.obj", FurnitureResource));
@@ -235,6 +284,12 @@ namespace MscDuo.Duplication
                 go.name = "Movel_" + part.Name;
                 if (part.Screen != null) Screens[part.Name] = part.Screen;
                 var mesh = go.GetComponent<MeshFilter>().sharedMesh;
+                if (part.Name.EndsWith("_porta"))
+                {
+                    Hinged(go, part.Name);
+                    continue;
+                }
+                if (part.Name == "geladeira") Cooler(go);
                 if (part.Name.StartsWith("planta"))
                 {
                     var b = mesh.bounds;
@@ -260,7 +315,7 @@ namespace MscDuo.Duplication
             Material material;
             if (cache.TryGetValue(name, out material)) return material;
             Shader shader = null;
-            if (name == "vidro") shader = Shader.Find("Legacy Shaders/Transparent/Diffuse") ?? Shader.Find("Transparent/Diffuse");
+            if (name == "vidro" || name.EndsWith("_vidro")) shader = Shader.Find("Legacy Shaders/Transparent/Diffuse") ?? Shader.Find("Transparent/Diffuse");
             else if (name == "luz") shader = Shader.Find("Unlit/Texture");
             var cutout = name.EndsWith("_alfa");
             if (cutout) shader = Shader.Find("Legacy Shaders/Transparent/Cutout/Diffuse") ?? Shader.Find("Transparent/Cutout/Diffuse");
@@ -268,7 +323,7 @@ namespace MscDuo.Duplication
             material.name = "MscDuo_galpao_" + name;
             material.mainTextureScale = Vector2.one;
             material.mainTextureOffset = Vector2.zero;
-            material.color = name == "vidro" ? new Color(0.75f, 0.85f, 0.9f, 0.35f) : Color.white;
+            material.color = name == "vidro" ? new Color(0.75f, 0.85f, 0.9f, 0.35f) : name.EndsWith("_vidro") ? new Color(0.85f, 0.92f, 0.95f, 0.22f) : Color.white;
             var bytes = Bytes(Path.Combine(folder, name + ".png"), prefix + name + ".png") ?? Bytes(Path.Combine(folder, name + ".jpg"), prefix + name + ".jpg");
             if (bytes != null)
             {

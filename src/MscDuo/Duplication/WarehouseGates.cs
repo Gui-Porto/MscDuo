@@ -42,7 +42,7 @@ namespace MscDuo.Duplication
             LoadClips();
             var saved = Load();
             var materials = new GateMaterials(template);
-            var input = root.gameObject.AddComponent<GateInput>();
+            var input = root.GetComponent<GateInput>() ?? root.gameObject.AddComponent<GateInput>();
             for (int i = 0; i < Openings.Length; i++)
             {
                 var gate = Create(i, Openings[i][0], Openings[i][1], i == 0 ? -1f : 1f, root, materials, input);

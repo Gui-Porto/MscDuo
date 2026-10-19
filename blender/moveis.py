@@ -16,7 +16,7 @@ ITEMS = [
     {"name": "bancada", "file": "bancada.glb", "scale": 0.01, "front": -90, "facing": "-y", "at": (2.6, 15.4), "floor": 0.0, "tris": 12000, "tex": 1024},
     {"name": "armario_ferramentas", "file": "armario_ferramentas.glb", "height": 1.05, "front": 0, "facing": "-y", "at": (5.25, 15.5), "floor": 0.0, "tris": 10000, "tex": 1024},
     {"name": "sofa_grande", "file": "sofa_grande.glb", "height": 0.8, "front": 180, "facing": "-y", "at": (11.0, 14.3), "floor": 0.0, "tris": 60000, "tex": 1024},
-    {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (0.75, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512},
+    {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (0.75, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512, "door": ["Material.007", "Material.008"], "glass": ["Material.007"]},
     {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (3.9, 12.3), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
     {"name": "mesinha", "file": "mesinha.glb", "length": 1.0, "front": 0, "facing": "-y", "at": (3.9, 13.75), "floor": MEZ_Z, "tris": 2000, "tex": 512},
     {"name": "rack", "file": "rack.glb", "scale": 0.01, "front": 0, "facing": "-y", "at": (3.9, 15.5), "floor": MEZ_Z, "tris": 2000, "tex": 64, "color": (0.16, 0.11, 0.08, 1.0)},
@@ -255,6 +255,29 @@ def double_sided(obj):
     bm.free()
 
 
+def split_door(obj, item):
+    mats = item.get("door")
+    if not mats:
+        return None
+    slots = [i for i, s in enumerate(obj.material_slots) if s.material and s.material.name in mats]
+    if not slots:
+        return None
+    before = set(bpy.data.objects)
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    for i in slots:
+        obj.active_material_index = i
+        bpy.ops.object.material_slot_select()
+    bpy.ops.mesh.separate(type="SELECTED")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    door = [o for o in bpy.data.objects if o not in before][0]
+    door.name = item["name"] + "_porta"
+    return door
+
+
 def decimate(obj, target):
     count = triangles(obj)
     if count <= target:
@@ -293,18 +316,19 @@ def bake_textures(obj, item):
     import hashlib
     names = []
     for index, slot in enumerate(obj.material_slots):
-        name = "%s_%d%s" % (item["name"], index, "_alfa" if item.get("alpha") else "")
+        glass = slot.material is not None and slot.material in item.get("_glass", ())
+        name = "%s_%d%s" % (item["name"], index, "_alfa" if item.get("alpha") else "_vidro" if glass else "")
         image, color = base_image(slot.material)
         if item.get("color"):
             image, color = None, item["color"]
-        path = os.path.join(TEXTURES, name + (".png" if item.get("alpha") else ".jpg"))
+        path = os.path.join(TEXTURES, name + (".png" if item.get("alpha") or glass else ".jpg"))
         if image is not None:
             copy = image.copy()
             size = item["tex"]
             if max(copy.size) > size:
                 copy.scale(size, size)
             copy.filepath_raw = path
-            copy.file_format = "PNG" if item.get("alpha") else "JPEG"
+            copy.file_format = "PNG" if item.get("alpha") or glass else "JPEG"
             copy.save()
             bpy.data.images.remove(copy)
         else:
@@ -316,7 +340,7 @@ def bake_textures(obj, item):
             bpy.data.images.remove(img)
         with open(path, "rb") as f:
             digest = hashlib.md5(f.read()).hexdigest()
-        if digest in HASHES:
+        if digest in HASHES and HASHES[digest] != name:
             os.remove(path)
             name = HASHES[digest]
         else:
@@ -383,7 +407,12 @@ def build():
         count = decimate(obj, item["tris"])
         if item.get("double"):
             double_sided(obj)
+        item["_glass"] = {s.material for s in obj.material_slots if s.material and s.material.name in item.get("glass", [])}
+        door = split_door(obj, item)
         names[obj.name] = bake_textures(obj, item)
+        if door is not None:
+            names[door.name] = bake_textures(door, item)
+            objects.append(door)
         xs = [v.co.x for v in obj.data.vertices]
         ys = [v.co.y for v in obj.data.vertices]
         zs = [v.co.z for v in obj.data.vertices]

@@ -11,6 +11,7 @@ namespace MscDuo.Duplication
         const string FridgeGlobal = "FridgePoint1";
 
         internal static Transform Point;
+        internal static Transform Extra;
         static bool patched;
 
         internal static void Patch()
@@ -32,13 +33,21 @@ namespace MscDuo.Duplication
         {
             static void Postfix(GetDistance __instance)
             {
-                if (Point == null || __instance.storeResult == null) return;
+                if (Point == null && Extra == null || __instance.storeResult == null) return;
                 var target = __instance.target;
                 if (target == null || !target.UseVariable || target.Name != FridgeGlobal) return;
                 var owner = __instance.Fsm.GetOwnerDefaultTarget(__instance.gameObject);
                 if (owner == null) return;
-                var distance = Vector3.Distance(owner.transform.position, Point.position);
-                if (distance < __instance.storeResult.Value) __instance.storeResult.Value = distance;
+                if (Point != null)
+                {
+                    var distance = Vector3.Distance(owner.transform.position, Point.position);
+                    if (distance < __instance.storeResult.Value) __instance.storeResult.Value = distance;
+                }
+                if (Extra != null)
+                {
+                    var distance = Vector3.Distance(owner.transform.position, Extra.position);
+                    if (distance < __instance.storeResult.Value) __instance.storeResult.Value = distance;
+                }
             }
         }
     }
