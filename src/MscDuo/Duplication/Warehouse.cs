@@ -299,7 +299,8 @@ namespace MscDuo.Duplication
                     box.center = new Vector3(b.center.x, b.min.y + b.size.y * 0.2f, b.center.z);
                     box.size = new Vector3(b.size.x * 0.6f, b.size.y * 0.4f, b.size.z * 0.6f);
                 }
-                else go.AddComponent<MeshCollider>().sharedMesh = mesh;
+                else
+                    foreach (var filter in go.GetComponentsInChildren<MeshFilter>()) filter.gameObject.AddComponent<MeshCollider>().sharedMesh = filter.sharedMesh;
                 foreach (var offset in part.Copies)
                 {
                     var twin = (GameObject)Object.Instantiate(go, go.transform.position + offset, go.transform.rotation);
@@ -338,20 +339,74 @@ namespace MscDuo.Duplication
             return material;
         }
 
+        const int MaxVertices = 64000;
+
         static GameObject Create(Part part, Material[] materials, Transform parent)
         {
-            var mesh = new Mesh { name = "MscDuo_" + part.Name };
-            mesh.vertices = part.Vertices.ToArray();
-            mesh.uv = part.Uvs.ToArray();
-            mesh.subMeshCount = part.Triangles.Count;
-            for (int i = 0; i < part.Triangles.Count; i++) mesh.SetTriangles(part.Triangles[i].ToArray(), i);
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
             var go = new GameObject("Galpao_" + part.Name);
             go.transform.parent = parent;
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            go.AddComponent<MeshRenderer>().sharedMaterials = materials;
+            var chunks = Chunks(part);
+            for (int c = 0; c < chunks.Count; c++)
+            {
+                var host = go;
+                if (c > 0)
+                {
+                    host = new GameObject("Pedaco" + c);
+                    host.transform.parent = go.transform;
+                }
+                host.AddComponent<MeshFilter>().sharedMesh = chunks[c];
+                host.AddComponent<MeshRenderer>().sharedMaterials = materials;
+            }
             return go;
+        }
+
+        static List<Mesh> Chunks(Part part)
+        {
+            var result = new List<Mesh>();
+            var remap = new Dictionary<int, int>();
+            var vertices = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var tris = new List<List<int>>();
+            foreach (var _ in part.Triangles) tris.Add(new List<int>());
+            System.Action flush = () =>
+            {
+                if (vertices.Count == 0) return;
+                var mesh = new Mesh { name = "MscDuo_" + part.Name + (result.Count > 0 ? "_" + result.Count : "") };
+                mesh.vertices = vertices.ToArray();
+                mesh.uv = uvs.ToArray();
+                mesh.subMeshCount = tris.Count;
+                for (int i = 0; i < tris.Count; i++) mesh.SetTriangles(tris[i].ToArray(), i);
+                mesh.RecalculateNormals();
+                mesh.RecalculateBounds();
+                result.Add(mesh);
+                remap.Clear();
+                vertices.Clear();
+                uvs.Clear();
+                foreach (var t in tris) t.Clear();
+            };
+            for (int sub = 0; sub < part.Triangles.Count; sub++)
+            {
+                var list = part.Triangles[sub];
+                for (int i = 0; i + 2 < list.Count; i += 3)
+                {
+                    if (vertices.Count + 3 > MaxVertices) flush();
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var old = list[i + k];
+                        int index;
+                        if (!remap.TryGetValue(old, out index))
+                        {
+                            index = vertices.Count;
+                            remap[old] = index;
+                            vertices.Add(part.Vertices[old]);
+                            uvs.Add(part.Uvs[old]);
+                        }
+                        tris[sub].Add(index);
+                    }
+                }
+            }
+            flush();
+            return result;
         }
 
         class Part
