@@ -21,11 +21,11 @@ ITEMS = [
     {"name": "mesinha", "file": "mesinha.glb", "length": 1.0, "front": 0, "facing": "-y", "at": (3.9, 13.75), "floor": MEZ_Z, "tris": 2000, "tex": 512},
     {"name": "rack", "file": "rack.glb", "scale": 0.01, "front": 0, "facing": "-y", "at": (3.9, 15.5), "floor": MEZ_Z, "tris": 2000, "tex": 64, "color": (0.16, 0.11, 0.08, 1.0)},
     {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (3.9, 15.74), "floor": MEZ_Z + 0.75, "tris": 1000, "tex": 512, "screen_front": 0.035},
-    {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (8.6, 15.32), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "screen_object": "ArcadeMachine_Screen_01"},
-    {"name": "fliperama2", "file": "fliperama2.glb", "height": 1.78, "front": 0, "facing": "-y", "at": (9.4, 15.38), "floor": MEZ_Z, "tris": 6000, "tex": 1024, "screen_object": "defaultMaterial.005", "screen_inset": 0.02},
-    {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (10.15, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024, "screen_model": [(-0.123, 2.333, 1.026), (-0.534, 2.333, 1.026), (-0.534, 2.333, 1.345), (-0.123, 2.333, 1.345)]},
-    {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (11.6, 12.8), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
-    {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (13.4, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
+    {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (10.15, 15.32), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "screen_object": "ArcadeMachine_Screen_01", "drop": ["ArcadeMachine_Glass"]},
+    {"name": "fliperama2", "file": "fliperama2.glb", "height": 1.78, "front": 0, "facing": "-y", "at": (10.95, 15.38), "floor": MEZ_Z, "tris": 6000, "tex": 1024, "screen_model": [(79.0, -28.2, 120.0), (79.0, 19.9, 120.0), (79.0, 19.9, 157.4), (79.0, -28.2, 157.4)]},
+    {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (11.7, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024, "screen_model": [(-0.123, 2.333, 1.026), (-0.534, 2.333, 1.026), (-0.534, 2.333, 1.345), (-0.123, 2.333, 1.345)]},
+    {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (11.3, 12.8), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
+    {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (14.1, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
     {"name": "estante_livros", "file": "estante_livros.glb", "height": 1.8, "front": 180, "facing": "-y", "at": (2.05, 15.6), "floor": MEZ_Z, "tris": 20000, "tex": 1024, "copies": [(5.75, 15.6)]},
     {"name": "estante_garagem", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "-y", "at": (16.2, 15.3), "floor": MEZ_Z, "tris": 20000, "tex": 1024, "copies": [(17.4, 15.3), (18.6, 15.3)]},
     {"name": "planta_sala", "file": "plantas.glb", "object": "Pot_4_", "height": 1.3, "front": 0, "facing": "-y", "at": (0.65, 11.0), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
@@ -52,6 +52,11 @@ def import_item(item):
     bpy.ops.import_scene.gltf(filepath=os.path.join(SOURCE, item["file"]))
     new = [o for o in bpy.data.objects if o not in before]
     meshes = [o for o in new if o.type == "MESH"]
+    if item.get("drop"):
+        for o in [o for o in meshes if any(o.name.startswith(d) for d in item["drop"])]:
+            meshes.remove(o)
+            new.remove(o)
+            bpy.data.objects.remove(o, do_unlink=True)
     if item.get("object"):
         keep = [o for o in meshes if o.name.startswith(item["object"])]
         drop = [o for o in meshes if o not in keep]
@@ -123,6 +128,37 @@ def screen_quad(obj, item, matrix):
     w0, w1 = min(ws) + inset, max(ws) - inset
     o = c + normal * 0.004
     return [o + u * u0 + w * w0, o + u * u1 + w * w0, o + u * u1 + w * w1, o + u * u0 + w * w1]
+
+
+def snap_screen(obj, quad):
+    from mathutils.bvhtree import BVHTree
+    me = obj.data
+    bvh = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [list(p.vertices) for p in me.polygons])
+    bl, br, tr, tl = quad
+    normal = (br - bl).cross(tl - bl).normalized()
+    if normal.x < 0:
+        normal = -normal
+    hits = []
+    for u, v in ((0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8), (0.5, 0.5)):
+        p = bl + (br - bl) * u + (tl - bl) * v
+        loc, nrm, idx, dist = bvh.ray_cast(p + normal * 0.4, -normal, 1.0)
+        if loc is not None:
+            hits.append(loc)
+    if len(hits) < 3:
+        return quad
+    c = sum(hits, Vector()) / len(hits)
+    a, b = hits[1] - hits[0], hits[3 if len(hits) > 3 else 2] - hits[0]
+    plane = a.cross(b).normalized()
+    if plane.dot(normal) < 0:
+        plane = -plane
+    if plane.dot(normal) < 0.8:
+        plane = normal
+    lift = max(0.0, max((h - c).dot(plane) for h in hits)) + 0.004
+    out = []
+    for q in quad:
+        t = (c - q).dot(plane) / max(normal.dot(plane), 1e-3)
+        out.append(q + normal * t + plane * lift)
+    return out
 
 
 def place(obj, item):
@@ -338,6 +374,8 @@ def build():
             print("%s: %d peças finas removidas" % (item["name"], strip_thin(obj)))
         matrix = place(obj, item)
         quad = screen_quad(obj, item, matrix)
+        if quad and not item.get("screen_front"):
+            quad = snap_screen(obj, quad)
         if quad and quad[1].y < quad[0].y:
             quad = [quad[1], quad[0], quad[3], quad[2]]
         if quad:

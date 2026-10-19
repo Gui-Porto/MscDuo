@@ -31,11 +31,11 @@ namespace MscDuo.Duplication
 
             Wainscot();
             Rug("tapete_sala", 1.4f, 11.3f, 6.4f, 14.6f);
-            Rug("tapete_jogos", 9.6f, 11.3f, 13.6f, 14.3f);
+            Rug("tapete_jogos", 9.3f, 11.3f, 13.3f, 14.3f);
             Rug("tapete_escritorio", 16.4f, 10.9f, 21.2f, 13.4f);
-            Pendant(11.6f, 12.8f, lights);
+            Pendant(11.3f, 12.8f, lights);
             HighTable(14.4f, 11.0f);
-            Neon("ARCADE", 9.6f, 2.35f, lights);
+            Neon("ARCADE", 11.3f, 2.35f, lights);
             Office(18.4f, 11.8f);
         }
 

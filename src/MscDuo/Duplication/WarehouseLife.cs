@@ -415,23 +415,39 @@ namespace MscDuo.Duplication
         {
             var d0 = Doors[index][0];
             var d1 = Doors[index][1];
-            var width = d1 - d0 - 0.02f;
+            const float wall0 = 12f, wall1 = 12.12f, top = 2.15f, trim = 0.07f, lip = 0.015f;
+            var white = Paint("batente", new Color(0.92f, 0.91f, 0.88f));
+            var frameShape = new GateShape();
+            frameShape.Box(L(d0 - trim, wall0 - lip, 0f), L(d0, wall1 + lip, top + trim));
+            frameShape.Box(L(d1, wall0 - lip, 0f), L(d1 + trim, wall1 + lip, top + trim));
+            frameShape.Box(L(d0 - trim, wall0 - lip, top), L(d1 + trim, wall1 + lip, top + trim));
+            frameShape.Box(L(d0, wall0, top - 0.02f), L(d1, wall0 + 0.035f, top));
+            frameShape.Box(L(d0, wall0, 0f), L(d0 + 0.02f, wall0 + 0.035f, top));
+            frameShape.Box(L(d1 - 0.02f, wall0, 0f), L(d1, wall0 + 0.035f, top));
+            Part(frame, "Batente_Sala" + (index + 1), frameShape, white);
+
+            var width = d1 - d0 - 0.006f;
+            const float thick = 0.04f;
             var hinge = new GameObject("Porta_Sala" + (index + 1));
             hinge.transform.parent = frame;
-            hinge.transform.localPosition = L(d0 + 0.01f, DoorWall, 0f);
+            hinge.transform.localPosition = L(d0 + 0.003f, wall0 + 0.035f + thick, 0f);
             hinge.transform.localRotation = Quaternion.identity;
             var shape = new GateShape();
-            shape.Use(0).Box(new Vector3(0f, 0f, -0.02f), new Vector3(width, DoorHeight, 0.02f));
+            shape.Use(0).Box(new Vector3(0f, 0.005f, -thick), new Vector3(width, top - 0.022f, 0f));
             shape.Use(1);
+            var hx = width - 0.08f;
             foreach (var side in new[] { -1f, 1f })
             {
-                shape.Box(new Vector3(width - 0.14f, 0.98f, side * 0.02f), new Vector3(width - 0.12f, 1.04f, side * 0.07f));
-                shape.Box(new Vector3(width - 0.2f, 1.0f, side * 0.06f), new Vector3(width - 0.12f, 1.02f, side * 0.075f));
+                var face = side < 0f ? -thick : 0f;
+                var outward = side;
+                shape.Box(new Vector3(hx - 0.022f, 0.94f, face), new Vector3(hx + 0.022f, 1.1f, face + outward * 0.008f));
+                shape.Cylinder(new Vector3(hx, 1.04f, face + outward * 0.008f), new Vector3(hx, 1.04f, face + outward * 0.055f), 0.009f, 12);
+                shape.Box(new Vector3(hx - 0.13f, 1.03f, face + outward * 0.045f), new Vector3(hx + 0.008f, 1.05f, face + outward * 0.062f));
             }
-            var leaf = Part(hinge.transform, "Folha", shape, Paint("porta", new Color(0.86f, 0.85f, 0.81f)), Paint("macaneta", new Color(0.7f, 0.7f, 0.72f)));
+            var leaf = Part(hinge.transform, "Folha", shape, Paint("porta", new Color(0.8f, 0.79f, 0.76f)), Paint("macaneta", new Color(0.72f, 0.72f, 0.74f)));
             var box = leaf.AddComponent<BoxCollider>();
-            box.center = new Vector3(width / 2f, DoorHeight / 2f, 0f);
-            box.size = new Vector3(width, DoorHeight, 0.05f);
+            box.center = new Vector3(width / 2f, top / 2f, -thick / 2f);
+            box.size = new Vector3(width, top - 0.03f, thick);
             var swing = hinge.AddComponent<Swing>();
             var key = "porta" + (index + 1);
             WarehouseToggles.Register(key, 0, v => swing.Target = v != 0 ? 95f : 0f);
