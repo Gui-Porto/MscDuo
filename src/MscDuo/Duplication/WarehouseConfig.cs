@@ -14,8 +14,8 @@ namespace MscDuo.Duplication
         static readonly string[][] Defaults =
         {
             new[] { "interruptor_x", "0", "afastamento extra da parede, em metros (o normal vem do interruptor da cozinha)" },
-            new[] { "interruptor_portao1_x", "5.6", "interruptor à esquerda do portão: distância da parede esquerda" },
-            new[] { "interruptor_portao2_x", "18.4", "interruptor à direita do portão: distância da parede esquerda" },
+            new[] { "interruptor_portao1_x", "1.6", "interruptor à esquerda do portão: distância da parede esquerda" },
+            new[] { "interruptor_portao2_x", "22.4", "interruptor à direita do portão: distância da parede esquerda" },
             new[] { "interruptor_y", "12.33", "segundo interruptor, na porta lateral: distância da frente (portões)" },
             new[] { "interruptor_altura", "1.3", "altura do chão" },
             new[] { "interruptor_giro", "0", "giro extra em graus, em volta do eixo vertical" },
@@ -26,8 +26,9 @@ namespace MscDuo.Duplication
             new[] { "luz_mezanino_intensidade", "1.0", "lâmpadas em cima do mezanino" },
             new[] { "luz_mezanino_alcance", "9", "" },
             new[] { "patio_arvores", "12", "metros sem árvores na frente dos portões" },
-            new[] { "dinamometro1_fim", "12.5", "dinamômetro 1 (esquerda): onde termina a ponta do fundo, medido a partir do portão" },
-            new[] { "dinamometro2_fim", "12.5", "dinamômetro 2 (direita): onde termina a ponta do fundo, medido a partir do portão" },
+            new[] { "dinamometro1_fim", "10", "dinamômetro 1 (esquerda): onde termina a ponta do fundo, medido a partir do portão" },
+            new[] { "dinamometro2_fim", "10", "dinamômetro 2 (direita): onde termina a ponta do fundo (a porta do banheiro fica em 12)" },
+            new[] { "elevador_y", "6", "elevador de carro (centro): distância do meio dele até o portão" },
             new[] { "luz_externa_sol", "0.1", "luz externa no automático: acende quando o sol fica abaixo desta altura (0 = horizonte, maior = acende mais cedo)" },
             new[] { "portao_velocidade", "0.45", "velocidade dos portões de enrolar, em metros por segundo" },
             new[] { "portao_volume", "1", "volume dos sons dos portões (0 a 2)" },

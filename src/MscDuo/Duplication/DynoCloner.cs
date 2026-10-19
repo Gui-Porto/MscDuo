@@ -14,13 +14,13 @@ namespace MscDuo.Duplication
         const string CollidersPath = "REPAIRSHOP/Dyno";
         const string MeasurePath = "Sheets/DynoSheet/Dyno/Measure";
         const float WaitSeconds = 180f;
-        static readonly float[] Bays = { 8.75f, 15.25f };
+        static readonly float[] Bays = { 4.5f, 19.5f };
         static readonly HashSet<int> injected = new HashSet<int>();
 
         internal static bool InDyno(Transform t)
         {
             for (; t != null; t = t.parent)
-                if (t.name.StartsWith(Prefix)) return true;
+                if (t.name.StartsWith(Prefix) || t.name.StartsWith(LiftCloner.Prefix)) return true;
             return false;
         }
 
@@ -119,7 +119,7 @@ namespace MscDuo.Duplication
             ModConsole.Print($"<color=orange>[MSC Duo]</color> dinamômetro {index + 1} no galpão: {fsms} FSMs, {remapped} referências, ligado a {(car != null ? car.name : "nada")}.");
         }
 
-        static void StripHooks(PlayMakerFSM fsm)
+        internal static void StripHooks(PlayMakerFSM fsm)
         {
             foreach (var state in fsm.FsmStates)
             {
@@ -166,14 +166,14 @@ namespace MscDuo.Duplication
             }
         }
 
-        static float Lowest(Transform t)
+        internal static float Lowest(Transform t)
         {
             var low = float.MaxValue;
             foreach (var r in t.GetComponentsInChildren<Renderer>(true)) low = Mathf.Min(low, r.bounds.min.y);
             return low == float.MaxValue ? t.position.y : low;
         }
 
-        static GameObject Find(string path)
+        internal static GameObject Find(string path)
         {
             var go = GameObject.Find(path);
             if (go != null) return go;
