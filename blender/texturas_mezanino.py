@@ -68,7 +68,22 @@ def rug(name, field, border, accent, pattern):
     img.save(os.path.join(OUT, name + ".png"))
 
 
+def tiles(name, n, color, grout, jitter):
+    size = 512
+    img = Image.new("RGB", (size, size), grout)
+    d = ImageDraw.Draw(img)
+    step = size / n
+    for i in range(n):
+        for j in range(n):
+            c = tuple(max(0, min(255, v + rng.randint(-jitter, jitter))) for v in color)
+            d.rectangle([int(i * step) + 3, int(j * step) + 3, int((i + 1) * step) - 3, int((j + 1) * step) - 3], fill=c)
+    img = noise(img, 4).filter(ImageFilter.GaussianBlur(0.5))
+    img.save(os.path.join(OUT, name + ".png"))
+
+
 if __name__ == "__main__":
+    tiles("azulejo", 6, (236, 238, 236), (175, 178, 176), 4)
+    tiles("piso_banheiro", 3, (120, 124, 130), (70, 72, 76), 8)
     lambri()
     rug("tapete_sala", (128, 36, 30), (60, 26, 22), (200, 150, 80), "medalhao")
     rug("tapete_jogos", (34, 40, 66), (18, 20, 34), (90, 110, 170), "listras")

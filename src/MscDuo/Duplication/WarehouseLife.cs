@@ -43,6 +43,7 @@ namespace MscDuo.Duplication
             if (screens.TryGetValue("fliperama2", out quad)) Arcade(quad, ArcadeKind.Defender, "fliperama2", new Color(0.6f, 0.4f, 1f), input);
             if (screens.TryGetValue("fliperama3", out quad)) Arcade(quad, ArcadeKind.Invaders, "fliperama3", new Color(0.4f, 1f, 0.5f), input);
             for (int i = 0; i < Doors.Length; i++) Door(i, input);
+            SideDoor(input);
             Chair(input);
             ModConsole.Print($"<color=orange>[MSC Duo]</color> vida no galpão: ventiladores, {screens.Count} telas, {Doors.Length} portas, {clips.Count} sons.");
         }
@@ -447,11 +448,20 @@ namespace MscDuo.Duplication
             }
         }
 
-        static void Door(int index, GateInput input)
+        static void Door(int index, GateInput input) => DoorAt(frame, "Sala" + (index + 1), Doors[index][0], Doors[index][1], 12f, 12.12f, "porta" + (index + 1), input);
+
+        static void SideDoor(GateInput input)
         {
-            var d0 = Doors[index][0];
-            var d1 = Doors[index][1];
-            const float wall0 = 12f, wall1 = 12.12f, top = 2.15f, trim = 0.07f, lip = 0.015f;
+            var sub = new GameObject("Porta_Lateral");
+            sub.transform.parent = frame;
+            sub.transform.localPosition = L(0f, 13.5f, 0f);
+            sub.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            DoorAt(sub.transform, "Lateral", 0f, 1f, 0f, 0.2f, "porta_lateral", input);
+        }
+
+        static void DoorAt(Transform parent, string name, float d0, float d1, float wall0, float wall1, string key, GateInput input)
+        {
+            const float top = 2.15f, trim = 0.07f, lip = 0.015f;
             var white = Paint("batente", new Color(0.92f, 0.91f, 0.88f));
             var frameShape = new GateShape();
             frameShape.Box(L(d0 - trim, wall0 - lip, 0f), L(d0, wall1 + lip, top + trim));
@@ -460,12 +470,12 @@ namespace MscDuo.Duplication
             frameShape.Box(L(d0, wall0, top - 0.02f), L(d1, wall0 + 0.035f, top));
             frameShape.Box(L(d0, wall0, 0f), L(d0 + 0.02f, wall0 + 0.035f, top));
             frameShape.Box(L(d1 - 0.02f, wall0, 0f), L(d1, wall0 + 0.035f, top));
-            Part(frame, "Batente_Sala" + (index + 1), frameShape, white);
+            Part(parent, "Batente_" + name, frameShape, white);
 
             var width = d1 - d0 - 0.006f;
             const float thick = 0.04f;
-            var hinge = new GameObject("Porta_Sala" + (index + 1));
-            hinge.transform.parent = frame;
+            var hinge = new GameObject("Porta_" + name);
+            hinge.transform.parent = parent;
             hinge.transform.localPosition = L(d0 + 0.003f, wall0 + 0.035f + thick, 0f);
             hinge.transform.localRotation = Quaternion.identity;
             var shape = new GateShape();
@@ -485,7 +495,6 @@ namespace MscDuo.Duplication
             box.center = new Vector3(width / 2f, top / 2f, -thick / 2f);
             box.size = new Vector3(width, top - 0.03f, thick);
             var swing = hinge.AddComponent<Swing>();
-            var key = "porta" + (index + 1);
             WarehouseToggles.Register(key, 0, v => swing.Target = v != 0 ? 95f : 0f);
             input.Buttons.Add(new GateButton { Collider = box, Cap = leaf.transform, Click = () => WarehouseToggles.Set(key, WarehouseToggles.Get(key) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(key) == 0 ? "Abrir porta" : "Fechar porta" });
         }

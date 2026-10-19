@@ -29,7 +29,7 @@ namespace MscDuo.Duplication
         };
 
         static readonly string[] Solid = { "Piso", "Paredes", "Mezanino", "Escada", "Salas", "GuardaCorpo", "Estrutura", "Telhado", "Janelas" };
-        static readonly string[] Gates = { "Portao1", "Portao2" };
+        static readonly string[] Gates = { "Portao1", "Portao2", "PortaLateral" };
 
         static GameObject root;
 
@@ -123,6 +123,8 @@ namespace MscDuo.Duplication
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] luz externa do galpão falhou: {e}"); }
             try { WarehouseLife.Build(root.transform, template, lights, Screens); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] animações do galpão falharam: {e}"); }
+            try { WarehouseRooms.Build(root.transform, template, root.GetComponent<GateInput>() ?? root.AddComponent<GateInput>()); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] banheiro e depósito falharam: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
             ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, telhado {(shelter ? "protege da chuva" : "SEM proteção de chuva")}, {furniture} móveis, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
