@@ -41,6 +41,8 @@ namespace MscDuo.Duplication
         {
             if (root != null) Object.Destroy(root);
             WarehouseConfig.Load();
+            WarehouseToggles.Clear();
+            Screens.Clear();
             var building = Parse(Text("galpao_jogo.obj", BuildingResource));
             var platform = Parse(Text("plataforma_jogo.obj", PlatformResource));
             if (building == null || platform == null)
@@ -117,6 +119,8 @@ namespace MscDuo.Duplication
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] portões do galpão falharam: {e}"); }
             try { WarehouseExterior.Build(root.transform, template, WarehouseGates.Load()); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] luz externa do galpão falhou: {e}"); }
+            try { WarehouseLife.Build(root.transform, template, lights, Screens); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] animações do galpão falharam: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
             ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, {furniture} móveis, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
@@ -339,6 +343,8 @@ namespace MscDuo.Duplication
             return new Material(Shader.Find("Diffuse"));
         }
 
+        internal static readonly Dictionary<string, Vector3[]> Screens = new Dictionary<string, Vector3[]>();
+
         static int Furniture(Transform parent, Material template, Dictionary<string, Material> cache)
         {
             var parts = Parse(Text("moveis_jogo.obj", FurnitureResource));
@@ -351,6 +357,7 @@ namespace MscDuo.Duplication
                 foreach (var name in part.Materials) materials.Add(BuildingMaterial(name, template, cache, "moveis_tex_jogo", FurniturePrefix));
                 var go = Create(part, materials.ToArray(), group.transform);
                 go.name = "Movel_" + part.Name;
+                if (part.Screen != null) Screens[part.Name] = part.Screen;
                 var mesh = go.GetComponent<MeshFilter>().sharedMesh;
                 if (part.Name.StartsWith("planta"))
                 {
@@ -423,6 +430,7 @@ namespace MscDuo.Duplication
             internal readonly List<List<int>> Triangles = new List<List<int>>();
             internal readonly Dictionary<long, int> Index = new Dictionary<long, int>();
             internal readonly List<Vector3> Copies = new List<Vector3>();
+            internal Vector3[] Screen;
         }
 
         static List<Part> Parse(string text)
@@ -445,6 +453,14 @@ namespace MscDuo.Duplication
                         break;
                     case "vt":
                         uvs.Add(new Vector2(F(p[1]), F(p[2])));
+                        break;
+                    case "screen":
+                        foreach (var part in parts)
+                            if (part.Name == p[1])
+                            {
+                                part.Screen = new Vector3[4];
+                                for (int k = 0; k < 4; k++) part.Screen[k] = new Vector3(F(p[2 + k * 3]), F(p[4 + k * 3]), F(p[3 + k * 3]));
+                            }
                         break;
                     case "copy":
                         foreach (var part in parts)

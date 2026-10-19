@@ -343,7 +343,7 @@ namespace MscDuo.Duplication
             }
         }
 
-        static AudioClip Wav(string name, byte[] b)
+        internal static AudioClip Wav(string name, byte[] b)
         {
             int channels = 1, rate = 32000, bits = 16;
             var pos = 12;

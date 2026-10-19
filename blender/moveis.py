@@ -20,10 +20,10 @@ ITEMS = [
     {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (3.9, 12.3), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
     {"name": "mesinha", "file": "mesinha.glb", "length": 1.0, "front": 0, "facing": "-y", "at": (3.9, 13.75), "floor": MEZ_Z, "tris": 2000, "tex": 512},
     {"name": "rack", "file": "rack.glb", "scale": 0.01, "front": 0, "facing": "-y", "at": (3.9, 15.5), "floor": MEZ_Z, "tris": 2000, "tex": 64, "color": (0.16, 0.11, 0.08, 1.0)},
-    {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (3.9, 15.74), "floor": MEZ_Z + 0.75, "tris": 1000, "tex": 512},
-    {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (8.6, 15.32), "floor": MEZ_Z, "tris": 8000, "tex": 1024},
-    {"name": "fliperama2", "file": "fliperama2.glb", "height": 1.78, "front": 0, "facing": "-y", "at": (9.4, 15.38), "floor": MEZ_Z, "tris": 6000, "tex": 1024},
-    {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (10.15, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024},
+    {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (3.9, 15.74), "floor": MEZ_Z + 0.75, "tris": 1000, "tex": 512, "screen_front": 0.035},
+    {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (8.6, 15.32), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "screen_object": "ArcadeMachine_Screen_01"},
+    {"name": "fliperama2", "file": "fliperama2.glb", "height": 1.78, "front": 0, "facing": "-y", "at": (9.4, 15.38), "floor": MEZ_Z, "tris": 6000, "tex": 1024, "screen_object": "defaultMaterial.005", "screen_inset": 0.02},
+    {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (10.15, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024, "screen_model": [(-0.123, 2.333, 1.026), (-0.534, 2.333, 1.026), (-0.534, 2.333, 1.345), (-0.123, 2.333, 1.345)]},
     {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (11.6, 12.8), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
     {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (13.4, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
     {"name": "estante_livros", "file": "estante_livros.glb", "height": 1.8, "front": 180, "facing": "-y", "at": (2.05, 15.6), "floor": MEZ_Z, "tris": 20000, "tex": 1024, "copies": [(5.75, 15.6)]},
@@ -62,6 +62,8 @@ def import_item(item):
     for o in meshes:
         o.data = o.data.copy()
         o.data.transform(o.matrix_world)
+        if item.get("screen_object") and o.name.startswith(item["screen_object"]):
+            item["_screen_points"] = [v.co.copy() for v in o.data.vertices]
         o.parent = None
         o.matrix_world = Matrix.Identity(4)
     for o in new:
@@ -76,6 +78,51 @@ def import_item(item):
     obj = bpy.context.view_layer.objects.active
     obj.name = item["name"]
     return obj
+
+
+def screen_quad(obj, item, matrix):
+    if item.get("screen_front"):
+        xs = [v.co.x for v in obj.data.vertices]
+        ys = [v.co.y for v in obj.data.vertices]
+        zs = [v.co.z for v in obj.data.vertices]
+        m = item["screen_front"]
+        x = max(xs) + 0.004
+        y0, y1 = min(ys) + m, max(ys) - m
+        z0, z1 = min(zs) + m, max(zs) - m
+        return [Vector((x, y1, z0)), Vector((x, y0, z0)), Vector((x, y0, z1)), Vector((x, y1, z1))]
+    if item.get("screen_model"):
+        return [matrix @ Vector(p) for p in item["screen_model"]]
+    points = item.get("_screen_points")
+    if not points:
+        return None
+    pts = [matrix @ p for p in points]
+    c = sum(pts, Vector()) / len(pts)
+    n = Vector((1.0, 0.0, 0.0))
+    import mathutils
+    cov = mathutils.Matrix(((0.0,) * 3,) * 3)
+    for p in pts:
+        d = p - c
+        for i in range(3):
+            for j in range(3):
+                cov[i][j] += d[i] * d[j]
+    best, normal = None, n
+    for axis in (Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))):
+        v = axis
+        for _ in range(60):
+            v = (cov.inverted_safe() @ v).normalized()
+        normal = v
+    if normal.x < 0:
+        normal = -normal
+    up = Vector((0, 0, 1))
+    u = up.cross(normal).normalized()
+    w = normal.cross(u).normalized()
+    us = [(p - c).dot(u) for p in pts]
+    ws = [(p - c).dot(w) for p in pts]
+    inset = item.get("screen_inset", 0.0)
+    u0, u1 = min(us) + inset, max(us) - inset
+    w0, w1 = min(ws) + inset, max(ws) - inset
+    o = c + normal * 0.004
+    return [o + u * u0 + w * w0, o + u * u1 + w * w0, o + u * u1 + w * w1, o + u * u0 + w * w1]
 
 
 def place(obj, item):
@@ -96,6 +143,7 @@ def place(obj, item):
     matrix = Matrix.Translation(target) @ Matrix.Rotation(turn, 4, "Z") @ Matrix.Scale(scale, 4) @ Matrix.Translation(-center)
     me.transform(matrix)
     me.update()
+    return matrix
 
 
 def keep_main(obj):
@@ -243,7 +291,7 @@ def bake_textures(obj, item):
     return names
 
 
-def write_obj(objects, names, copies):
+def write_obj(objects, names, copies, screens):
     out = ["# MSC Duo: móveis do galpão em coordenadas do mundo (eixos do Blender)"]
     vbase = tbase = 1
     for obj in objects:
@@ -267,6 +315,8 @@ def write_obj(objects, names, copies):
                     out.append("f %d/%d %d/%d %d/%d" % (a[0], a[1], b[0], b[1], c[0], c[1]))
         vbase += len(me.vertices)
         tbase += len(me.loops)
+        if obj.name in screens:
+            out.append("screen %s %s" % (obj.name, " ".join("%.4f %.4f %.4f" % (p.x, p.y, p.z) for p in screens[obj.name])))
         for d in copies.get(obj.name, []):
             out.append("copy %s %.4f %.4f %.4f" % (obj.name, d.x, d.y, d.z))
     with open(OBJ, "w", encoding="utf-8") as f:
@@ -279,14 +329,19 @@ def build():
     for f in os.listdir(TEXTURES):
         os.remove(os.path.join(TEXTURES, f))
     HASHES.clear()
-    objects, names, copies = [], {}, {}
+    objects, names, copies, screens = [], {}, {}, {}
     for item in ITEMS:
         obj = import_item(item)
         if item.get("board"):
             print("%s: %d peças soltas removidas" % (item["name"], keep_main(obj)))
         if item.get("thin"):
             print("%s: %d peças finas removidas" % (item["name"], strip_thin(obj)))
-        place(obj, item)
+        matrix = place(obj, item)
+        quad = screen_quad(obj, item, matrix)
+        if quad and quad[1].y < quad[0].y:
+            quad = [quad[1], quad[0], quad[3], quad[2]]
+        if quad:
+            screens[obj.name] = quad
         count = decimate(obj, item["tris"])
         if item.get("double"):
             double_sided(obj)
@@ -298,7 +353,7 @@ def build():
         objects.append(obj)
         base = local_to_blender(item["at"][0], item["at"][1], item["floor"])
         copies[obj.name] = [local_to_blender(x, y, item["floor"]) - base for x, y in item.get("copies", [])]
-    write_obj(objects, names, copies)
+    write_obj(objects, names, copies, screens)
     return objects
 
 

@@ -67,6 +67,11 @@ namespace MscDuo.Net
                 if (!session.Connected || session.transport is LoopbackTransport) return;
                 session.Broadcast(MessageType.GateState, gate.Write, Channel.Reliable);
             });
+            WarehouseToggles.Bind((key, value) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.Toggle, w => { w.Write(key); w.Write(value); }, Channel.Reliable);
+            });
             LiftCloner.Bind((position, moving) =>
             {
                 if (!session.Connected || session.transport is LoopbackTransport) return;
@@ -88,6 +93,7 @@ namespace MscDuo.Net
             WarehouseGates.Bind(null);
             WarehouseExterior.Bind(null);
             LiftCloner.Bind(null);
+            WarehouseToggles.Bind(null);
             if (!Current.transport.IsHost)
             {
                 PlayerContext.SaveActive();
@@ -271,6 +277,9 @@ namespace MscDuo.Net
                     case MessageType.GateState:
                         WarehouseGates.Read(reader);
                         break;
+                    case MessageType.Toggle:
+                        WarehouseToggles.Read(reader);
+                        break;
                     case MessageType.LiftState:
                         LiftCloner.Read(reader);
                         break;
@@ -283,6 +292,11 @@ namespace MscDuo.Net
                                 if (gate != null) Send(packet.From, MessageType.GateState, gate.Write, Channel.Reliable);
                         if (transport.IsHost) Send(packet.From, MessageType.ExteriorLight, WarehouseExterior.Write, Channel.Reliable);
                         if (transport.IsHost) Send(packet.From, MessageType.LiftState, LiftCloner.Write, Channel.Reliable);
+                        if (transport.IsHost)
+                        {
+                            var requester = packet.From;
+                            WarehouseToggles.WriteAll(body => Send(requester, MessageType.Toggle, body, Channel.Reliable));
+                        }
                         break;
                     case MessageType.SaveRequest:
                         if (transport.IsHost) Send(packet.From, MessageType.SaveData, SaveTransfer.WriteSave, Channel.Reliable);
