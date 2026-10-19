@@ -251,7 +251,8 @@ def frame(b):
             b.box("Estrutura", "aco", x - COLUMN / 2, yc - COLUMN / 2, 0.0, x + COLUMN / 2, yc + COLUMN / 2, EAVE - 0.05)
         for x0, x1 in ((WALL, W / 2), (W - WALL, W / 2)):
             b.beam("Estrutura", "aco", (x0, yc, roof_z(x0) - RAFTER / 2 - 0.1), (x1, yc, RIDGE - RAFTER / 2 - 0.1), 0.22, RAFTER)
-        b.beam("Estrutura", "aco", (WALL + 1.2, yc, EAVE - 1.0), (W - WALL - 1.2, yc, EAVE - 1.0), 0.06, 0.06)
+        if yc < MEZ_Y:
+            b.beam("Estrutura", "aco", (WALL + 1.2, yc, EAVE - 1.0), (W - WALL - 1.2, yc, EAVE - 1.0), 0.06, 0.06)
     x = WALL
     while x < W - WALL:
         z = roof_z(x) - 0.12
