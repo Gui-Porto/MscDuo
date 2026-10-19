@@ -32,7 +32,7 @@ namespace MscDuo.Duplication
             if (link != null) link.Receive(position, moving);
         }
 
-        internal static void Build(Transform root)
+        internal static void Build(Transform root, Material template)
         {
             link = null;
             var visual = DynoCloner.Find(VisualPath);
@@ -83,11 +83,59 @@ namespace MscDuo.Duplication
             }
             if (functions != null)
             {
+                Pedestal(holder.transform, copies, functions.transform, template);
                 link = holder.AddComponent<LiftLink>();
                 link.Setup(functions);
             }
             ModConsole.Print($"<color=orange>[MSC Duo]</color> elevador no galpão: {fsms} FSMs, {remapped} referências, {(link != null ? "sincronizado" : "sem sincronia")}.");
         }
+
+        static void Pedestal(Transform holder, List<GameObject> copies, Transform control, Material template)
+        {
+            var minY = float.MaxValue;
+            var maxX = float.MinValue;
+            foreach (var copy in copies)
+                foreach (var r in copy.GetComponentsInChildren<Renderer>(true))
+                {
+                    var b = r.bounds;
+                    foreach (var corner in new[] { b.min, b.max, new Vector3(b.min.x, b.min.y, b.max.z), new Vector3(b.max.x, b.min.y, b.min.z) })
+                    {
+                        var local = Warehouse.ToLocal(corner);
+                        minY = Mathf.Min(minY, local.y);
+                        maxX = Mathf.Max(maxX, local.x);
+                    }
+                }
+            var x = maxX + 0.6f;
+            var y = minY + 0.6f;
+            var frame = new GameObject("Comando");
+            frame.transform.parent = holder;
+            frame.transform.position = Warehouse.Local(x, y, 0f);
+            frame.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
+            var shape = new GateShape();
+            shape.Use(0).Box(new Vector3(-0.09f, 0f, -0.09f), new Vector3(0.09f, 1.0f, 0.09f));
+            shape.Box(new Vector3(-0.16f, 0f, -0.16f), new Vector3(0.16f, 0.02f, 0.16f));
+            shape.Use(1).Box(new Vector3(-0.12f, 1.0f, -0.1f), new Vector3(0.12f, 1.22f, 0.1f));
+            shape.Use(2).Cylinder(new Vector3(-0.05f, 1.11f, -0.1f), new Vector3(-0.05f, 1.11f, -0.115f), 0.022f, 20);
+            shape.Use(3).Cylinder(new Vector3(0.05f, 1.11f, -0.1f), new Vector3(0.05f, 1.11f, -0.115f), 0.022f, 20);
+            var go = new GameObject("Coluna");
+            go.transform.parent = frame.transform;
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.AddComponent<MeshFilter>().sharedMesh = shape.ToMesh("MscDuo_comando_elevador");
+            go.AddComponent<MeshRenderer>().sharedMaterials = new[]
+            {
+                Paint(template, "coluna", new Color(0.75f, 0.12f, 0.08f)),
+                Paint(template, "caixa", new Color(0.82f, 0.82f, 0.79f)),
+                Paint(template, "subir", new Color(0.1f, 0.55f, 0.15f)),
+                Paint(template, "descer", new Color(0.08f, 0.08f, 0.08f)),
+            };
+            go.AddComponent<BoxCollider>().center = new Vector3(0f, 0.5f, 0f);
+            go.GetComponent<BoxCollider>().size = new Vector3(0.18f, 1f, 0.18f);
+            control.position = frame.transform.TransformPoint(new Vector3(0f, 1.11f, -0.13f));
+        }
+
+        static Material Paint(Material template, string name, Color color) =>
+            new Material(template) { name = "MscDuo_elevador_" + name, color = color, mainTexture = null };
 
         static Vector3 LongAxis(Transform platform)
         {
