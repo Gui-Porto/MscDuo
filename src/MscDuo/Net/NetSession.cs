@@ -67,6 +67,15 @@ namespace MscDuo.Net
                 if (!session.Connected || session.transport is LoopbackTransport) return;
                 session.Broadcast(MessageType.GateState, gate.Write, Channel.Reliable);
             });
+            ItemPurchases.Bind((key, id) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.ItemBought, w => { w.Write(key); w.Write(id); }, Channel.Reliable);
+            }, (theirs, mine) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.ItemLinked, w => { w.Write(mine); w.Write(theirs); }, Channel.Reliable);
+            });
             WarehouseToggles.Bind((key, value) =>
             {
                 if (!session.Connected || session.transport is LoopbackTransport) return;
@@ -94,6 +103,7 @@ namespace MscDuo.Net
             WarehouseExterior.Bind(null);
             LiftCloner.Bind(null);
             WarehouseToggles.Bind(null);
+            ItemPurchases.Bind(null, null);
             if (!Current.transport.IsHost)
             {
                 PlayerContext.SaveActive();
@@ -276,6 +286,12 @@ namespace MscDuo.Net
                         break;
                     case MessageType.GateState:
                         WarehouseGates.Read(reader);
+                        break;
+                    case MessageType.ItemBought:
+                        ItemPurchases.ReadAnnounce(reader);
+                        break;
+                    case MessageType.ItemLinked:
+                        ItemPurchases.ReadLink(reader);
                         break;
                     case MessageType.Toggle:
                         WarehouseToggles.Read(reader);

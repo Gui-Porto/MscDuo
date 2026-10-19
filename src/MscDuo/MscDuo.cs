@@ -74,6 +74,7 @@ namespace MscDuo
             Sync.ItemRegistry.AddClone(SatsumaCloner.Clone, SatsumaCloner.Parts);
             Sync.SleepSync.Patch();
             Sync.InteractionSync.Patch();
+            Sync.ItemPurchases.Patch();
             Sync.TimeSync.Patch();
         }
 
