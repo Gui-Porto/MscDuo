@@ -20,7 +20,7 @@ namespace MscDuo.Duplication
         internal static bool InDyno(Transform t)
         {
             for (; t != null; t = t.parent)
-                if (t.name.StartsWith(Prefix) || t.name.StartsWith(LiftCloner.Prefix)) return true;
+                if (t.name.StartsWith(Prefix) || t.name.StartsWith(LiftCloner.Prefix) || t.name.StartsWith(SlotCloner.Prefix)) return true;
             return false;
         }
 

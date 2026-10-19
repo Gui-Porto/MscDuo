@@ -19,6 +19,7 @@ ITEMS = [
     {"name": "geladeira", "file": "geladeira.glb", "height": 1.6, "front": 0, "facing": "-y", "at": (1.3, 15.35), "floor": MEZ_Z, "tris": 5000, "tex": 512},
     {"name": "sofa", "file": "sofa.glb", "height": 0.85, "front": -90, "facing": "+y", "at": (5.0, 12.2), "floor": MEZ_Z, "tris": 10000, "tex": 1024},
     {"name": "tv", "file": "tv.glb", "length": 1.4, "front": -90, "facing": "-y", "at": (5.0, 15.74), "floor": MEZ_Z + 1.0, "tris": 1000, "tex": 512},
+    {"name": "fliperama", "file": "fliperama.glb", "height": 1.85, "front": 180, "facing": "-y", "at": (10.8, 15.3), "floor": MEZ_Z, "tris": 8000, "tex": 1024},
     {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (12.5, 13.1), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
 ]
 

@@ -28,6 +28,7 @@ namespace MscDuo.Duplication
             new[] { "patio_arvores", "12", "metros sem árvores na frente dos portões" },
             new[] { "dinamometro1_fim", "10", "dinamômetro 1 (esquerda): onde termina a ponta do fundo, medido a partir do portão" },
             new[] { "dinamometro2_fim", "10", "dinamômetro 2 (direita): onde termina a ponta do fundo (a porta do banheiro fica em 12)" },
+            new[] { "cacaniquel_x", "14.4", "caça-níquel no mezanino, encostado no fundo: distância da parede esquerda" },
             new[] { "elevador_y", "6", "elevador de carro (centro): distância do meio dele até o portão" },
             new[] { "luz_externa_sol", "0.1", "luz externa no automático: acende quando o sol fica abaixo desta altura (0 = horizonte, maior = acende mais cedo)" },
             new[] { "portao_velocidade", "0.45", "velocidade dos portões de enrolar, em metros por segundo" },
