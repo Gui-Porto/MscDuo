@@ -94,12 +94,12 @@ namespace MscDuo.Sync
             SetInt(weather, "WeatherType", type);
             if (Int(weather, "WeatherCloudID") <= 0) SetInt(weather, "WeatherCloudID", 1);
             weather.SendEvent(WeatherEvent);
-            if (type > 0) CloudOverPlayer();
+            CloudOverPlayer(type > 0 ? 60f : 6000f);
             ForceSend();
             return true;
         }
 
-        static void CloudOverPlayer()
+        static void CloudOverPlayer(float ahead)
         {
             var player = GameObject.Find("PLAYER");
             var clouds = weather.transform.Find("CloudObjects") ?? (GameObject.Find("CloudObjects") != null ? GameObject.Find("CloudObjects").transform : null);
@@ -108,7 +108,7 @@ namespace MscDuo.Sync
             if (cloud == null && clouds.childCount > 0) cloud = clouds.GetChild(0);
             if (cloud == null) return;
             var offset = cloud.position - weather.transform.position;
-            var target = player.transform.position - offset + Vector3.right * 60f;
+            var target = player.transform.position - offset + Vector3.right * ahead;
             SetFloat(weather, "PosX", target.x);
             SetFloat(weather, "PosZ", target.z);
             weather.transform.position = new Vector3(target.x, weather.transform.position.y, target.z);

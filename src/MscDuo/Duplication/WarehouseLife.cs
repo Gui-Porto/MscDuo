@@ -36,9 +36,9 @@ namespace MscDuo.Duplication
             Fans();
             Vector3[] quad;
             if (screens.TryGetValue("tv", out quad)) Tv(quad, input);
-            if (screens.TryGetValue("fliperama", out quad)) Arcade(quad, ArcadeKind.Elben, "fliperama", new Color(1f, 0.6f, 0.3f));
-            if (screens.TryGetValue("fliperama2", out quad)) Arcade(quad, ArcadeKind.Defender, "fliperama2", new Color(0.6f, 0.4f, 1f));
-            if (screens.TryGetValue("fliperama3", out quad)) Arcade(quad, ArcadeKind.Invaders, "fliperama3", new Color(0.4f, 1f, 0.5f));
+            if (screens.TryGetValue("fliperama", out quad)) Arcade(quad, ArcadeKind.Elben, "fliperama", new Color(1f, 0.6f, 0.3f), input);
+            if (screens.TryGetValue("fliperama2", out quad)) Arcade(quad, ArcadeKind.Defender, "fliperama2", new Color(0.6f, 0.4f, 1f), input);
+            if (screens.TryGetValue("fliperama3", out quad)) Arcade(quad, ArcadeKind.Invaders, "fliperama3", new Color(0.4f, 1f, 0.5f), input);
             for (int i = 0; i < Doors.Length; i++) Door(i, input);
             Chair(input);
             ModConsole.Print($"<color=orange>[MSC Duo]</color> vida no galpão: ventiladores, {screens.Count} telas, {Doors.Length} portas, {clips.Count} sons.");
@@ -280,13 +280,14 @@ namespace MscDuo.Duplication
 
         enum ArcadeKind { Elben, Defender, Invaders }
 
-        static void Arcade(Vector3[] q, ArcadeKind kind, string sound, Color tint)
+        static void Arcade(Vector3[] q, ArcadeKind kind, string sound, Color tint, GateInput input)
         {
             var width = (q[1] - q[0]).magnitude;
             var height = (q[3] - q[0]).magnitude;
             var canvas = new PixelCanvas(Mathf.Clamp(Mathf.RoundToInt(96f * width / Mathf.Max(height, 0.01f)), 64, 200), 96);
             Vector3 normal;
-            var go = Quad("Tela_" + sound, q, Screen(sound, canvas.Texture), out normal);
+            var lit = Screen(sound, canvas.Texture);
+            var go = Quad("Tela_" + sound, q, lit, out normal);
             var screen = go.AddComponent<ArcadeScreen>();
             screen.Canvas = canvas;
             screen.Kind = kind;
@@ -303,6 +304,17 @@ namespace MscDuo.Duplication
             screen.Glow.intensity = 0.6f;
             screen.Glow.color = tint;
             screen.Glow.shadows = LightShadows.None;
+            screen.Audio = audio;
+            screen.Renderer = go.GetComponent<Renderer>();
+            screen.On = lit;
+            screen.Off = Paint(sound + "_desligado", new Color(0.02f, 0.02f, 0.025f));
+            var right = q[1] - q[0];
+            var up = q[3] - q[0];
+            var box = go.AddComponent<BoxCollider>();
+            box.center = (q[0] + q[2]) / 2f + normal * 0.01f;
+            box.size = new Vector3(Mathf.Abs(right.x) + Mathf.Abs(up.x) + 0.03f, Mathf.Abs(right.y) + Mathf.Abs(up.y) + 0.03f, Mathf.Abs(right.z) + Mathf.Abs(up.z) + 0.03f);
+            WarehouseToggles.Register(sound, 1, screen.SetPower);
+            input.Buttons.Add(new GateButton { Collider = box, Cap = go.transform, Click = () => WarehouseToggles.Set(sound, WarehouseToggles.Get(sound) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(sound) == 0 ? "Ligar fliperama" : "Desligar fliperama" });
         }
 
         class ArcadeScreen : MonoBehaviour
@@ -311,8 +323,23 @@ namespace MscDuo.Duplication
             internal ArcadeKind Kind;
             internal Light Glow;
             internal Transform Center;
+            internal AudioSource Audio;
+            internal Renderer Renderer;
+            internal Material On;
+            internal Material Off;
+            bool powered = true;
             float next;
             int[] stars;
+
+            internal void SetPower(int value)
+            {
+                powered = value != 0;
+                if (Renderer != null) Renderer.sharedMaterial = powered ? On : Off;
+                if (Glow != null) Glow.enabled = powered;
+                if (Audio == null) return;
+                if (powered && Audio.clip != null && !Audio.isPlaying) Audio.Play();
+                else if (!powered) Audio.Stop();
+            }
 
             static readonly string[] InvaderA = { "..#..#..", "...##...", ".######.", "##.##.##", "########", "#.#..#.#" };
             static readonly string[] InvaderB = { "..#..#..", "#..##..#", "########", "##.##.##", ".######.", ".#....#." };
@@ -324,7 +351,7 @@ namespace MscDuo.Duplication
 
             void Update()
             {
-                if (Time.time < next) return;
+                if (!powered || Time.time < next) return;
                 next = Time.time + 1f / 12f;
                 var cam = Camera.main;
                 if (cam != null && Center != null && (cam.transform.position - Center.position).sqrMagnitude > 900f) return;
