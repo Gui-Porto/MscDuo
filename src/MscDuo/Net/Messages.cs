@@ -25,11 +25,12 @@ namespace MscDuo.Net
         ExteriorLight = 24,
         LiftState = 25,
         Toggle = 26,
+        SaveChunk = 27,
     }
 
     internal static class Protocol
     {
-        internal const ushort Version = 17;
+        internal const ushort Version = 18;
     }
 
     internal struct PlayerStateMessage

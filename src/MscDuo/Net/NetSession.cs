@@ -299,7 +299,11 @@ namespace MscDuo.Net
                         }
                         break;
                     case MessageType.SaveRequest:
-                        if (transport.IsHost) Send(packet.From, MessageType.SaveData, SaveTransfer.WriteSave, Channel.Reliable);
+                        if (transport.IsHost)
+                            foreach (var chunk in SaveTransfer.Chunks()) Send(packet.From, MessageType.SaveChunk, chunk, Channel.Reliable);
+                        break;
+                    case MessageType.SaveChunk:
+                        if (!transport.IsHost) SaveTransfer.ReadChunk(reader);
                         break;
                     case MessageType.SaveData:
                         if (!transport.IsHost) SaveTransfer.ReadSave(reader);

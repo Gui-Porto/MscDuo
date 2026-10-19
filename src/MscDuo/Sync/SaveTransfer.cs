@@ -8,7 +8,7 @@ namespace MscDuo.Sync
 {
     internal static class SaveTransfer
     {
-        static readonly string[] Files = { "defaultES2File.txt", "items.txt", "graveyard.txt", "trophies.txt", "MscDuo_P2.txt", Duplication.VehicleCloner.HomeFlag, Duplication.VehicleCloner.CopiesFlag, Duplication.WarehouseGates.SaveFile };
+        static readonly string[] Files = { "defaultES2File.txt", "items.txt", "graveyard.txt", "trophies.txt", "MscDuo_P2.txt", "meshsave.txt", Duplication.VehicleCloner.HomeFlag, Duplication.VehicleCloner.CopiesFlag, Duplication.WarehouseGates.SaveFile };
         const string BackupName = "save_original";
         const string MarkerName = "arquivos.txt";
         const float RetrySeconds = 5f;
@@ -40,6 +40,69 @@ namespace MscDuo.Sync
             if (stage != Stage.Requesting || Time.realtimeSinceStartup < nextRequest) return;
             nextRequest = Time.realtimeSinceStartup + RetrySeconds;
             request();
+        }
+
+        const int ChunkSize = 200 * 1024;
+        static int incomingId = -1;
+        static byte[][] incoming;
+        static int received;
+
+        internal static List<Action<BinaryWriter>> Chunks()
+        {
+            byte[] payload;
+            using (var stream = new MemoryStream())
+            using (var writer = new BinaryWriter(stream))
+            {
+                WriteSave(writer);
+                writer.Flush();
+                payload = stream.ToArray();
+            }
+            var id = UnityEngine.Random.Range(1, int.MaxValue);
+            var count = (payload.Length + ChunkSize - 1) / ChunkSize;
+            var result = new List<Action<BinaryWriter>>();
+            for (int i = 0; i < count; i++)
+            {
+                var index = i;
+                var offset = i * ChunkSize;
+                var length = Math.Min(ChunkSize, payload.Length - offset);
+                result.Add(w =>
+                {
+                    w.Write(id);
+                    w.Write(index);
+                    w.Write(count);
+                    w.Write(length);
+                    w.Write(payload, offset, length);
+                });
+            }
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> save do convidado em {count} partes ({payload.Length / 1024} KB).");
+            return result;
+        }
+
+        internal static void ReadChunk(BinaryReader r)
+        {
+            var id = r.ReadInt32();
+            var index = r.ReadInt32();
+            var count = r.ReadInt32();
+            var data = r.ReadBytes(r.ReadInt32());
+            if (id != incomingId || incoming == null || incoming.Length != count)
+            {
+                incomingId = id;
+                incoming = new byte[count][];
+                received = 0;
+            }
+            if (index < 0 || index >= count || incoming[index] != null) return;
+            incoming[index] = data;
+            received++;
+            if (stage == Stage.Requesting) message = $"Baixando o save do anfitrião... {received * 100 / count}%";
+            if (received < count) return;
+            using (var all = new MemoryStream())
+            {
+                foreach (var part in incoming) all.Write(part, 0, part.Length);
+                all.Position = 0;
+                incoming = null;
+                incomingId = -1;
+                ReadSave(new BinaryReader(all));
+            }
         }
 
         internal static void WriteSave(BinaryWriter w)
