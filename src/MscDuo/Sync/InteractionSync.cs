@@ -44,6 +44,7 @@ namespace MscDuo.Sync
             {
                 if (fsm == null || Array.IndexOf(SkippedFsms, fsm.FsmName) >= 0) continue;
                 if (Array.IndexOf(SkippedRoots, fsm.transform.root.name) >= 0) continue;
+                if (Duplication.DynoCloner.InDyno(fsm.transform)) continue;
                 try
                 {
                     FsmTools.EnsureLoaded(fsm);

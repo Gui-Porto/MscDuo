@@ -103,6 +103,8 @@ namespace MscDuo.Duplication
             var switches = Switches(root.transform, lights);
             var light = switches.Count > 0;
             if (lamp != null) lamp.GetComponent<LampState>().Switches = switches;
+            try { DynoCloner.Build(root.transform); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] dinamômetros do galpão falharam: {e}"); }
             try { WarehouseGates.Build(root.transform, template); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] portões do galpão falharam: {e}"); }
 
