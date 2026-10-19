@@ -28,8 +28,6 @@ ITEMS = [
     {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (14.1, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
     {"name": "estante_livros", "file": "estante_livros.glb", "height": 1.8, "front": 180, "facing": "-y", "at": (2.05, 15.6), "floor": MEZ_Z, "tris": 20000, "tex": 1024, "copies": [(5.75, 15.6)]},
     {"name": "estante_garagem", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "-y", "at": (16.2, 15.3), "floor": MEZ_Z, "tris": 20000, "tex": 1024, "copies": [(17.4, 15.3), (18.6, 15.3)]},
-    {"name": "deposito_fundo", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "-y", "at": (21.75, 15.3), "floor": 0.0, "tris": 20000, "tex": 1024, "copies": [(22.95, 15.3)]},
-    {"name": "deposito_lado", "file": "estante_garagem.glb", "height": 2.0, "front": 0, "facing": "+x", "at": (21.6, 13.6), "floor": 0.0, "tris": 20000, "tex": 1024},
     {"name": "planta_sala", "file": "plantas.glb", "object": "Pot_4_", "height": 1.3, "front": 0, "facing": "-y", "at": (0.65, 11.0), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
     {"name": "planta_escada", "file": "plantas.glb", "object": "Pot_12_", "height": 1.0, "front": 0, "facing": "-y", "at": (23.35, 12.3), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
     {"name": "planta_escritorio", "file": "plantas.glb", "object": "Pot_9_", "height": 1.1, "front": 0, "facing": "-y", "at": (20.2, 11.6), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},

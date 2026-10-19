@@ -19,7 +19,7 @@ namespace MscDuo.Duplication
         static Transform root;
         static GameObject lights;
         static readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
-        internal static readonly string[] Remembered = { "fliperama", "fliperama2", "fliperama3" };
+        internal static readonly string[] Remembered = { "fliperama", "fliperama2", "fliperama3", "luz_galpao" };
         static Dictionary<string, float> Saved = new Dictionary<string, float>();
 
         internal static void Build(Transform warehouse, Material baseMaterial, GameObject lightGroup, Dictionary<string, Vector3[]> screens)

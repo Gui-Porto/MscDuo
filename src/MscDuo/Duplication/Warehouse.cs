@@ -16,8 +16,6 @@ namespace MscDuo.Duplication
         const string GravelPath = "MAP/MESH/TERRAIN_OBJ/Gravel";
         const string GrassPath = "MAP/MESH/TERRAIN_OBJ/Grass1";
         const float TreeMargin = 2f;
-        const string SwitchSource = "switch_kitchen";
-        const string SwitchTag = "MscDuoGalpaoLuz";
         static readonly Vector3 Origin = new Vector3(-30f, -0.497f, 13f);
 
         static readonly Vector4[] Lamps =
@@ -106,11 +104,9 @@ namespace MscDuo.Duplication
             var lights = BuildLights(root.transform);
             var lamp = root.transform.Find("Galpao_Luzes");
             if (lamp != null) lamp.gameObject.AddComponent<LampState>().Lights = lights;
-            var switches = Switches(root.transform, lights);
             try { MezzanineDecor.Build(root.transform, template, lights); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] decoração do mezanino falhou: {e}"); }
-            var light = switches.Count > 0;
-            if (lamp != null) lamp.GetComponent<LampState>().Switches = switches;
+            var light = true;
             try { SlotCloner.Build(root.transform); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] caça-níquel do galpão falhou: {e}"); }
             try { LiftCloner.Build(root.transform, template); }
@@ -123,7 +119,7 @@ namespace MscDuo.Duplication
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] luz externa do galpão falhou: {e}"); }
             try { WarehouseLife.Build(root.transform, template, lights, Screens); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] animações do galpão falharam: {e}"); }
-            try { WarehouseRooms.Build(root.transform, template, root.GetComponent<GateInput>() ?? root.AddComponent<GateInput>()); }
+            try { WarehouseRooms.Build(root.transform, template, root.GetComponent<GateInput>() ?? root.AddComponent<GateInput>(), lights, WarehouseGates.Load()); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] banheiro e depósito falharam: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
@@ -183,152 +179,9 @@ namespace MscDuo.Duplication
             return group;
         }
 
-        const string SyncEvent = "MSCDUO_SYNC";
-
-        static List<PlayMakerFSM> Switches(Transform parent, GameObject lights)
-        {
-            var made = new List<PlayMakerFSM>();
-            PlayMakerFSM source = null;
-            foreach (var fsm in Resources.FindObjectsOfTypeAll<PlayMakerFSM>())
-                if (fsm != null && fsm.gameObject.name == SwitchSource && fsm.FsmName == "Use" && fsm.gameObject.hideFlags == HideFlags.None && fsm.transform.root.name == "YARD")
-                {
-                    source = fsm;
-                    break;
-                }
-            if (source == null) return made;
-
-            var original = source.gameObject;
-            var front = FrontOf(original.transform);
-            var gap = GapToWall(original.transform, front);
-            var height = WarehouseConfig.Get("interruptor_altura");
-            var extra = WarehouseConfig.Get("interruptor_x");
-            var main = Copy(original, front, Local(WarehouseConfig.Get("interruptor_portao1_x"), WALL_INNER, height), Vector3.left, gap + extra, "Galpao_Interruptor", SwitchTag, parent, lights);
-            var second = Copy(original, front, Local(WarehouseConfig.Get("interruptor_portao2_x"), WALL_INNER, height), Vector3.left, gap + extra, "Galpao_Interruptor_Portao2", SwitchTag + "3", parent, lights);
-            var side = Copy(original, front, Local(WALL_INNER, WarehouseConfig.Get("interruptor_y"), height), Vector3.forward, gap + extra, "Galpao_Interruptor_Porta", SwitchTag + "2", parent, lights);
-            LightSwitch = main.transform;
-            made.Add(main);
-            made.Add(second);
-            made.Add(side);
-            ModConsole.Print(string.Format(CultureInfo.InvariantCulture, "<color=orange>[MSC Duo]</color> interruptores do galpão: portão 1 {0}, portão 2 {1}, porta {2}, {3:0.000} m da parede.", HouseCloner.Format(main.transform.position), HouseCloner.Format(second.transform.position), HouseCloner.Format(side.transform.position), gap));
-            return made;
-        }
-
-        static PlayMakerFSM Copy(GameObject original, Vector3 front, Vector3 wallPoint, Vector3 facing, float gap, string name, string tag, Transform parent, GameObject lights)
-        {
-            var copy = (GameObject)Object.Instantiate(original, wallPoint + facing * (gap + PlateDepth), original.transform.rotation);
-            copy.name = name;
-            copy.transform.parent = parent;
-            copy.transform.rotation = Quaternion.AngleAxis(WarehouseConfig.Get("interruptor_giro"), Vector3.up) * Quaternion.FromToRotation(front, facing) * original.transform.rotation;
-            foreach (var t in copy.GetComponentsInChildren<Transform>(true)) t.gameObject.SetActive(true);
-            foreach (var renderer in copy.GetComponentsInChildren<Renderer>(true)) renderer.enabled = true;
-            Plate(copy, wallPoint, facing);
-            var map = new Dictionary<Object, Object>();
-            SatsumaCloner.MapHierarchy(original.transform, copy.transform, map);
-            PlayMakerFSM use = null;
-            foreach (var fsm in copy.GetComponents<PlayMakerFSM>())
-            {
-                FsmTools.EnsureLoaded(fsm);
-                SatsumaCloner.Remap(fsm, map);
-                var unique = fsm.FsmVariables.FindFsmString("UniqueTagSwitch");
-                if (unique != null) unique.Value = tag;
-                var target = fsm.FsmVariables.FindFsmGameObject("Lights");
-                if (target != null) target.Value = lights;
-                var on = fsm.FsmVariables.FindFsmBool("Switch");
-                if (on != null) on.Value = false;
-                if (fsm.FsmName == "Use")
-                {
-                    if (fsm.Fsm.GetState("Position") != null) fsm.AddGlobalTransition(SyncEvent, "Position");
-                    use = fsm;
-                }
-            }
-            copy.SetActive(true);
-            return use;
-        }
-
-        const float WALL_INNER = 0.2f;
-        const float PlateDepth = 0.012f;
-        static Material plateMaterial;
-
-        static void Plate(GameObject copy, Vector3 wallPoint, Vector3 facing)
-        {
-            var first = true;
-            var bounds = new Bounds(copy.transform.position, Vector3.zero);
-            foreach (var r in copy.GetComponentsInChildren<Renderer>(true))
-            {
-                if (first) { bounds = r.bounds; first = false; }
-                else bounds.Encapsulate(r.bounds);
-            }
-            var side = Vector3.Cross(Vector3.up, facing).normalized;
-            var across = Mathf.Abs(Vector3.Dot(bounds.size, new Vector3(Mathf.Abs(side.x), Mathf.Abs(side.y), Mathf.Abs(side.z))));
-            var width = Mathf.Max(0.085f, across + 0.035f);
-            var height = Mathf.Max(0.12f, bounds.size.y + 0.045f);
-            var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Object.Destroy(plate.GetComponent<Collider>());
-            plate.name = "Espelho";
-            plate.transform.parent = copy.transform.parent;
-            var center = bounds.center - facing * Vector3.Dot(bounds.center - wallPoint, facing);
-            plate.transform.position = center + facing * (PlateDepth / 2f);
-            plate.transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
-            plate.transform.localScale = new Vector3(width, height, PlateDepth);
-            if (plateMaterial == null)
-            {
-                plateMaterial = new Material(Template()) { name = "MscDuo_espelho_interruptor", color = new Color(0.93f, 0.92f, 0.88f), mainTexture = null };
-            }
-            plate.GetComponent<Renderer>().sharedMaterial = plateMaterial;
-        }
-
-        static float GapToWall(Transform t, Vector3 front)
-        {
-            var best = 0.05f;
-            var found = false;
-            foreach (var hit in Physics.RaycastAll(t.position + front * 0.3f, -front, 0.8f))
-            {
-                if (hit.collider.isTrigger || hit.collider.transform.IsChildOf(t)) continue;
-                var gap = 0.3f - hit.distance;
-                if (gap < -0.2f || gap > 0.3f) continue;
-                if (!found || gap < best) { best = gap; found = true; }
-            }
-            return Mathf.Clamp(best, 0f, 0.15f);
-        }
-
-        static Vector3 FrontOf(Transform t)
-        {
-            var plate = t.GetComponentInChildren<MeshFilter>();
-            var axis = t.forward;
-            if (plate != null && plate.sharedMesh != null)
-            {
-                var size = plate.sharedMesh.bounds.size;
-                var local = size.x <= size.y && size.x <= size.z ? Vector3.right : size.y <= size.z ? Vector3.up : Vector3.forward;
-                axis = plate.transform.TransformDirection(local);
-            }
-            axis.y = 0f;
-            if (axis.sqrMagnitude < 1e-4f) axis = t.forward;
-            axis.Normalize();
-            var house = HouseCenter(t);
-            var inward = house - t.position;
-            inward.y = 0f;
-            return Vector3.Dot(axis, inward) >= 0f ? axis : -axis;
-        }
-
-        static Vector3 HouseCenter(Transform t)
-        {
-            var building = t;
-            while (building != null && building.name != "Building") building = building.parent;
-            if (building == null) return t.position;
-            var first = true;
-            var bounds = new Bounds(building.position, Vector3.zero);
-            foreach (var renderer in building.GetComponentsInChildren<MeshRenderer>(true))
-            {
-                if (first) { bounds = renderer.bounds; first = false; }
-                else bounds.Encapsulate(renderer.bounds);
-            }
-            return bounds.center;
-        }
-
         class LampState : MonoBehaviour
         {
             internal GameObject Lights;
-            internal List<PlayMakerFSM> Switches = new List<PlayMakerFSM>();
             Renderer lampRenderer;
             Material[] lit;
             Material[] dark;
@@ -356,14 +209,6 @@ namespace MscDuo.Duplication
                 if (on == shown || lampRenderer == null) return;
                 shown = on;
                 lampRenderer.sharedMaterials = on ? lit : dark;
-                foreach (var fsm in Switches)
-                {
-                    if (fsm == null) continue;
-                    var state = fsm.FsmVariables.FindFsmBool("Switch");
-                    if (state == null || state.Value == on) continue;
-                    state.Value = on;
-                    fsm.SendEvent(SyncEvent);
-                }
             }
         }
 
