@@ -191,7 +191,8 @@ namespace MscDuo.Duplication
                 var cover = baseMesh.ToMesh("MscDuo_base_pistao");
                 foreach (var side in new[] { -1f, 1f })
                 {
-                    var spot = new Vector3(center.x, floor, center.z) + length * (side * Mathf.Min(1.1f, bounds.Value.extents.magnitude * 0.35f));
+                    var half = Mathf.Abs(length.x) * bounds.Value.extents.x + Mathf.Abs(length.z) * bounds.Value.extents.z;
+                    var spot = new Vector3(center.x, floor, center.z) + length * (side * Mathf.Max(0f, half - 0.22f));
                     var b = new GameObject("Base_Pistao");
                     b.transform.parent = holder;
                     b.transform.position = spot;
