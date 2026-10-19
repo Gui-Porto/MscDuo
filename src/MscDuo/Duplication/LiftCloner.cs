@@ -86,6 +86,7 @@ namespace MscDuo.Duplication
                 Pedestal(holder.transform, copies, functions.transform, template);
                 link = holder.AddComponent<LiftLink>();
                 link.Setup(functions);
+                link.Pistons(holder.transform, template);
             }
             ModConsole.Print($"<color=orange>[MSC Duo]</color> elevador no galpão: {fsms} FSMs, {remapped} referências, {(link != null ? "sincronizado" : "sem sincronia")}.");
         }
@@ -166,7 +167,70 @@ namespace MscDuo.Duplication
             float nextSend;
             float remoteUntil;
 
+            readonly List<Transform> rods = new List<Transform>();
+            float floor;
+
             internal float Position => position != null ? position.Value : 0f;
+
+            internal void Pistons(Transform holder, Material template)
+            {
+                if (platform == null) return;
+                var bounds = Footprint();
+                if (!bounds.HasValue) return;
+                floor = Warehouse.Local(0f, 0f, 0f).y;
+                var center = bounds.Value.center;
+                var length = LongAxis(platform);
+                var chrome = Paint(template, "pistao", new Color(0.8f, 0.82f, 0.85f));
+                var steel = Paint(template, "base_pistao", new Color(0.18f, 0.18f, 0.2f));
+                var rodMesh = new GateShape();
+                rodMesh.Cylinder(Vector3.zero, Vector3.up, 0.065f, 20, false);
+                var baseMesh = new GateShape();
+                baseMesh.Cylinder(Vector3.zero, new Vector3(0f, 0.012f, 0f), 0.22f, 28);
+                baseMesh.Cylinder(new Vector3(0f, 0.012f, 0f), new Vector3(0f, 0.09f, 0f), 0.1f, 24);
+                var rod = rodMesh.ToMesh("MscDuo_pistao");
+                var cover = baseMesh.ToMesh("MscDuo_base_pistao");
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    var spot = new Vector3(center.x, floor, center.z) + length * (side * Mathf.Min(1.1f, bounds.Value.extents.magnitude * 0.35f));
+                    var b = new GameObject("Base_Pistao");
+                    b.transform.parent = holder;
+                    b.transform.position = spot;
+                    b.AddComponent<MeshFilter>().sharedMesh = cover;
+                    b.AddComponent<MeshRenderer>().sharedMaterial = steel;
+                    var r = new GameObject("Pistao");
+                    r.transform.parent = holder;
+                    r.transform.position = spot + Vector3.up * 0.09f;
+                    r.AddComponent<MeshFilter>().sharedMesh = rod;
+                    r.AddComponent<MeshRenderer>().sharedMaterial = chrome;
+                    rods.Add(r.transform);
+                }
+                UpdateRods();
+            }
+
+            Bounds? Footprint()
+            {
+                Bounds? result = null;
+                foreach (var c in platform.GetComponentsInChildren<Collider>(true))
+                {
+                    if (c.isTrigger) continue;
+                    if (result.HasValue) { var b = result.Value; b.Encapsulate(c.bounds); result = b; }
+                    else result = c.bounds;
+                }
+                return result;
+            }
+
+            void UpdateRods()
+            {
+                var bounds = Footprint();
+                if (!bounds.HasValue) return;
+                var height = Mathf.Max(0.01f, bounds.Value.min.y - floor - 0.09f);
+                foreach (var r in rods) r.localScale = new Vector3(1f, height, 1f);
+            }
+
+            void LateUpdate()
+            {
+                if (rods.Count > 0) UpdateRods();
+            }
 
             internal void Setup(PlayMakerFSM functions)
             {
