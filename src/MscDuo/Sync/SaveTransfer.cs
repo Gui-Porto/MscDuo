@@ -8,7 +8,7 @@ namespace MscDuo.Sync
 {
     internal static class SaveTransfer
     {
-        static readonly string[] Files = { "defaultES2File.txt", "items.txt", "graveyard.txt", "trophies.txt", "MscDuo_P2.txt", Duplication.VehicleCloner.HomeFlag, Duplication.VehicleCloner.CopiesFlag };
+        static readonly string[] Files = { "defaultES2File.txt", "items.txt", "graveyard.txt", "trophies.txt", "MscDuo_P2.txt", Duplication.VehicleCloner.HomeFlag, Duplication.VehicleCloner.CopiesFlag, Duplication.WarehouseGates.SaveFile };
         const string BackupName = "save_original";
         const string MarkerName = "arquivos.txt";
         const float RetrySeconds = 5f;

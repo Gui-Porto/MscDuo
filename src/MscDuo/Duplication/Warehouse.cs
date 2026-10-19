@@ -99,6 +99,8 @@ namespace MscDuo.Duplication
             var switches = Switches(root.transform, lights);
             var light = switches.Count > 0;
             if (lamp != null) lamp.GetComponent<LampState>().Switches = switches;
+            try { WarehouseGates.Build(root.transform, template); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] portões do galpão falharam: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
             ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
@@ -106,7 +108,7 @@ namespace MscDuo.Duplication
 
         internal static Vector3 ToLocal(Vector3 world) => new Vector3(world.z - Origin.z, Origin.x - world.x, world.y - Origin.y);
 
-        static Vector3 Local(float x, float y, float z) => new Vector3(Origin.x - y, Origin.y + z, Origin.z + x);
+        internal static Vector3 Local(float x, float y, float z) => new Vector3(Origin.x - y, Origin.y + z, Origin.z + x);
 
         static GameObject BuildLights(Transform parent)
         {
@@ -435,7 +437,7 @@ namespace MscDuo.Duplication
             return bytes == null ? null : System.Text.Encoding.UTF8.GetString(bytes);
         }
 
-        static byte[] Bytes(string file, string resource)
+        internal static byte[] Bytes(string file, string resource)
         {
             var folder = WarehouseConfig.DevFolder;
             if (folder != null)

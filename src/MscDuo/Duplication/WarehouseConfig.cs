@@ -25,6 +25,8 @@ namespace MscDuo.Duplication
             new[] { "luz_mezanino_intensidade", "1.0", "lâmpadas em cima do mezanino" },
             new[] { "luz_mezanino_alcance", "9", "" },
             new[] { "patio_arvores", "12", "metros sem árvores na frente dos portões" },
+            new[] { "portao_velocidade", "0.45", "velocidade dos portões de enrolar, em metros por segundo" },
+            new[] { "portao_volume", "1", "volume dos sons dos portões (0 a 2)" },
         };
 
         static readonly Dictionary<string, float> values = new Dictionary<string, float>();

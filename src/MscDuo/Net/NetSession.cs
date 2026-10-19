@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using MSCLoader;
+using MscDuo.Duplication;
 using MscDuo.Player;
 using MscDuo.Sync;
 using UnityEngine;
@@ -61,6 +62,11 @@ namespace MscDuo.Net
                 if (!session.Connected || session.transport is LoopbackTransport) return;
                 session.Broadcast(MessageType.Interaction, w => InteractionSync.WriteInteraction(w, key, state, fsm), Channel.Reliable);
             });
+            WarehouseGates.Bind(gate =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.GateState, gate.Write, Channel.Reliable);
+            });
             ItemRegistry.Forget();
             ModConsole.Print($"<color=orange>[MSC Duo]</color> sessão iniciada ({transport.Name}).");
         }
@@ -69,6 +75,7 @@ namespace MscDuo.Net
         {
             if (Current == null) return;
             InteractionSync.Bind(null);
+            WarehouseGates.Bind(null);
             if (!Current.transport.IsHost)
             {
                 PlayerContext.SaveActive();
@@ -100,6 +107,7 @@ namespace MscDuo.Net
             TickCars(now, sendDue);
             TimeSync.Tick(now, transport.IsHost, Connected, body => Broadcast(MessageType.TimeState, body, Channel.Reliable));
             SleepSync.Tick(now, Connected, waiting => Broadcast(MessageType.SleepState, w => w.Write(waiting), Channel.Reliable));
+            if (!transport.IsHost && Connected && !(transport is LoopbackTransport)) WarehouseGates.Tick(now, () => Broadcast(MessageType.GateRequest, null, Channel.Reliable));
             if (!transport.IsHost) SaveTransfer.Tick(() => Broadcast(MessageType.SaveRequest, null, Channel.Reliable));
             if (now >= nextHandshake)
             {
@@ -247,6 +255,14 @@ namespace MscDuo.Net
                         break;
                     case MessageType.Interaction:
                         InteractionSync.ReadInteraction(reader);
+                        break;
+                    case MessageType.GateState:
+                        WarehouseGates.Read(reader);
+                        break;
+                    case MessageType.GateRequest:
+                        if (transport.IsHost)
+                            foreach (var gate in WarehouseGates.All)
+                                if (gate != null) Send(packet.From, MessageType.GateState, gate.Write, Channel.Reliable);
                         break;
                     case MessageType.SaveRequest:
                         if (transport.IsHost) Send(packet.From, MessageType.SaveData, SaveTransfer.WriteSave, Channel.Reliable);

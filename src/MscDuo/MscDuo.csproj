@@ -75,6 +75,12 @@
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/porta.png" LogicalName="MscDuo.galpao.porta.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/portao.png" LogicalName="MscDuo.galpao.portao.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/vidro.png" LogicalName="MscDuo.galpao.vidro.png" />
+    <EmbeddedResource Include="../../blender/sons_portao/motor.wav" LogicalName="MscDuo.portao.motor.wav" />
+    <EmbeddedResource Include="../../blender/sons_portao/laminas.wav" LogicalName="MscDuo.portao.laminas.wav" />
+    <EmbeddedResource Include="../../blender/sons_portao/partida.wav" LogicalName="MscDuo.portao.partida.wav" />
+    <EmbeddedResource Include="../../blender/sons_portao/freio.wav" LogicalName="MscDuo.portao.freio.wav" />
+    <EmbeddedResource Include="../../blender/sons_portao/batida.wav" LogicalName="MscDuo.portao.batida.wav" />
+    <EmbeddedResource Include="../../blender/sons_portao/botao.wav" LogicalName="MscDuo.portao.botao.wav" />
   </ItemGroup>
 
   <Target Name="DeployToMods" AfterTargets="Build">
