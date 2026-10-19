@@ -38,8 +38,9 @@ namespace MscDuo.Duplication
         internal static void Spawn()
         {
             if (root != null) Object.Destroy(root);
-            var building = Parse(Resource(BuildingResource));
-            var platform = Parse(Resource(PlatformResource));
+            WarehouseConfig.Load();
+            var building = Parse(Text("galpao_jogo.obj", BuildingResource));
+            var platform = Parse(Text("plataforma_jogo.obj", PlatformResource));
             if (building == null || platform == null)
             {
                 ModConsole.Warning("[MSC Duo] galpão não encontrado na DLL.");
@@ -97,9 +98,11 @@ namespace MscDuo.Duplication
             if (lamp != null) lamp.gameObject.AddComponent<LampState>().Lights = lights;
             var light = Switch(root.transform, lights);
 
-            var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + 12f, 0f, TreeMargin));
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, interruptor {(light ? "ok" : "não encontrado")}; centro {HouseCloner.Format(bounds.center)}.");
+            var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
         }
+
+        internal static Vector3 ToLocal(Vector3 world) => new Vector3(world.z - Origin.z, Origin.x - world.x, world.y - Origin.y);
 
         static Vector3 Local(float x, float y, float z) => new Vector3(Origin.x - y, Origin.y + z, Origin.z + x);
 
@@ -107,15 +110,17 @@ namespace MscDuo.Duplication
         {
             var group = new GameObject("Galpao_Iluminacao");
             group.transform.parent = parent;
-            foreach (var lamp in Lamps)
+            for (int index = 0; index < Lamps.Length; index++)
             {
+                var lamp = Lamps[index];
+                var kind = index < 6 ? "alta" : index < 9 ? "baixa" : "mezanino";
                 var go = new GameObject("Lampada");
                 go.transform.parent = group.transform;
                 go.transform.position = Local(lamp.x, lamp.y, lamp.z);
                 var light = go.AddComponent<Light>();
                 light.type = LightType.Point;
-                light.range = lamp.w;
-                light.intensity = lamp.w > 10f ? 1.4f : 1.0f;
+                light.range = WarehouseConfig.Get("luz_" + kind + "_alcance");
+                light.intensity = WarehouseConfig.Get("luz_" + kind + "_intensidade");
                 light.color = new Color(1f, 0.97f, 0.9f);
                 light.shadows = LightShadows.None;
             }
@@ -136,10 +141,10 @@ namespace MscDuo.Duplication
 
             var original = source.gameObject;
             var front = FrontOf(original.transform);
-            var copy = (GameObject)Object.Instantiate(original, Local(0.21f, 11.9f, 1.3f), original.transform.rotation);
+            var copy = (GameObject)Object.Instantiate(original, Local(WarehouseConfig.Get("interruptor_x"), WarehouseConfig.Get("interruptor_y"), WarehouseConfig.Get("interruptor_altura")), original.transform.rotation);
             copy.name = "Galpao_Interruptor";
             copy.transform.parent = parent;
-            copy.transform.rotation = Quaternion.FromToRotation(front, Vector3.forward) * original.transform.rotation;
+            copy.transform.rotation = Quaternion.AngleAxis(WarehouseConfig.Get("interruptor_giro"), Vector3.up) * Quaternion.FromToRotation(front, Vector3.forward) * original.transform.rotation;
             LightSwitch = copy.transform;
             ModConsole.Print($"<color=orange>[MSC Duo]</color> interruptor do galpão em {HouseCloner.Format(copy.transform.position)}, frente original {HouseCloner.Format(front)}.");
             var map = new Dictionary<Object, Object>();
@@ -245,7 +250,7 @@ namespace MscDuo.Duplication
             material.mainTextureScale = Vector2.one;
             material.mainTextureOffset = Vector2.zero;
             material.color = name == "vidro" ? new Color(0.75f, 0.85f, 0.9f, 0.35f) : Color.white;
-            var bytes = ResourceBytes(TexturePrefix + name + ".png");
+            var bytes = Bytes(Path.Combine("galpao_tex_jogo", name + ".png"), TexturePrefix + name + ".png");
             if (bytes != null)
             {
                 var texture = new Texture2D(2, 2, TextureFormat.RGB24, true) { name = "MscDuo_galpao_" + name, wrapMode = TextureWrapMode.Repeat };
@@ -342,6 +347,23 @@ namespace MscDuo.Duplication
         }
 
         static float F(string s) => float.Parse(s, CultureInfo.InvariantCulture);
+
+        static string Text(string file, string resource)
+        {
+            var bytes = Bytes(file, resource);
+            return bytes == null ? null : System.Text.Encoding.UTF8.GetString(bytes);
+        }
+
+        static byte[] Bytes(string file, string resource)
+        {
+            var folder = WarehouseConfig.DevFolder;
+            if (folder != null)
+            {
+                var path = Path.Combine(folder, file);
+                if (File.Exists(path)) return File.ReadAllBytes(path);
+            }
+            return ResourceBytes(resource);
+        }
 
         static string Resource(string name)
         {

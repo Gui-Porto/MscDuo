@@ -27,6 +27,7 @@ namespace MscDuo.Tools
             ConsoleCommand.Add(new VanCommand());
             ConsoleCommand.Add(new DiagCommand());
             ConsoleCommand.Add(new AreaExportCommand());
+            ConsoleCommand.Add(new ReloadCommand());
             ConsoleCommand.Add(new BuildCommand());
             ConsoleCommand.Add(new CheckCommand());
             ConsoleCommand.Add(new ExportCommand());
