@@ -155,12 +155,14 @@ namespace MscDuo.Duplication
             var gap = GapToWall(original.transform, front);
             var height = WarehouseConfig.Get("interruptor_altura");
             var extra = WarehouseConfig.Get("interruptor_x");
-            var main = Copy(original, front, Local(WarehouseConfig.Get("interruptor_frente_x"), WALL_INNER, height), Vector3.left, gap + extra, "Galpao_Interruptor", SwitchTag, parent, lights);
+            var main = Copy(original, front, Local(WarehouseConfig.Get("interruptor_portao1_x"), WALL_INNER, height), Vector3.left, gap + extra, "Galpao_Interruptor", SwitchTag, parent, lights);
+            var second = Copy(original, front, Local(WarehouseConfig.Get("interruptor_portao2_x"), WALL_INNER, height), Vector3.left, gap + extra, "Galpao_Interruptor_Portao2", SwitchTag + "3", parent, lights);
             var side = Copy(original, front, Local(WALL_INNER, WarehouseConfig.Get("interruptor_y"), height), Vector3.forward, gap + extra, "Galpao_Interruptor_Porta", SwitchTag + "2", parent, lights);
             LightSwitch = main.transform;
             made.Add(main);
+            made.Add(second);
             made.Add(side);
-            ModConsole.Print(string.Format(CultureInfo.InvariantCulture, "<color=orange>[MSC Duo]</color> interruptores do galpão: frente {0}, porta {1}, {2:0.000} m da parede.", HouseCloner.Format(main.transform.position), HouseCloner.Format(side.transform.position), gap));
+            ModConsole.Print(string.Format(CultureInfo.InvariantCulture, "<color=orange>[MSC Duo]</color> interruptores do galpão: portão 1 {0}, portão 2 {1}, porta {2}, {3:0.000} m da parede.", HouseCloner.Format(main.transform.position), HouseCloner.Format(second.transform.position), HouseCloner.Format(side.transform.position), gap));
             return made;
         }
 

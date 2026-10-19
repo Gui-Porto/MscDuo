@@ -14,7 +14,8 @@ namespace MscDuo.Duplication
         static readonly string[][] Defaults =
         {
             new[] { "interruptor_x", "0", "afastamento extra da parede, em metros (o normal vem do interruptor da cozinha)" },
-            new[] { "interruptor_frente_x", "12", "interruptor principal, na parede dos portões: distância da parede esquerda" },
+            new[] { "interruptor_portao1_x", "1.6", "interruptor ao lado do portão 1 (esquerdo): distância da parede esquerda" },
+            new[] { "interruptor_portao2_x", "22.4", "interruptor ao lado do portão 2 (direito): distância da parede esquerda" },
             new[] { "interruptor_y", "12.33", "segundo interruptor, na porta lateral: distância da frente (portões)" },
             new[] { "interruptor_altura", "1.3", "altura do chão" },
             new[] { "interruptor_giro", "0", "giro extra em graus, em volta do eixo vertical" },
