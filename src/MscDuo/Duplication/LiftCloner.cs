@@ -95,9 +95,10 @@ namespace MscDuo.Duplication
             var minY = float.MaxValue;
             var maxX = float.MinValue;
             foreach (var copy in copies)
-                foreach (var r in copy.GetComponentsInChildren<Renderer>(true))
+                foreach (var c in copy.GetComponentsInChildren<Collider>(true))
                 {
-                    var b = r.bounds;
+                    if (c.isTrigger || c.transform == control) continue;
+                    var b = c.bounds;
                     foreach (var corner in new[] { b.min, b.max, new Vector3(b.min.x, b.min.y, b.max.z), new Vector3(b.max.x, b.min.y, b.min.z) })
                     {
                         var local = Warehouse.ToLocal(corner);
@@ -105,6 +106,7 @@ namespace MscDuo.Duplication
                         maxX = Mathf.Max(maxX, local.x);
                     }
                 }
+            ModConsole.Print(string.Format(System.Globalization.CultureInfo.InvariantCulture, "<color=orange>[MSC Duo]</color> comando do elevador em x {0:0.00}, y {1:0.00} do galpão.", maxX + 0.6f, minY + 0.6f));
             var x = maxX + 0.6f;
             var y = minY + 0.6f;
             var frame = new GameObject("Comando");
