@@ -66,6 +66,7 @@
     <EmbeddedResource Include="../../blender/plataforma_jogo.obj" LogicalName="MscDuo.plataforma_jogo.obj" />
     <EmbeddedResource Include="../../blender/moveis_jogo.obj.gz" LogicalName="MscDuo.moveis_jogo.obj.gz" />
     <EmbeddedResource Include="../../blender/moveis_tex_jogo/*.jpg" LogicalName="MscDuo.moveis.%(Filename).jpg" />
+    <EmbeddedResource Include="../../blender/moveis_tex_jogo/*.png" LogicalName="MscDuo.moveis.%(Filename).png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/aco.png" LogicalName="MscDuo.galpao.aco.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/chapa.png" LogicalName="MscDuo.galpao.chapa.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/concreto.png" LogicalName="MscDuo.galpao.concreto.png" />

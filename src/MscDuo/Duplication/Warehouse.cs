@@ -350,7 +350,15 @@ namespace MscDuo.Duplication
                 foreach (var name in part.Materials) materials.Add(BuildingMaterial(name, template, cache, "moveis_tex_jogo", FurniturePrefix));
                 var go = Create(part, materials.ToArray(), group.transform);
                 go.name = "Movel_" + part.Name;
-                go.AddComponent<MeshCollider>().sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
+                var mesh = go.GetComponent<MeshFilter>().sharedMesh;
+                if (part.Name.StartsWith("planta"))
+                {
+                    var b = mesh.bounds;
+                    var box = go.AddComponent<BoxCollider>();
+                    box.center = new Vector3(b.center.x, b.min.y + b.size.y * 0.2f, b.center.z);
+                    box.size = new Vector3(b.size.x * 0.6f, b.size.y * 0.4f, b.size.z * 0.6f);
+                }
+                else go.AddComponent<MeshCollider>().sharedMesh = mesh;
             }
             return parts.Count;
         }
@@ -364,6 +372,8 @@ namespace MscDuo.Duplication
             Shader shader = null;
             if (name == "vidro") shader = Shader.Find("Legacy Shaders/Transparent/Diffuse") ?? Shader.Find("Transparent/Diffuse");
             else if (name == "luz") shader = Shader.Find("Unlit/Texture");
+            var cutout = name.EndsWith("_alfa");
+            if (cutout) shader = Shader.Find("Legacy Shaders/Transparent/Cutout/Diffuse") ?? Shader.Find("Transparent/Cutout/Diffuse");
             material = shader != null ? new Material(shader) : new Material(template);
             material.name = "MscDuo_galpao_" + name;
             material.mainTextureScale = Vector2.one;
@@ -372,9 +382,10 @@ namespace MscDuo.Duplication
             var bytes = Bytes(Path.Combine(folder, name + ".png"), prefix + name + ".png") ?? Bytes(Path.Combine(folder, name + ".jpg"), prefix + name + ".jpg");
             if (bytes != null)
             {
-                var texture = new Texture2D(2, 2, TextureFormat.RGB24, true) { name = "MscDuo_galpao_" + name, wrapMode = TextureWrapMode.Repeat };
+                var texture = new Texture2D(2, 2, cutout ? TextureFormat.ARGB32 : TextureFormat.RGB24, true) { name = "MscDuo_galpao_" + name, wrapMode = cutout ? TextureWrapMode.Clamp : TextureWrapMode.Repeat };
                 texture.LoadImage(bytes);
                 material.mainTexture = texture;
+                if (cutout && material.HasProperty("_Cutoff")) material.SetFloat("_Cutoff", 0.45f);
             }
             cache[name] = material;
             return material;

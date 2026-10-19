@@ -26,6 +26,12 @@ ITEMS = [
     {"name": "fliperama3", "file": "fliperama3.glb", "height": 1.75, "front": -90, "facing": "-y", "at": (10.15, 15.42), "floor": MEZ_Z, "tris": 9000, "tex": 1024},
     {"name": "sinuca", "file": "sinuca.glb", "length": 2.1, "front": 0, "facing": "+x", "at": (11.6, 12.8), "floor": MEZ_Z, "tris": 8000, "tex": 1024, "thin": True},
     {"name": "dardos", "file": "dardos.glb", "length": 0.45, "pitch": 90, "front": -90, "facing": "-y", "at": (13.4, 15.77), "floor": MEZ_Z + 1.505, "tris": 4000, "tex": 512, "board": True},
+    {"name": "planta_sala", "file": "plantas.glb", "object": "Pot_4_", "height": 1.3, "front": 0, "facing": "-y", "at": (0.65, 11.0), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
+    {"name": "planta_escada", "file": "plantas.glb", "object": "Pot_12_", "height": 1.0, "front": 0, "facing": "-y", "at": (23.35, 12.3), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
+    {"name": "planta_escritorio", "file": "plantas.glb", "object": "Pot_9_", "height": 1.1, "front": 0, "facing": "-y", "at": (20.2, 11.6), "floor": MEZ_Z, "tris": 2000, "tex": 512, "alpha": True, "double": True},
+    {"name": "planta_porta1", "file": "plantas.glb", "object": "Pot_1_", "height": 0.8, "front": 0, "facing": "-y", "at": (0.6, 11.9), "floor": 0.0, "tris": 2000, "tex": 512, "alpha": True, "double": True},
+    {"name": "planta_porta2", "file": "plantas.glb", "object": "Pot_2_", "height": 0.8, "front": 0, "facing": "-y", "at": (0.6, 14.1), "floor": 0.0, "tris": 2000, "tex": 512, "alpha": True, "double": True},
+    {"name": "planta_lounge", "file": "plantas.glb", "object": "Pot_5_", "height": 1.3, "front": 0, "facing": "-y", "at": (13.3, 15.3), "floor": 0.0, "tris": 2000, "tex": 512, "alpha": True, "double": True},
 ]
 
 FACING = {"+x": 90.0, "-x": -90.0, "+y": 180.0, "-y": 0.0}
@@ -44,6 +50,13 @@ def import_item(item):
     bpy.ops.import_scene.gltf(filepath=os.path.join(SOURCE, item["file"]))
     new = [o for o in bpy.data.objects if o not in before]
     meshes = [o for o in new if o.type == "MESH"]
+    if item.get("object"):
+        keep = [o for o in meshes if o.name.startswith(item["object"])]
+        drop = [o for o in meshes if o not in keep]
+        new = [o for o in new if o not in drop]
+        for o in drop:
+            bpy.data.objects.remove(o, do_unlink=True)
+        meshes = keep
     for o in meshes:
         o.data = o.data.copy()
         o.data.transform(o.matrix_world)
@@ -144,6 +157,18 @@ def strip_thin(obj):
     return len(floating)
 
 
+def double_sided(obj):
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    faces = list(bm.faces)
+    copy = bmesh.ops.duplicate(bm, geom=faces)
+    flipped = [f for f in copy["geom"] if isinstance(f, bmesh.types.BMFace)]
+    bmesh.ops.reverse_faces(bm, faces=flipped)
+    bm.to_mesh(obj.data)
+    bm.free()
+
+
 def decimate(obj, target):
     count = triangles(obj)
     if count <= target:
@@ -178,18 +203,18 @@ def base_image(mat):
 def bake_textures(obj, item):
     names = []
     for index, slot in enumerate(obj.material_slots):
-        name = "%s_%d" % (item["name"], index)
+        name = "%s_%d%s" % (item["name"], index, "_alfa" if item.get("alpha") else "")
         image, color = base_image(slot.material)
         if item.get("color"):
             image, color = None, item["color"]
-        path = os.path.join(TEXTURES, name + ".jpg")
+        path = os.path.join(TEXTURES, name + (".png" if item.get("alpha") else ".jpg"))
         if image is not None:
             copy = image.copy()
             size = item["tex"]
             if max(copy.size) > size:
                 copy.scale(size, size)
             copy.filepath_raw = path
-            copy.file_format = "JPEG"
+            copy.file_format = "PNG" if item.get("alpha") else "JPEG"
             copy.save()
             bpy.data.images.remove(copy)
         else:
@@ -248,6 +273,8 @@ def build():
             print("%s: %d peças finas removidas" % (item["name"], strip_thin(obj)))
         place(obj, item)
         count = decimate(obj, item["tris"])
+        if item.get("double"):
+            double_sided(obj)
         names[obj.name] = bake_textures(obj, item)
         xs = [v.co.x for v in obj.data.vertices]
         ys = [v.co.y for v in obj.data.vertices]
