@@ -166,6 +166,7 @@ namespace MscDuo.Duplication
             copy.transform.rotation = Quaternion.AngleAxis(WarehouseConfig.Get("interruptor_giro"), Vector3.up) * Quaternion.FromToRotation(front, facing) * original.transform.rotation;
             foreach (var t in copy.GetComponentsInChildren<Transform>(true)) t.gameObject.SetActive(true);
             foreach (var renderer in copy.GetComponentsInChildren<Renderer>(true)) renderer.enabled = true;
+            Plate(copy, wallPoint, facing);
             var map = new Dictionary<Object, Object>();
             SatsumaCloner.MapHierarchy(original.transform, copy.transform, map);
             PlayMakerFSM use = null;
@@ -190,6 +191,36 @@ namespace MscDuo.Duplication
         }
 
         const float WALL_INNER = 0.2f;
+        const float PlateDepth = 0.012f;
+        static Material plateMaterial;
+
+        static void Plate(GameObject copy, Vector3 wallPoint, Vector3 facing)
+        {
+            var first = true;
+            var bounds = new Bounds(copy.transform.position, Vector3.zero);
+            foreach (var r in copy.GetComponentsInChildren<Renderer>(true))
+            {
+                if (first) { bounds = r.bounds; first = false; }
+                else bounds.Encapsulate(r.bounds);
+            }
+            var side = Vector3.Cross(Vector3.up, facing).normalized;
+            var across = Mathf.Abs(Vector3.Dot(bounds.size, new Vector3(Mathf.Abs(side.x), Mathf.Abs(side.y), Mathf.Abs(side.z))));
+            var width = Mathf.Max(0.085f, across + 0.035f);
+            var height = Mathf.Max(0.12f, bounds.size.y + 0.045f);
+            var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.Destroy(plate.GetComponent<Collider>());
+            plate.name = "Espelho";
+            plate.transform.parent = copy.transform.parent;
+            var center = bounds.center - facing * Vector3.Dot(bounds.center - wallPoint, facing);
+            plate.transform.position = center + facing * (PlateDepth / 2f);
+            plate.transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
+            plate.transform.localScale = new Vector3(width, height, PlateDepth);
+            if (plateMaterial == null)
+            {
+                plateMaterial = new Material(Template()) { name = "MscDuo_espelho_interruptor", color = new Color(0.93f, 0.92f, 0.88f), mainTexture = null };
+            }
+            plate.GetComponent<Renderer>().sharedMaterial = plateMaterial;
+        }
 
         static float GapToWall(Transform t, Vector3 front)
         {
