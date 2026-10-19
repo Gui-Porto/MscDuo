@@ -337,10 +337,7 @@ namespace MscDuo.Duplication
                 foreach (var name in part.Materials) materials.Add(BuildingMaterial(name, template, cache, "moveis_tex_jogo", FurniturePrefix));
                 var go = Create(part, materials.ToArray(), group.transform);
                 go.name = "Movel_" + part.Name;
-                var bounds = go.GetComponent<MeshFilter>().sharedMesh.bounds;
-                var box = go.AddComponent<BoxCollider>();
-                box.center = bounds.center;
-                box.size = bounds.size;
+                go.AddComponent<MeshCollider>().sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
             }
             return parts.Count;
         }
