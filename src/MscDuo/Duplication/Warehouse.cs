@@ -96,7 +96,9 @@ namespace MscDuo.Duplication
             var lights = BuildLights(root.transform);
             var lamp = root.transform.Find("Galpao_Luzes");
             if (lamp != null) lamp.gameObject.AddComponent<LampState>().Lights = lights;
-            var light = Switch(root.transform, lights);
+            var switches = Switches(root.transform, lights);
+            var light = switches.Count > 0;
+            if (lamp != null) lamp.GetComponent<LampState>().Switches = switches;
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
             ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
@@ -128,8 +130,11 @@ namespace MscDuo.Duplication
             return group;
         }
 
-        static bool Switch(Transform parent, GameObject lights)
+        const string SyncEvent = "MSCDUO_SYNC";
+
+        static List<PlayMakerFSM> Switches(Transform parent, GameObject lights)
         {
+            var made = new List<PlayMakerFSM>();
             PlayMakerFSM source = null;
             foreach (var fsm in Resources.FindObjectsOfTypeAll<PlayMakerFSM>())
                 if (fsm != null && fsm.gameObject.name == SwitchSource && fsm.FsmName == "Use" && fsm.gameObject.hideFlags == HideFlags.None && fsm.transform.root.name == "YARD")
@@ -137,36 +142,51 @@ namespace MscDuo.Duplication
                     source = fsm;
                     break;
                 }
-            if (source == null) return false;
+            if (source == null) return made;
 
             var original = source.gameObject;
             var front = FrontOf(original.transform);
             var gap = GapToWall(original.transform, front);
-            var spot = Local(WALL_INNER, WarehouseConfig.Get("interruptor_y"), WarehouseConfig.Get("interruptor_altura")) + Vector3.forward * (gap + WarehouseConfig.Get("interruptor_x"));
-            var copy = (GameObject)Object.Instantiate(original, spot, original.transform.rotation);
-            copy.name = "Galpao_Interruptor";
+            var height = WarehouseConfig.Get("interruptor_altura");
+            var extra = WarehouseConfig.Get("interruptor_x");
+            var main = Copy(original, front, Local(WarehouseConfig.Get("interruptor_frente_x"), WALL_INNER, height), Vector3.left, gap + extra, "Galpao_Interruptor", SwitchTag, parent, lights);
+            var side = Copy(original, front, Local(WALL_INNER, WarehouseConfig.Get("interruptor_y"), height), Vector3.forward, gap + extra, "Galpao_Interruptor_Porta", SwitchTag + "2", parent, lights);
+            LightSwitch = main.transform;
+            made.Add(main);
+            made.Add(side);
+            ModConsole.Print(string.Format(CultureInfo.InvariantCulture, "<color=orange>[MSC Duo]</color> interruptores do galpão: frente {0}, porta {1}, {2:0.000} m da parede.", HouseCloner.Format(main.transform.position), HouseCloner.Format(side.transform.position), gap));
+            return made;
+        }
+
+        static PlayMakerFSM Copy(GameObject original, Vector3 front, Vector3 wallPoint, Vector3 facing, float gap, string name, string tag, Transform parent, GameObject lights)
+        {
+            var copy = (GameObject)Object.Instantiate(original, wallPoint + facing * gap, original.transform.rotation);
+            copy.name = name;
             copy.transform.parent = parent;
-            copy.transform.rotation = Quaternion.AngleAxis(WarehouseConfig.Get("interruptor_giro"), Vector3.up) * Quaternion.FromToRotation(front, Vector3.forward) * original.transform.rotation;
-            LightSwitch = copy.transform;
+            copy.transform.rotation = Quaternion.AngleAxis(WarehouseConfig.Get("interruptor_giro"), Vector3.up) * Quaternion.FromToRotation(front, facing) * original.transform.rotation;
             foreach (var t in copy.GetComponentsInChildren<Transform>(true)) t.gameObject.SetActive(true);
-            var shown = 0;
-            foreach (var renderer in copy.GetComponentsInChildren<Renderer>(true)) { renderer.enabled = true; shown++; }
-            ModConsole.Print(string.Format(CultureInfo.InvariantCulture, "<color=orange>[MSC Duo]</color> interruptor do galpão em {0}, {1:0.000} m da parede (como na cozinha), {2} partes visíveis, frente original {3}.", HouseCloner.Format(copy.transform.position), gap, shown, HouseCloner.Format(front)));
+            foreach (var renderer in copy.GetComponentsInChildren<Renderer>(true)) renderer.enabled = true;
             var map = new Dictionary<Object, Object>();
             SatsumaCloner.MapHierarchy(original.transform, copy.transform, map);
+            PlayMakerFSM use = null;
             foreach (var fsm in copy.GetComponents<PlayMakerFSM>())
             {
                 FsmTools.EnsureLoaded(fsm);
                 SatsumaCloner.Remap(fsm, map);
-                var tag = fsm.FsmVariables.FindFsmString("UniqueTagSwitch");
-                if (tag != null) tag.Value = SwitchTag;
+                var unique = fsm.FsmVariables.FindFsmString("UniqueTagSwitch");
+                if (unique != null) unique.Value = tag;
                 var target = fsm.FsmVariables.FindFsmGameObject("Lights");
                 if (target != null) target.Value = lights;
                 var on = fsm.FsmVariables.FindFsmBool("Switch");
                 if (on != null) on.Value = false;
+                if (fsm.FsmName == "Use")
+                {
+                    if (fsm.Fsm.GetState("Position") != null) fsm.AddGlobalTransition(SyncEvent, "Position");
+                    use = fsm;
+                }
             }
             copy.SetActive(true);
-            return true;
+            return use;
         }
 
         const float WALL_INNER = 0.2f;
@@ -222,6 +242,7 @@ namespace MscDuo.Duplication
         class LampState : MonoBehaviour
         {
             internal GameObject Lights;
+            internal List<PlayMakerFSM> Switches = new List<PlayMakerFSM>();
             Renderer lampRenderer;
             Material[] lit;
             Material[] dark;
@@ -249,6 +270,14 @@ namespace MscDuo.Duplication
                 if (on == shown || lampRenderer == null) return;
                 shown = on;
                 lampRenderer.sharedMaterials = on ? lit : dark;
+                foreach (var fsm in Switches)
+                {
+                    if (fsm == null) continue;
+                    var state = fsm.FsmVariables.FindFsmBool("Switch");
+                    if (state == null || state.Value == on) continue;
+                    state.Value = on;
+                    fsm.SendEvent(SyncEvent);
+                }
             }
         }
 

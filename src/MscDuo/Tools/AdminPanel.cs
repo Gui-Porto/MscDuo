@@ -24,6 +24,8 @@ namespace MscDuo.Tools
         static readonly string[] WeatherLabels = { "Sol", "Chuva", "Tempestade" };
 
         static readonly bool[] frozen = new bool[Needs.Length];
+        static bool noMosquitos;
+        static PlayMakerFSM mosquito;
         static bool open;
         static int tab;
         static string moneyText = "";
@@ -61,6 +63,7 @@ namespace MscDuo.Tools
                 var need = FsmVariables.GlobalVariables.FindFsmFloat(Needs[i]);
                 if (need != null) need.Value = 0f;
             }
+            if (noMosquitos) KeepMosquitosAway();
             if (!open) return;
             if (ModLoader.CurrentScene != CurrentScene.Game) { open = false; return; }
             if (inMenu != null) inMenu.Value = true;
@@ -104,6 +107,9 @@ namespace MscDuo.Tools
             if (GUILayout.Button("Soltar todas")) for (int i = 0; i < frozen.Length; i++) frozen[i] = false;
             GUILayout.EndHorizontal();
 
+            GUILayout.Space(6f);
+            noMosquitos = GUILayout.Toggle(noMosquitos, " Sem mosquitos (como se tivesse passado spray)");
+
             GUILayout.Space(10f);
             var money = FsmVariables.GlobalVariables.FindFsmFloat("PlayerMoney");
             GUILayout.Label($"Dinheiro: {(money != null ? money.Value.ToString("0") : "-")} mk");
@@ -122,6 +128,22 @@ namespace MscDuo.Tools
                 status = $"dinheiro definido em {money.Value:0} mk";
             }
             GUILayout.EndHorizontal();
+        }
+
+        static void KeepMosquitosAway()
+        {
+            if (mosquito == null)
+            {
+                var player = Player();
+                if (player == null) return;
+                foreach (var fsm in player.GetComponentsInChildren<PlayMakerFSM>(true))
+                    if (fsm.gameObject.name == "Mosquito" && fsm.FsmName == "Move") { mosquito = fsm; break; }
+                if (mosquito == null) return;
+            }
+            var shield = mosquito.FsmVariables.FindFsmFloat("PlayerMosquitoShield");
+            if (shield != null) shield.Value = 200f;
+            var audio = mosquito.transform.Find("Audio");
+            if (audio != null && audio.gameObject.activeSelf) audio.gameObject.SetActive(false);
         }
 
         static void AddMoney(FsmFloat money, float amount)
