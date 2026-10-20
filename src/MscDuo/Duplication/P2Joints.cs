@@ -18,6 +18,9 @@ namespace MscDuo.Duplication
         int relinked;
         int sounds;
         int freed;
+        readonly Dictionary<PlayMakerFSM, int> attempts = new Dictionary<PlayMakerFSM, int>();
+        readonly List<string> reassembled = new List<string>();
+        const int MaxAttempts = 3;
 
         internal static void Watch()
         {
@@ -41,9 +44,52 @@ namespace MscDuo.Duplication
             var report = pass <= Passes.Length ? new StringBuilder() : null;
             var before = orphans + relinked + sounds + freed;
             Sweep(report);
+            var fixedNow = Reassemble();
+            if (fixedNow > 0)
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {fixedNow} peças montadas no save mas soltas foram remontadas pelo gatilho do jogo ({string.Join(", ", reassembled.ToArray())}).");
             if (report != null) Save(report, pass);
             if (orphans + relinked + sounds + freed > before || pass == 1)
                 ModConsole.Print($"<color=orange>[MSC Duo]</color> juntas da Satsuma 2: {orphans} duplicadas removidas, {relinked} religadas, {freed} presas ao mundo na carroceria soltas, {sounds} sons presos desligados.");
+        }
+
+        int Reassemble()
+        {
+            var car = SatsumaCloner.Clone;
+            var db = SatsumaCloner.Database;
+            if (car == null || db == null) return 0;
+            var count = 0;
+            foreach (var data in db.GetComponentsInChildren<PlayMakerFSM>(true))
+            {
+                if (data.FsmName != "Data") continue;
+                var installed = data.FsmVariables.FindFsmBool("Installed");
+                var part = data.FsmVariables.FindFsmGameObject("ThisPart");
+                var trigger = data.FsmVariables.FindFsmGameObject("Trigger");
+                if (installed == null || !installed.Value || part == null || part.Value == null || trigger == null || trigger.Value == null) continue;
+                if (part.Value.transform.IsChildOf(car.transform) || Inside(part.Value.transform, OriginalRoots())) continue;
+                if (!trigger.Value.transform.IsChildOf(car.transform)) continue;
+                int tries;
+                attempts.TryGetValue(data, out tries);
+                if (tries >= MaxAttempts) continue;
+                attempts[data] = tries + 1;
+
+                PlayMakerFSM assembly = null;
+                foreach (var fsm in trigger.Value.GetComponents<PlayMakerFSM>())
+                    if (fsm.FsmName == "Assembly") assembly = fsm;
+                if (assembly == null) continue;
+                for (var t = trigger.Value.transform; t != null && t != car.transform; t = t.parent)
+                    if (!t.gameObject.activeSelf) t.gameObject.SetActive(true);
+                var target = assembly.FsmVariables.FindFsmGameObject("Part");
+                var setup = assembly.FsmVariables.FindFsmBool("Setup");
+                if (target == null || setup == null) continue;
+                target.Value = part.Value;
+                setup.Value = true;
+                var state = assembly.ActiveStateName;
+                if (!string.IsNullOrEmpty(state) && state != "Check for Part collision" && state != "Wait" && state != "Wait for assembly")
+                    assembly.SendEvent("MSCDUO_Wait 2");
+                if (!reassembled.Contains(data.gameObject.name)) reassembled.Add(data.gameObject.name);
+                count++;
+            }
+            return count;
         }
 
         static IEnumerable<GameObject> Roots()
