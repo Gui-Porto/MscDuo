@@ -33,6 +33,7 @@ PLATFORM_REACH = 5.0
 PLATFORM_BELOW = 0.02
 PLATFORM_SINK = 0.04
 SIDE_SKIRT = 1.0
+GRAVEL_UV = 1.15
 ROAD_COVER = 0.03
 STUB_X = -21.0
 STUB_REACH = 7.0
@@ -275,6 +276,8 @@ def platform(col, objects, floor, W, D):
             if g is None:
                 continue
             if x > cx1 + 1e-4:
+                if y < cy0 or y > cy1:
+                    continue
                 want = top + (g - PLATFORM_SINK - top) * min(d / SIDE_SKIRT, 1.0)
                 points[(i, j)] = (min(want, top), want > g + 0.01 and d <= SIDE_SKIRT, False)
                 continue
@@ -317,8 +320,9 @@ def platform(col, objects, floor, W, D):
                     verts[name][k] = bm.verts.new((gx0 + k[0] * PLATFORM_CELL, gy0 + k[1] * PLATFORM_CELL, points[k][0]))
                 face_verts.append(verts[name][k])
             face = bm.faces.new(face_verts)
+            scale = GRAVEL_UV if name == "Plataforma" else 0.25
             for loop in face.loops:
-                loop[uvs[name]].uv = (loop.vert.co.x / 4.0, loop.vert.co.y / 4.0)
+                loop[uvs[name]].uv = (loop.vert.co.x * scale, loop.vert.co.y * scale)
             counts[key] += 1
     materials = {"Plataforma": gravel_mat or bpy.data.materials.new("plataforma_cascalho"),
                  "PlataformaGrama": grass_mat or bpy.data.materials.new("plataforma_grama")}
