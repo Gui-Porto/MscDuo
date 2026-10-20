@@ -136,6 +136,11 @@ namespace MscDuo.Duplication
             foreach (var joint in copy.GetComponentsInChildren<Joint>(true)) Object.DestroyImmediate(joint);
             foreach (var body in copy.GetComponentsInChildren<Rigidbody>(true)) Object.DestroyImmediate(body);
             foreach (var behaviour in copy.GetComponentsInChildren<MonoBehaviour>(true)) if (behaviour != null) Object.DestroyImmediate(behaviour);
+            foreach (var t in copy.GetComponentsInChildren<Transform>(true))
+            {
+                t.gameObject.layer = 0;
+                t.gameObject.tag = "Untagged";
+            }
             copy.transform.parent = frame;
             var filter = copy.GetComponentInChildren<MeshFilter>();
             var size = filter.sharedMesh.bounds.size;
