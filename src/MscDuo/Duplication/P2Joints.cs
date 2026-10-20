@@ -51,6 +51,8 @@ namespace MscDuo.Duplication
             if (SatsumaCloner.Clone != null) yield return SatsumaCloner.Clone;
             if (SatsumaCloner.Parts != null) yield return SatsumaCloner.Parts;
             if (SatsumaCloner.Database != null) yield return SatsumaCloner.Database;
+            foreach (var part in SatsumaCloner.Catalog)
+                if (part != null) yield return part;
         }
 
         static IEnumerable<GameObject> OriginalRoots()
@@ -68,6 +70,12 @@ namespace MscDuo.Duplication
             return false;
         }
 
+        static bool OnPlayer(Transform t)
+        {
+            var player = GameObject.Find("PLAYER");
+            return player != null && t.IsChildOf(player.transform);
+        }
+
         static bool Settled(GameObject car)
         {
             foreach (var fsm in car.GetComponents<PlayMakerFSM>())
@@ -81,7 +89,7 @@ namespace MscDuo.Duplication
             foreach (var root in Roots())
                 foreach (var joint in root.GetComponentsInChildren<T>(true))
                 {
-                    if (joint == null || joint.gameObject == SatsumaCloner.Clone || !seen.Add(joint.gameObject)) continue;
+                    if (joint == null || joint.gameObject == SatsumaCloner.Clone || OnPlayer(joint.transform) || !seen.Add(joint.gameObject)) continue;
                     var all = new List<T>(joint.GetComponents<T>());
                     if (all.Count < 2) continue;
                     all.Sort((x, y) => (x.connectedBody == null ? 0 : 1).CompareTo(y.connectedBody == null ? 0 : 1));
@@ -129,7 +137,7 @@ namespace MscDuo.Duplication
             foreach (var root in Roots())
                 foreach (var joint in root.GetComponentsInChildren<Joint>(true))
                 {
-                    if (joint == null || joint.gameObject == clone) continue;
+                    if (joint == null || joint.gameObject == clone || OnPlayer(joint.transform)) continue;
                     var body = joint.connectedBody;
                     var p1 = body != null && Inside(body.transform, OriginalRoots());
                     var used = referenced.Contains(joint);

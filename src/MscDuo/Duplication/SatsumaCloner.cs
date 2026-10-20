@@ -14,7 +14,7 @@ namespace MscDuo.Duplication
         const float GroundProbe = 0.5f;
         const string CarName = "SATSUMA(557kg, 248)";
 
-        static readonly string[] DatabaseParts = { "DatabaseBody", "DatabaseMechanics", "DatabaseMotor", "DatabaseWiring", "PartsStatus" };
+        static readonly string[] DatabaseParts = { "DatabaseBody", "DatabaseMechanics", "DatabaseMotor", "DatabaseWiring", "PartsStatus", "DatabaseOrders" };
         static readonly string[] CarGlobals =
         {
             "RPM", "SpeedKMH", "EngineTemp", "CarVelocity", "CarMass", "ClutchWear", "Fuel",
@@ -28,6 +28,7 @@ namespace MscDuo.Duplication
         internal static Dictionary<Object, Object> Map { get; private set; }
         internal static GameObject Original { get; private set; }
         internal static GameObject OriginalDatabase { get; private set; }
+        internal static readonly List<GameObject> Catalog = new List<GameObject>();
 
         const float ReadyTimeout = 60f;
         const float SettleDelay = 5f;
@@ -100,10 +101,14 @@ namespace MscDuo.Duplication
                 copy.transform.parent = Database.transform;
             }
 
+            CloneCatalog(map, move, turn, car1, parts1, db1);
+
             var lift = snap ? SnapToGround() : 0f;
             var locals = Variables = CarLocals();
             int fsms = 0, remapped = 0, saves = 0, failed = 0, separated = 0, confined = 0, bodies = 0;
-            foreach (var root in new[] { Clone, Parts, Database })
+            var roots = new List<GameObject> { Clone, Parts, Database };
+            roots.AddRange(Catalog);
+            foreach (var root in roots)
             {
                 foreach (var fsm in root.GetComponentsInChildren<PlayMakerFSM>(true))
                 {
@@ -127,11 +132,35 @@ namespace MscDuo.Duplication
                 saves += RedirectAutoSaves(root);
             }
 
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {Catalog.Count} peças de catálogo soltas copiadas para o P2.");
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, {bodies} juntas apontadas para a Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
             if (ModParts.Mods.Count > 0)
                 ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2 sem peças de mods: {ModParts.Removed} objetos tirados ({string.Join(", ", new List<string>(ModParts.Mods).ToArray())}): {string.Join("; ", ModParts.Names.ToArray())}.");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
             P2Joints.Watch();
+        }
+
+        static void CloneCatalog(Dictionary<Object, Object> map, Matrix4x4 move, Quaternion turn, GameObject car1, GameObject parts1, GameObject db1)
+        {
+            Catalog.Clear();
+            var orders = Database.transform.Find("DatabaseOrders");
+            if (orders == null) return;
+            var found = new List<GameObject>();
+            foreach (var fsm in orders.GetComponentsInChildren<PlayMakerFSM>(true))
+            {
+                FsmTools.EnsureLoaded(fsm);
+                foreach (var variable in fsm.FsmVariables.GameObjectVariables)
+                {
+                    var target = variable.Value;
+                    if (target == null || map.ContainsKey(target)) continue;
+                    var root = target.transform.root.gameObject;
+                    if (root == car1 || root == parts1 || root == db1 || map.ContainsKey(root) || found.Contains(root)) continue;
+                    if (!root.name.EndsWith("(Clone)")) continue;
+                    found.Add(root);
+                }
+            }
+            foreach (var root in found)
+                Catalog.Add(CloneRoot(root, root.name, move, turn, map));
         }
 
         const float SeedReach = 30f;
