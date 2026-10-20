@@ -68,9 +68,9 @@ namespace MscDuo.Duplication
             setup.ActiveStateName == "Lod ON" || setup.ActiveStateName == "Lod OFF";
 
         internal static void Spawn(GameObject house1, GameObject house2) =>
-            Spawn(house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix, house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation), true);
+            Spawn(house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix, house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation), true, house1.transform.position);
 
-        static void Spawn(Matrix4x4 move, Quaternion turn, bool snap)
+        static void Spawn(Matrix4x4 move, Quaternion turn, bool snap, Vector3 home)
         {
 
             var car1 = FindRoot(CarName);
@@ -82,7 +82,7 @@ namespace MscDuo.Duplication
                 return;
             }
 
-            SeedSave();
+            SeedSave(move, turn, home);
             ModParts.Reset();
             var map = Map = new Dictionary<Object, Object>();
             Original = car1;
@@ -133,7 +133,9 @@ namespace MscDuo.Duplication
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
         }
 
-        static void SeedSave()
+        const float SeedReach = 30f;
+
+        static void SeedSave(Matrix4x4 move, Quaternion turn, Vector3 home)
         {
             var folder = Application.persistentDataPath;
             var p2 = System.IO.Path.Combine(folder, SaveFile);
@@ -142,12 +144,45 @@ namespace MscDuo.Duplication
             try
             {
                 System.IO.File.Copy(game, p2);
-                ModConsole.Print($"<color=orange>[MSC Duo]</color> {SaveFile} não existia; o jogador 2 começa com uma cópia do estado do jogador 1.");
+                var moved = MoveSeeded(move, turn, home);
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> {SaveFile} não existia; o jogador 2 começa com uma cópia do estado do jogador 1 ({moved} posições levadas da casa 1 para a casa 2).");
             }
             catch (System.Exception e)
             {
+                if (System.IO.File.Exists(p2)) System.IO.File.Delete(p2);
                 ModConsole.Warning($"[MSC Duo] não foi possível criar {SaveFile}: {e.Message}");
             }
+        }
+
+        static int MoveSeeded(Matrix4x4 move, Quaternion turn, Vector3 home)
+        {
+            var transformHash = ES2TypeManager.GetES2Type(typeof(Transform)).hash;
+            var tags = new List<string>();
+            using (var reader = ES2Reader.Create(SaveFile))
+                foreach (var pair in reader.ReadAllHeaders())
+                    if (pair.Value.collectionType == ES2Keys.Key._Null && pair.Value.valueType == transformHash) tags.Add(pair.Key);
+            var probe = new GameObject("MscDuo_seed");
+            var moved = 0;
+            try
+            {
+                var t = probe.transform;
+                foreach (var tag in tags)
+                {
+                    ES2.Load<Transform>(SaveFile + "?tag=" + tag, t);
+                    var flat = t.position - home;
+                    flat.y = 0f;
+                    if (flat.magnitude > SeedReach) continue;
+                    t.position = move.MultiplyPoint3x4(t.position);
+                    t.rotation = turn * t.rotation;
+                    ES2.Save(t, SaveFile + "?tag=" + tag);
+                    moved++;
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(probe);
+            }
+            return moved;
         }
 
         static float SnapToGround()
