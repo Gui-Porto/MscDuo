@@ -25,8 +25,6 @@ namespace MscDuo.Duplication
             TireRack(0.25f, 0.8f, 1.5f, 5.5f);
             Drum(0.6f, 6.4f, new Color(0.12f, 0.25f, 0.55f));
             Drum(0.6f, 7.1f, new Color(0.62f, 0.12f, 0.08f));
-            Extinguisher(new Vector2(0.2f, 8.45f), new Vector2(1f, 0f));
-            Extinguisher(new Vector2(23.8f, 0.6f), new Vector2(-1f, 0f));
             Bin(0.5f, 9.2f);
             Bin(22.65f, 0.7f);
             Rug(9.0f, 11.6f, 13.0f, 15.7f);
@@ -107,53 +105,6 @@ namespace MscDuo.Duplication
             cap.radius = 0.29f;
             cap.height = 0.88f;
             cap.direction = 1;
-        }
-
-        static void Extinguisher(Vector2 wall, Vector2 normal)
-        {
-            if (GameExtinguisher(wall, normal)) return;
-            var shape = new GateShape();
-            var n = L(normal.x, normal.y, 0f);
-            var c = L(wall.x, wall.y, 0f) + n * 0.1f;
-            shape.Use(0).Cylinder(c + Vector3.up * 0.25f, c + Vector3.up * 0.73f, 0.075f, 20);
-            shape.Use(1);
-            shape.Cylinder(c + Vector3.up * 0.73f, c + Vector3.up * 0.8f, 0.03f, 12);
-            shape.Box(c + Vector3.up * 0.8f - n * 0.02f + Vector3.Cross(n, Vector3.up) * 0.07f, c + Vector3.up * 0.82f + n * 0.02f - Vector3.Cross(n, Vector3.up) * 0.02f);
-            shape.Cylinder(c + Vector3.up * 0.78f + Vector3.Cross(n, Vector3.up) * 0.03f, c + Vector3.up * 0.4f + Vector3.Cross(n, Vector3.up) * 0.09f, 0.008f, 8);
-            shape.Box(L(wall.x, wall.y, 0f) + n * 0.005f + Vector3.up * 0.55f - Vector3.Cross(n, Vector3.up) * 0.04f, L(wall.x, wall.y, 0f) + n * 0.03f + Vector3.up * 0.6f + Vector3.Cross(n, Vector3.up) * 0.04f);
-            Part("Extintor", shape, Paint("extintor", new Color(0.78f, 0.06f, 0.05f)), Paint("extintor_preto", new Color(0.06f, 0.06f, 0.06f)));
-        }
-
-        static GameObject extinguisherSource;
-
-        static bool GameExtinguisher(Vector2 wall, Vector2 normal)
-        {
-            if (extinguisherSource == null)
-                foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
-                    if (t != null && t.hideFlags == HideFlags.None && t.parent == null && t.name.StartsWith("fireextinguisher") && t.GetComponentInChildren<MeshFilter>() != null) { extinguisherSource = t.gameObject; break; }
-            if (extinguisherSource == null) return false;
-            var copy = (GameObject)Object.Instantiate(extinguisherSource);
-            copy.name = "Extintor_Jogo";
-            foreach (var fsm in copy.GetComponentsInChildren<PlayMakerFSM>(true)) Object.DestroyImmediate(fsm);
-            foreach (var joint in copy.GetComponentsInChildren<Joint>(true)) Object.DestroyImmediate(joint);
-            foreach (var body in copy.GetComponentsInChildren<Rigidbody>(true)) Object.DestroyImmediate(body);
-            foreach (var behaviour in copy.GetComponentsInChildren<MonoBehaviour>(true)) if (behaviour != null) Object.DestroyImmediate(behaviour);
-            foreach (var t in copy.GetComponentsInChildren<Transform>(true))
-            {
-                t.gameObject.layer = 0;
-                t.gameObject.tag = "Untagged";
-            }
-            copy.transform.parent = frame;
-            var filter = copy.GetComponentInChildren<MeshFilter>();
-            var size = filter.sharedMesh.bounds.size;
-            var axis = size.x >= size.y && size.x >= size.z ? filter.transform.right : size.y >= size.z ? filter.transform.up : filter.transform.forward;
-            copy.transform.rotation = Quaternion.FromToRotation(axis, Vector3.up) * copy.transform.rotation;
-            copy.transform.position = frame.TransformPoint(L(wall.x, wall.y, 0f) + L(normal.x, normal.y, 0f) * 0.14f);
-            copy.SetActive(true);
-            var low = float.MaxValue;
-            foreach (var r in copy.GetComponentsInChildren<Renderer>(true)) low = Mathf.Min(low, r.bounds.min.y);
-            if (low < float.MaxValue) copy.transform.position += Vector3.up * (frame.position.y + 0.002f - low);
-            return true;
         }
 
         static void Bin(float x, float y)
