@@ -101,6 +101,8 @@ namespace MscDuo.Duplication
             }
 
             var gauges = CloneDashGauges(db1, move, turn, map);
+            Loose.Clear();
+            Loose.AddRange(gauges);
 
             var lift = snap ? SnapToGround() : 0f;
             var locals = Variables = CarLocals();
@@ -141,6 +143,7 @@ namespace MscDuo.Duplication
         }
 
         static readonly List<string> GaugeNames = new List<string>();
+        internal static readonly List<GameObject> Loose = new List<GameObject>();
 
         static List<GameObject> CloneDashGauges(GameObject db1, Matrix4x4 move, Quaternion turn, Dictionary<Object, Object> map)
         {

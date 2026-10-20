@@ -51,6 +51,8 @@ namespace MscDuo.Duplication
             if (SatsumaCloner.Clone != null) yield return SatsumaCloner.Clone;
             if (SatsumaCloner.Parts != null) yield return SatsumaCloner.Parts;
             if (SatsumaCloner.Database != null) yield return SatsumaCloner.Database;
+            foreach (var part in SatsumaCloner.Loose)
+                if (part != null) yield return part;
         }
 
         static IEnumerable<GameObject> OriginalRoots()
