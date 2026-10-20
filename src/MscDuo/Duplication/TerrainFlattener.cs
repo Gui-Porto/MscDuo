@@ -38,7 +38,7 @@ namespace MscDuo.Duplication
             var top = house.transform.position.y + PitProbe;
             var pit = FindPit(house, toHouse, local, groundY, top);
             int moved = 0, flat = 0, meshes = 0, nearRoad = 0, cut = 0, uncut = 0;
-            var shifts = new Dictionary<long, float>();
+            var offsets = RoadOffsets(toHouse, local);
 
             foreach (var path in TerrainPaths)
             {
@@ -76,7 +76,6 @@ namespace MscDuo.Duplication
                     }
                     var y = Mathf.Lerp(world.y, groundY, t);
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
-                    shifts[Key(world)] = y - world.y;
                     world.y = y;
                     vertices[i] = toMesh.MultiplyPoint3x4(world);
                     moved++;
@@ -105,7 +104,7 @@ namespace MscDuo.Duplication
             }
 
             var roadCut = CutRoad(house, toHouse, local);
-            var followed = FollowRoads(shifts);
+            var followed = FollowRoads(offsets);
             var hedges = SettleHedges(house);
             ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra ({roadObjects} malhas): {roadCut} triângulos tirados de dentro da casa e da extensão, {followed} pontos de estrada acompanhando o terreno; cerca viva: {hedges} pedaços assentados no chão.");
             ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} pedaços abertos ({uncut} mantidos).");
@@ -169,31 +168,87 @@ namespace MscDuo.Duplication
             return removed;
         }
 
-        static long Key(Vector3 world) => ((long)Mathf.RoundToInt(world.x * 20f) << 32) ^ (uint)Mathf.RoundToInt(world.z * 20f);
-
-        static int FollowRoads(Dictionary<long, float> shifts)
+        static IEnumerable<Transform> Roads()
         {
             var root = GameObject.Find(TerrainRoot);
-            if (root == null || shifts.Count == 0) return 0;
-            var followed = 0;
+            if (root == null) yield break;
             foreach (Transform child in root.transform)
+                if (System.Array.IndexOf(RoadNames, child.name) >= 0) yield return child;
+        }
+
+        static readonly Vector2[] Probes = { Vector2.zero, new Vector2(0.6f, 0f), new Vector2(-0.6f, 0f), new Vector2(0f, 0.6f), new Vector2(0f, -0.6f) };
+
+        static bool TerrainHeight(Vector3 world, out float height)
+        {
+            height = float.MinValue;
+            foreach (var probe in Probes)
             {
-                if (System.Array.IndexOf(RoadNames, child.name) < 0) continue;
-                var filter = child.GetComponent<MeshFilter>();
+                foreach (var path in TerrainPaths)
+                {
+                    var go = GameObject.Find(path);
+                    var collider = go != null ? go.GetComponent<MeshCollider>() : null;
+                    RaycastHit hit;
+                    if (collider != null && collider.Raycast(new Ray(new Vector3(world.x + probe.x, world.y + 20f, world.z + probe.y), Vector3.down), out hit, 60f) && hit.point.y > height)
+                        height = hit.point.y;
+                }
+                if (height > float.MinValue) return true;
+            }
+            return false;
+        }
+
+        static Dictionary<MeshFilter, float[]> RoadOffsets(Matrix4x4 toHouse, Bounds local)
+        {
+            var offsets = new Dictionary<MeshFilter, float[]>();
+            foreach (var road in Roads())
+            {
+                var filter = road.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null) continue;
+                Vector3[] vertices;
+                try { vertices = filter.sharedMesh.vertices; }
+                catch { continue; }
+                var toWorld = road.localToWorldMatrix;
+                var list = new float[vertices.Length];
+                var any = false;
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    list[i] = float.NaN;
+                    var world = toWorld.MultiplyPoint3x4(vertices[i]);
+                    var h = toHouse.MultiplyPoint3x4(world);
+                    var dx = Mathf.Max(0f, Mathf.Max(local.min.x - h.x, h.x - local.max.x));
+                    var dz = Mathf.Max(0f, Mathf.Max(local.min.z - h.z, h.z - local.max.z));
+                    if (Mathf.Sqrt(dx * dx + dz * dz) >= FlatMargin + BlendWidth) continue;
+                    float ground;
+                    if (!TerrainHeight(world, out ground)) continue;
+                    list[i] = world.y - ground;
+                    any = true;
+                }
+                if (any) offsets[filter] = list;
+            }
+            return offsets;
+        }
+
+        static int FollowRoads(Dictionary<MeshFilter, float[]> offsets)
+        {
+            var followed = 0;
+            foreach (var pair in offsets)
+            {
+                var filter = pair.Key;
                 if (filter == null || filter.sharedMesh == null) continue;
                 var source = filter.sharedMesh;
-                Vector3[] vertices;
-                try { vertices = source.vertices; }
-                catch { continue; }
-                var toWorld = child.localToWorldMatrix;
-                var toMesh = child.worldToLocalMatrix;
+                var vertices = source.vertices;
+                if (vertices.Length != pair.Value.Length) continue;
+                var toWorld = filter.transform.localToWorldMatrix;
+                var toMesh = filter.transform.worldToLocalMatrix;
                 var count = 0;
                 for (int i = 0; i < vertices.Length; i++)
                 {
+                    if (float.IsNaN(pair.Value[i])) continue;
                     var world = toWorld.MultiplyPoint3x4(vertices[i]);
-                    float shift;
-                    if (!shifts.TryGetValue(Key(world), out shift)) continue;
-                    world.y += shift;
+                    float ground;
+                    if (!TerrainHeight(world, out ground)) continue;
+                    var y = ground + pair.Value[i];
+                    if (Mathf.Abs(y - world.y) < 0.001f) continue;
+                    world.y = y;
                     vertices[i] = toMesh.MultiplyPoint3x4(world);
                     count++;
                 }
@@ -209,7 +264,7 @@ namespace MscDuo.Duplication
                 mesh.vertices = vertices;
                 mesh.RecalculateNormals();
                 mesh.RecalculateBounds();
-                var collider = child.GetComponent<MeshCollider>();
+                var collider = filter.GetComponent<MeshCollider>();
                 if (collider != null)
                 {
                     if (!originalColliders.ContainsKey(collider)) originalColliders[collider] = collider.sharedMesh;
