@@ -24,6 +24,7 @@ namespace MscDuo.Duplication
         const float HedgeSink = 0.05f;
 
         static readonly Dictionary<Transform, Vector3> hedgeOrigins = new Dictionary<Transform, Vector3>();
+        static readonly List<GameObject> hiddenHedges = new List<GameObject>();
         static readonly Dictionary<MeshFilter, Mesh> originalMeshes = new Dictionary<MeshFilter, Mesh>();
         static readonly Dictionary<MeshCollider, Mesh> originalColliders = new Dictionary<MeshCollider, Mesh>();
 
@@ -173,19 +174,35 @@ namespace MscDuo.Duplication
             var moved = 0;
             foreach (Transform hedge in fence)
             {
-                var renderers = hedge.GetComponentsInChildren<Renderer>();
-                if (renderers.Length == 0) continue;
+                if (!hedge.gameObject.activeSelf) continue;
+                var renderers = new List<Renderer>();
+                foreach (var r in hedge.GetComponentsInChildren<Renderer>())
+                    if (r.enabled) renderers.Add(r);
+                if (renderers.Count == 0) continue;
                 var b = renderers[0].bounds;
                 foreach (var r in renderers) b.Encapsulate(r.bounds);
                 var ground = float.MaxValue;
+                var onRoad = false;
                 for (int i = 0; i < 3; i++)
                     for (int k = 0; k < 3; k++)
                     {
                         var x = Mathf.Lerp(b.min.x, b.max.x, 0.2f + 0.3f * i);
                         var z = Mathf.Lerp(b.min.z, b.max.z, 0.2f + 0.3f * k);
+                        RaycastHit? top = null;
                         foreach (var hit in Physics.RaycastAll(new Vector3(x, b.max.y + 2f, z), Vector3.down, b.size.y + 6f))
-                            if (hit.collider.transform.IsChildOf(terrain.transform) && hit.point.y < ground) ground = hit.point.y;
+                        {
+                            if (!hit.collider.transform.IsChildOf(terrain.transform)) continue;
+                            if (hit.point.y < ground) ground = hit.point.y;
+                            if (top == null || hit.point.y > top.Value.point.y) top = hit;
+                        }
+                        if (top != null && (top.Value.collider.name == RoadName || top.Value.collider.name == "DirtRoad")) onRoad = true;
                     }
+                if (onRoad)
+                {
+                    hedge.gameObject.SetActive(false);
+                    hiddenHedges.Add(hedge.gameObject);
+                    continue;
+                }
                 if (ground == float.MaxValue) continue;
                 var drop = b.min.y - ground + HedgeSink;
                 if (drop <= 0.01f) continue;
@@ -211,6 +228,8 @@ namespace MscDuo.Duplication
         {
             foreach (var pair in hedgeOrigins) if (pair.Key != null) pair.Key.position = pair.Value;
             hedgeOrigins.Clear();
+            foreach (var hedge in hiddenHedges) if (hedge != null) hedge.SetActive(true);
+            hiddenHedges.Clear();
             foreach (var pair in originalMeshes) if (pair.Key != null) pair.Key.sharedMesh = pair.Value;
             foreach (var pair in originalColliders)
             {
