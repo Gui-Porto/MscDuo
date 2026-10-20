@@ -76,10 +76,10 @@ namespace MscDuo.Net
                 if (!session.Connected || session.transport is LoopbackTransport) return;
                 session.Broadcast(MessageType.ItemLinked, w => { w.Write(mine); w.Write(theirs); }, Channel.Reliable);
             });
-            WarehouseCart.Bind(() =>
+            WarehouseCart.Bind(index =>
             {
                 if (!session.Connected || session.transport is LoopbackTransport) return;
-                session.Broadcast(MessageType.CartState, WarehouseCart.Write, Channel.Unreliable);
+                session.Broadcast(MessageType.CartState, w => WarehouseCart.Write(w, index), Channel.Unreliable);
             });
             WarehouseToggles.Bind((key, value) =>
             {
@@ -317,7 +317,12 @@ namespace MscDuo.Net
                                 if (gate != null) Send(packet.From, MessageType.GateState, gate.Write, Channel.Reliable);
                         if (transport.IsHost) Send(packet.From, MessageType.ExteriorLight, WarehouseExterior.Write, Channel.Reliable);
                         if (transport.IsHost) Send(packet.From, MessageType.LiftState, LiftCloner.Write, Channel.Reliable);
-                        if (transport.IsHost) Send(packet.From, MessageType.CartState, WarehouseCart.Write, Channel.Reliable);
+                        if (transport.IsHost)
+                            for (int i = 0; i < WarehouseCart.Count; i++)
+                            {
+                                var cartIndex = i;
+                                Send(packet.From, MessageType.CartState, w => WarehouseCart.Write(w, cartIndex), Channel.Reliable);
+                            }
                         if (transport.IsHost)
                         {
                             var requester = packet.From;

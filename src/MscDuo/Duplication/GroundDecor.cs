@@ -36,8 +36,10 @@ namespace MscDuo.Duplication
             var pieces = 0;
             pieces += Charger();
             pieces += Jack();
-            pieces += ToolCart();
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> térreo: decoração montada, {pieces} de 3 peças do jogo (carregador, macaco e carrinho de ferramentas).");
+            WarehouseCart.Clear();
+            pieces += ToolCart(7.0f);
+            pieces += ToolCart(7.9f);
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> térreo: decoração montada, {pieces} de 4 peças do jogo (carregador, macaco e dois carrinhos de ferramentas).");
         }
 
         static Vector3 L(float x, float y, float z) => new Vector3(x, z, y);
@@ -383,7 +385,7 @@ namespace MscDuo.Duplication
             return 1;
         }
 
-        static int ToolCart()
+        static int ToolCart(float x)
         {
             var source = DynoCloner.Find("REPAIRSHOP/LOD/ToolCart");
             if (source == null) return 0;
@@ -395,7 +397,7 @@ namespace MscDuo.Duplication
             var turn = Quaternion.FromToRotation(front.normalized, wanted);
             var list = new List<GameObject> { source };
             var floor = WarehouseRooms.Floor(source.transform, list);
-            var copies = WarehouseRooms.Place(list, source.transform, floor, turn, frame.TransformPoint(L(7.0f, 15.0f, 0f)), "Carrinho");
+            var copies = WarehouseRooms.Place(list, source.transform, floor, turn, frame.TransformPoint(L(x, 15.0f, 0f)), "Carrinho");
             if (copies == null || copies.Count == 0) return 0;
             SettleOnFloor(copies);
             AgainstBackWall(copies, Back - 0.03f);

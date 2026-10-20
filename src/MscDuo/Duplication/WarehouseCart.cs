@@ -10,14 +10,22 @@ namespace MscDuo.Duplication
     internal static class WarehouseCart
     {
         const string OpenEvent = "MSCDUO_GAVETA";
-        static Action sender;
-        static CartPush cart;
+        static Action<int> sender;
+        static readonly List<CartPush> carts = new List<CartPush>();
 
-        internal static void Bind(Action send) => sender = send;
+        internal static int Count => carts.Count;
 
-        internal static void Write(BinaryWriter w)
+        internal static void Bind(Action<int> send) => sender = send;
+
+        internal static void Clear() => carts.Clear();
+
+        static string Prefix(int index) => index == 0 ? "carrinho" : "carrinho" + (index + 1);
+
+        internal static void Write(BinaryWriter w, int index)
         {
+            var cart = index < carts.Count ? carts[index] : null;
             var p = cart != null ? cart.transform.position : Vector3.zero;
+            w.Write((byte)index);
             w.Write(cart != null);
             w.Write(p.x);
             w.Write(p.y);
@@ -27,25 +35,33 @@ namespace MscDuo.Duplication
 
         internal static void Read(BinaryReader r)
         {
+            var index = r.ReadByte();
             var has = r.ReadBoolean();
             var p = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
             var yaw = r.ReadSingle();
-            if (has && cart != null) cart.Remote(p, yaw);
+            if (has && index < carts.Count && carts[index] != null) carts[index].Remote(p, yaw);
         }
 
         internal static void Save(System.Text.StringBuilder sb)
         {
-            if (cart == null) return;
-            var local = Warehouse.ToLocal(cart.transform.position);
-            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "carrinho_x = {0:0.000}", local.x));
-            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "carrinho_y = {0:0.000}", local.y));
-            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "carrinho_altura = {0:0.000}", local.z));
-            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "carrinho_giro = {0:0.0}", cart.transform.eulerAngles.y));
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            for (int i = 0; i < carts.Count; i++)
+            {
+                var cart = carts[i];
+                if (cart == null) continue;
+                var local = Warehouse.ToLocal(cart.transform.position);
+                var key = Prefix(i);
+                sb.AppendLine(string.Format(inv, "{0}_x = {1:0.000}", key, local.x));
+                sb.AppendLine(string.Format(inv, "{0}_y = {1:0.000}", key, local.y));
+                sb.AppendLine(string.Format(inv, "{0}_altura = {1:0.000}", key, local.z));
+                sb.AppendLine(string.Format(inv, "{0}_giro = {1:0.0}", key, cart.transform.eulerAngles.y));
+            }
         }
 
         internal static void Setup(GameObject root, GateInput input)
         {
-            cart = null;
+            var index = carts.Count;
+            var prefix = Prefix(index);
             var drawer = root.transform.Find("Drawer");
             PlayMakerFSM use = null;
             if (drawer != null)
@@ -58,37 +74,41 @@ namespace MscDuo.Duplication
                 var open = use.FsmVariables.FindFsmBool("Open");
                 var collider = drawer.GetComponent<Collider>();
                 var fsm = use;
-                WarehouseToggles.Register("carrinho_gaveta", 0, v =>
+                var gaveta = prefix + "_gaveta";
+                WarehouseToggles.Register(gaveta, 0, v =>
                 {
                     if (open == null || open.Value != (v != 0)) fsm.SendEvent(OpenEvent);
                 });
                 if (collider != null)
-                    input.Buttons.Add(new GateButton { Collider = collider, Cap = drawer, Click = () => WarehouseToggles.Set("carrinho_gaveta", WarehouseToggles.Get("carrinho_gaveta") == 0 ? 1 : 0), Text = () => WarehouseToggles.Get("carrinho_gaveta") == 0 ? "Abrir gaveta" : "Fechar gaveta" });
+                    input.Buttons.Add(new GateButton { Collider = collider, Cap = drawer, Click = () => WarehouseToggles.Set(gaveta, WarehouseToggles.Get(gaveta) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(gaveta) == 0 ? "Abrir gaveta" : "Fechar gaveta" });
             }
             Collider body = null;
             foreach (var c in root.GetComponentsInChildren<Collider>(true))
                 if (!c.isTrigger && (drawer == null || !c.transform.IsChildOf(drawer))) { body = c; break; }
             foreach (var rb in root.GetComponentsInChildren<Rigidbody>(true)) rb.isKinematic = true;
-            cart = root.AddComponent<CartPush>();
+            var cart = root.AddComponent<CartPush>();
+            cart.Index = index;
+            carts.Add(cart);
             var saved = WarehouseGates.Load();
             float x, y, h, yaw;
-            if (saved.TryGetValue("carrinho_x", out x) && saved.TryGetValue("carrinho_y", out y) && saved.TryGetValue("carrinho_altura", out h) && saved.TryGetValue("carrinho_giro", out yaw))
+            if (saved.TryGetValue(prefix + "_x", out x) && saved.TryGetValue(prefix + "_y", out y) && saved.TryGetValue(prefix + "_altura", out h) && saved.TryGetValue(prefix + "_giro", out yaw))
             {
                 root.transform.position = Warehouse.Local(x, y, h);
                 root.transform.rotation = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Inverse(Quaternion.Euler(0f, root.transform.eulerAngles.y, 0f)) * root.transform.rotation;
             }
             if (body != null)
                 input.Buttons.Add(new GateButton { Collider = body, Cap = root.transform, Click = cart.Grab, Text = () => "Empurrar carrinho (segure)" });
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> carrinho de ferramentas: gaveta {(use != null ? "ok" : "não encontrada")}, empurrar {(body != null ? "ok" : "sem colisão")}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> carrinho de ferramentas {index + 1}: gaveta {(use != null ? "ok" : "não encontrada")}, empurrar {(body != null ? "ok" : "sem colisão")}.");
         }
 
-        internal static void Notify()
+        internal static void Notify(int index)
         {
-            if (sender != null) sender();
+            if (sender != null) sender(index);
         }
 
         class CartPush : MonoBehaviour
         {
+            internal int Index;
             bool held;
             Vector3 offset;
             float yawOffset;
@@ -132,7 +152,7 @@ namespace MscDuo.Duplication
                 if (!Input.GetMouseButton(0))
                 {
                     held = false;
-                    Notify();
+                    Notify(Index);
                     return;
                 }
                 var cam = Camera.main;
@@ -147,7 +167,7 @@ namespace MscDuo.Duplication
                 if (Time.time >= nextSend)
                 {
                     nextSend = Time.time + 0.1f;
-                    Notify();
+                    Notify(Index);
                 }
             }
         }
