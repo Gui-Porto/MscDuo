@@ -123,6 +123,8 @@ namespace MscDuo.Duplication
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] banheiro e depósito falharam: {e}"); }
             try { GroundDecor.Build(root.transform, template, lights); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] decoração do térreo falhou: {e}"); }
+            try { BarCorner.Build(root.transform, template, root.GetComponent<GateInput>() ?? root.AddComponent<GateInput>(), lights); }
+            catch (System.Exception e) { ModConsole.Error($"[MSC Duo] bar falhou: {e}"); }
 
             var cleared = TreeClearer.ClearArea(bounds.min - new Vector3(TreeMargin, 0f, TreeMargin), bounds.max + new Vector3(TreeMargin + WarehouseConfig.Get("patio_arvores"), 0f, TreeMargin));
             ModConsole.Print($"<color=orange>[MSC Duo]</color> galpão: {parts} peças, {colliders} com colisão, {textures.Count} materiais, {cleared} árvores removidas, telhado {(shelter ? "protege da chuva" : "SEM proteção de chuva")}, {furniture} móveis, interruptor {(light ? "ok" : "não encontrado")}, modelo {(WarehouseConfig.DevFolder != null ? "da pasta " + WarehouseConfig.DevFolder : "da DLL")}; centro {HouseCloner.Format(bounds.center)}.");
@@ -260,7 +262,7 @@ namespace MscDuo.Duplication
             var inside = new GameObject("Geladeira_Frio");
             inside.transform.parent = fridge.transform;
             inside.transform.position = new Vector3(b.center.x, b.min.y + b.size.y * 0.55f, b.center.z);
-            House2Fridge.Extra = inside.transform;
+            House2Fridge.Extras.Add(inside.transform);
             var lamp = new GameObject("Geladeira_Luz");
             lamp.transform.parent = fridge.transform;
             lamp.transform.position = new Vector3(b.center.x, b.min.y + b.size.y * 0.8f, b.center.z);

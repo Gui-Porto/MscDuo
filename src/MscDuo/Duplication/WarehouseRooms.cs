@@ -72,12 +72,13 @@ namespace MscDuo.Duplication
             return go;
         }
 
-        static AudioClip GameClip(string name)
+        internal static AudioClip GameClip(string name, bool fallback = true)
         {
             foreach (var source in Resources.FindObjectsOfTypeAll<AudioSource>())
                 if (source != null && source.clip != null && source.gameObject.name == name && source.transform.parent != null && source.transform.parent.name == "HouseFoley") return source.clip;
             foreach (var clip in Resources.FindObjectsOfTypeAll<AudioClip>())
                 if (clip != null && clip.name == name) return clip;
+            if (!fallback) return null;
             var bytes = Warehouse.Bytes(System.IO.Path.Combine("sons_galpao", "interruptor.wav"), "MscDuo.galpao_som.interruptor.wav");
             return bytes != null ? WarehouseGates.Wav("interruptor", bytes) : null;
         }
