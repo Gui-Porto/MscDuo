@@ -102,8 +102,8 @@ namespace MscDuo.Duplication
             var hidden = 0;
             foreach (Transform hedge in fence)
             {
-                var renderer = hedge.GetComponent<Renderer>();
-                if (renderer == null || hedge.GetComponent<MeshFilter>() == null) continue;
+                var renderer = Visible(hedge);
+                if (renderer == null) continue;
                 if (template == null) template = hedge;
                 var local = Warehouse.ToLocal(renderer.bounds.center);
                 if (local.x < Left || local.x > Right || local.y < Front || local.y > 17f) continue;
@@ -113,12 +113,13 @@ namespace MscDuo.Duplication
             }
             if (template == null) return "cerca viva: nenhum pedaço na casa 2";
 
-            var mesh = template.GetComponent<MeshFilter>().sharedMesh;
+            var shape = Visible(template, true);
+            var mesh = shape.GetComponent<MeshFilter>().sharedMesh;
             var axes = new[] { Vector3.right, Vector3.up, Vector3.forward };
             Vector3 along = Vector3.zero, across = Vector3.zero;
             foreach (var axis in axes)
             {
-                var v = template.TransformVector(Vector3.Scale(axis, mesh.bounds.size));
+                var v = shape.transform.TransformVector(Vector3.Scale(axis, mesh.bounds.size));
                 v.y = 0f;
                 if (v.magnitude > along.magnitude) { across = along; along = v; }
                 else if (v.magnitude > across.magnitude) across = v;
@@ -152,10 +153,20 @@ namespace MscDuo.Duplication
                 copy.SetActive(true);
                 copy.transform.parent = root;
                 copy.transform.rotation = turn * template.rotation;
-                var bounds = copy.GetComponent<Renderer>().bounds;
+                var bounds = Visible(copy.transform).bounds;
                 copy.transform.position += new Vector3(center.x - bounds.center.x, floor - bounds.min.y, center.z - bounds.center.z);
             }
             return count;
+        }
+
+        static Renderer Visible(Transform t, bool inactive = false)
+        {
+            foreach (var r in t.GetComponentsInChildren<MeshRenderer>(inactive))
+            {
+                var filter = r.GetComponent<MeshFilter>();
+                if (r.enabled && filter != null && filter.sharedMesh != null) return r;
+            }
+            return null;
         }
 
         static Transform Find(Transform t, string name)
