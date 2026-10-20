@@ -165,7 +165,7 @@ namespace MscDuo.Duplication
             return removed;
         }
 
-        static int SettleHedges(GameObject house)
+        internal static int SettleHedges(GameObject house)
         {
             var fence = FindDeep(house.transform, "HedgeFence");
             var terrain = GameObject.Find(TerrainRoot);
@@ -189,7 +189,7 @@ namespace MscDuo.Duplication
                 if (ground == float.MaxValue) continue;
                 var drop = b.min.y - ground + HedgeSink;
                 if (drop <= 0.01f) continue;
-                hedgeOrigins[hedge] = hedge.position;
+                if (!hedgeOrigins.ContainsKey(hedge)) hedgeOrigins[hedge] = hedge.position;
                 hedge.position -= Vector3.up * drop;
                 moved++;
             }

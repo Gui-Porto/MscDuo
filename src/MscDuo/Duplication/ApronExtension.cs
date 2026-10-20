@@ -25,6 +25,11 @@ namespace MscDuo.Duplication
         const string SlabName = "house_base_concrete_mesh";
         const float ClearHeight = 2.5f;
         const float TerrainGap = 0.08f;
+        const float SkirtWidth = 2.5f;
+        const int SkirtRows = 8;
+        const float SkirtInset = 0.03f;
+        const float SkirtLift = 0.02f;
+        const float SkirtTuck = 0.04f;
 
         static readonly string[] RoadNames = { "Road", "DirtRoad", "Gravel", "Asphalt", "Roadside", "Pavement", "4tie" };
         static readonly string[] KeptRoots = { "MSCDUO", "PLAYER", "SATSUMA", "CARPARTS", "Database", "ITEMS", "STORE", "Systems", "Sheets", "GUI" };
@@ -32,6 +37,7 @@ namespace MscDuo.Duplication
 
         static GameObject slab;
         static GameObject fill;
+        static GameObject skirt;
         static Mesh fillModel;
         static Mesh model;
         static Vector2[][] outline;
@@ -75,6 +81,10 @@ namespace MscDuo.Duplication
 
             var lowered = LowerTerrain(house, frame);
             var filled = BuildFill(house, frame);
+            string skirted;
+            try { skirted = BuildSkirt(house, frame); }
+            catch (System.Exception e) { skirted = "rampa de grama falhou: " + e.Message; }
+            filled += ", " + skirted;
             var extra = unreadable.Count > 0 ? $" Sem leitura (ficaram): {string.Join(", ", unreadable.ToArray())}." : "";
             ModConsole.Print($"<color=orange>[MSC Duo]</color> casa 2: extensão do Blender criada (topo {frame.MultiplyPoint3x4(new Vector3(0f, top, 0f)).y:0.00}, {model.vertexCount} vértices, material {(concrete != null ? concrete.name : "cinza")}), {cut} triângulos e {removed} objetos tirados do caminho, {lowered} pontos de terreno rebaixados, {filled}.{extra}");
         }
@@ -217,6 +227,150 @@ namespace MscDuo.Duplication
             }
             return $"aterro com {vertices.Length} pontos ({pairs.Count} alinhados à grama de {(best != null ? best.name : "nenhum terreno")}, material {(chosen != null ? chosen.name : "nenhum")} de {(best != null ? best.sharedMaterials.Length : 0)})";
         }
+
+        static string BuildSkirt(GameObject house, Matrix4x4 frame)
+        {
+            var height = frame.MultiplyPoint3x4(new Vector3(0f, top, 0f)).y;
+            var points = new List<Vector2>();
+            foreach (var v in model.vertices)
+            {
+                var w = slab.transform.TransformPoint(v);
+                if (w.y >= height - 0.02f) points.Add(new Vector2(w.x, w.z));
+            }
+            var hull = Hull(points);
+            if (hull.Count < 3) return "rampa de grama: contorno não encontrado";
+            var terrain = GameObject.Find("MAP/MESH/TERRAIN_OBJ");
+            var n = hull.Count;
+            var open = new bool[n];
+            var normals = new Vector2[n];
+            var sides = 0;
+            for (int i = 0; i < n; i++)
+            {
+                var a = hull[i];
+                var b = hull[(i + 1) % n];
+                var d = (b - a).normalized;
+                normals[i] = new Vector2(d.y, -d.x);
+                open[i] = true;
+                for (int k = 1; k <= 3 && open[i]; k++)
+                {
+                    var probe = Vector2.Lerp(a, b, k / 4f) + normals[i] * 0.8f;
+                    float y;
+                    var what = Under(house, terrain, probe, height + 1f, out y);
+                    if (what != 0 && y > height - 0.15f) open[i] = false;
+                }
+                if (open[i]) sides++;
+            }
+            if (sides == 0) return "rampa de grama: nenhuma borda solta";
+
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            for (int i = 0; i < n; i++)
+            {
+                if (!open[i]) continue;
+                var prev = (i + n - 1) % n;
+                var next = (i + 1) % n;
+                var startDir = open[prev] ? Miter(normals[prev], normals[i]) : normals[i];
+                var endDir = open[next] ? Miter(normals[i], normals[next]) : normals[i];
+                var a = hull[i];
+                var b = hull[next];
+                var start = vertices.Count;
+                for (int r = 0; r <= SkirtRows; r++)
+                {
+                    var reach = r / (float)SkirtRows * SkirtWidth - SkirtInset;
+                    var pa = a + startDir * reach;
+                    var pb = b + endDir * reach;
+                    vertices.Add(new Vector3(pa.x, 0f, pa.y));
+                    vertices.Add(new Vector3(pb.x, 0f, pb.y));
+                }
+                for (int r = 0; r < SkirtRows; r++)
+                {
+                    var q = start + r * 2;
+                    triangles.Add(q); triangles.Add(q + 1); triangles.Add(q + 2);
+                    triangles.Add(q + 1); triangles.Add(q + 3); triangles.Add(q + 2);
+                }
+            }
+            for (int c = 0; c < vertices.Count; c += (SkirtRows + 1) * 2)
+                for (int side = 0; side < 2; side++)
+                {
+                    var outer = vertices[c + SkirtRows * 2 + side];
+                    float end;
+                    if (Under(house, terrain, new Vector2(outer.x, outer.z), height + 1f, out end) == 0) end = height - 0.3f;
+                    end -= SkirtTuck;
+                    for (int r = 0; r <= SkirtRows; r++)
+                    {
+                        var k = c + r * 2 + side;
+                        var v = vertices[k];
+                        var t = r / (float)SkirtRows;
+                        var y = Mathf.Lerp(height - 0.005f, end, t * t * (3f - 2f * t));
+                        float ground;
+                        if (r > 0 && r < SkirtRows && Under(house, terrain, new Vector2(v.x, v.z), height + 1f, out ground) != 0) y = Mathf.Max(y, ground + SkirtLift);
+                        v.y = Mathf.Min(y, height - 0.005f);
+                        vertices[k] = v;
+                    }
+                }
+
+            var mesh = new Mesh { name = "ApronSkirt_P2" };
+            mesh.vertices = vertices.ToArray();
+            mesh.triangles = triangles.ToArray();
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            skirt = new GameObject("ApronSkirt_P2");
+            skirt.transform.parent = house.transform.parent;
+            skirt.AddComponent<MeshFilter>().sharedMesh = mesh;
+            skirt.AddComponent<MeshRenderer>();
+            var collider = skirt.AddComponent<MeshCollider>();
+            collider.sharedMesh = mesh;
+            var grass = GameObject.Find(TerrainPaths[0]);
+            var fallback = grass != null && grass.GetComponent<Renderer>() != null ? grass.GetComponent<Renderer>().sharedMaterial : Concrete(house);
+            return $"rampa de grama em {sides} de {n} bordas ({PatioGround.Skin(skirt, collider, fallback)})";
+        }
+
+        static int Under(GameObject house, GameObject terrain, Vector2 p, float from, out float y)
+        {
+            y = float.MinValue;
+            var kind = 0;
+            foreach (var hit in Physics.RaycastAll(new Vector3(p.x, from, p.y), Vector3.down, 30f))
+            {
+                var c = hit.collider;
+                if (c == null || c.isTrigger || hit.point.y <= y) continue;
+                if (slab != null && c.transform.IsChildOf(slab.transform)) continue;
+                if (skirt != null && c.transform.IsChildOf(skirt.transform)) continue;
+                int found;
+                if (c.transform.IsChildOf(house.transform)) found = 2;
+                else if (fill != null && c.transform.IsChildOf(fill.transform)) found = 1;
+                else if (terrain != null && c.transform.IsChildOf(terrain.transform)) found = 1;
+                else continue;
+                y = hit.point.y;
+                kind = found;
+            }
+            return kind;
+        }
+
+        static Vector2 Miter(Vector2 a, Vector2 b)
+        {
+            var m = (a + b).normalized;
+            return m / Mathf.Max(Vector2.Dot(m, a), 0.5f);
+        }
+
+        static List<Vector2> Hull(List<Vector2> points)
+        {
+            points.Sort((p, q) => p.x != q.x ? p.x.CompareTo(q.x) : p.y.CompareTo(q.y));
+            var hull = new List<Vector2>();
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var start = hull.Count;
+                for (int i = 0; i < points.Count; i++)
+                {
+                    var p = pass == 0 ? points[i] : points[points.Count - 1 - i];
+                    while (hull.Count >= start + 2 && Cross(hull[hull.Count - 2], hull[hull.Count - 1], p) <= 0f) hull.RemoveAt(hull.Count - 1);
+                    hull.Add(p);
+                }
+                hull.RemoveAt(hull.Count - 1);
+            }
+            return hull;
+        }
+
+        static float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 
         internal static Material MaterialAt(Renderer renderer, MeshCollider collider, int triangle, Dictionary<MeshCollider, int[]> starts)
         {
@@ -517,6 +671,8 @@ namespace MscDuo.Duplication
             slab = null;
             if (fill != null) Object.DestroyImmediate(fill);
             fill = null;
+            if (skirt != null) Object.DestroyImmediate(skirt);
+            skirt = null;
             foreach (var pair in cutMeshes) if (pair.Key != null) pair.Key.sharedMesh = pair.Value;
             foreach (var pair in cutColliders)
             {
