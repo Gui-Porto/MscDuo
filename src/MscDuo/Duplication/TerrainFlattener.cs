@@ -12,7 +12,7 @@ namespace MscDuo.Duplication
             "MAP/MESH/TERRAIN_OBJ/Grass2",
         };
 
-        const float PivotAboveGround = 1.19f;
+        const float PivotAboveGround = 0.96f;
         const float Sink = 0.08f;
         const float FlatMargin = 3f;
         const float BlendWidth = 12f;
@@ -38,6 +38,7 @@ namespace MscDuo.Duplication
             var top = house.transform.position.y + PitProbe;
             var pit = FindPit(house, toHouse, local, groundY, top);
             int moved = 0, flat = 0, meshes = 0, nearRoad = 0, cut = 0, uncut = 0;
+            var shifts = new Dictionary<long, float>();
 
             foreach (var path in TerrainPaths)
             {
@@ -75,6 +76,7 @@ namespace MscDuo.Duplication
                     }
                     var y = Mathf.Lerp(world.y, groundY, t);
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
+                    shifts[Key(world)] = y - world.y;
                     world.y = y;
                     vertices[i] = toMesh.MultiplyPoint3x4(world);
                     moved++;
@@ -103,8 +105,9 @@ namespace MscDuo.Duplication
             }
 
             var roadCut = CutRoad(house, toHouse, local);
+            var followed = FollowRoads(shifts);
             var hedges = SettleHedges(house);
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra ({roadObjects} malhas): {roadCut} triângulos tirados de dentro da casa e da extensão; cerca viva: {hedges} pedaços assentados no chão.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra ({roadObjects} malhas): {roadCut} triângulos tirados de dentro da casa e da extensão, {followed} pontos de estrada acompanhando o terreno; cerca viva: {hedges} pedaços assentados no chão.");
             ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} pedaços abertos ({uncut} mantidos).");
         }
 
@@ -166,6 +169,58 @@ namespace MscDuo.Duplication
             return removed;
         }
 
+        static long Key(Vector3 world) => ((long)Mathf.RoundToInt(world.x * 20f) << 32) ^ (uint)Mathf.RoundToInt(world.z * 20f);
+
+        static int FollowRoads(Dictionary<long, float> shifts)
+        {
+            var root = GameObject.Find(TerrainRoot);
+            if (root == null || shifts.Count == 0) return 0;
+            var followed = 0;
+            foreach (Transform child in root.transform)
+            {
+                if (System.Array.IndexOf(RoadNames, child.name) < 0) continue;
+                var filter = child.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null) continue;
+                var source = filter.sharedMesh;
+                Vector3[] vertices;
+                try { vertices = source.vertices; }
+                catch { continue; }
+                var toWorld = child.localToWorldMatrix;
+                var toMesh = child.worldToLocalMatrix;
+                var count = 0;
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    var world = toWorld.MultiplyPoint3x4(vertices[i]);
+                    float shift;
+                    if (!shifts.TryGetValue(Key(world), out shift)) continue;
+                    world.y += shift;
+                    vertices[i] = toMesh.MultiplyPoint3x4(world);
+                    count++;
+                }
+                if (count == 0) continue;
+                var mesh = source;
+                if (!originalMeshes.ContainsKey(filter))
+                {
+                    mesh = Object.Instantiate(source);
+                    mesh.name = source.name + "_nivel";
+                    originalMeshes[filter] = source;
+                    filter.sharedMesh = mesh;
+                }
+                mesh.vertices = vertices;
+                mesh.RecalculateNormals();
+                mesh.RecalculateBounds();
+                var collider = child.GetComponent<MeshCollider>();
+                if (collider != null)
+                {
+                    if (!originalColliders.ContainsKey(collider)) originalColliders[collider] = collider.sharedMesh;
+                    collider.sharedMesh = null;
+                    collider.sharedMesh = mesh;
+                }
+                followed += count;
+            }
+            return followed;
+        }
+
         internal static int SettleHedges(GameObject house)
         {
             var fence = FindDeep(house.transform, "HedgeFence");
@@ -205,7 +260,7 @@ namespace MscDuo.Duplication
                 }
                 if (ground == float.MaxValue) continue;
                 var drop = b.min.y - ground + HedgeSink;
-                if (drop <= 0.01f) continue;
+                if (Mathf.Abs(drop) <= 0.01f) continue;
                 if (!hedgeOrigins.ContainsKey(hedge)) hedgeOrigins[hedge] = hedge.position;
                 hedge.position -= Vector3.up * drop;
                 moved++;
