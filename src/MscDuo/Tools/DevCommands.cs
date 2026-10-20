@@ -18,6 +18,7 @@ namespace MscDuo.Tools
             ConsoleCommand.Add(new DynoProbeCommand());
             ConsoleCommand.Add(new ComputerProbeCommand());
             ConsoleCommand.Add(new DumpCommand());
+            ConsoleCommand.Add(new LookCommand());
             ConsoleCommand.Add(new MapCommand());
             ConsoleCommand.Add(new HouseCommand());
             ConsoleCommand.Add(new TeleportCommand());

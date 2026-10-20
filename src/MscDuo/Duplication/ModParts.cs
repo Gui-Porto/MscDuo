@@ -10,11 +10,13 @@ namespace MscDuo.Duplication
 
         internal static int Removed { get; private set; }
         internal static readonly HashSet<string> Mods = new HashSet<string>();
+        internal static readonly List<string> Names = new List<string>();
 
         internal static void Reset()
         {
             Removed = 0;
             Mods.Clear();
+            Names.Clear();
         }
 
         static string ModOf(MonoBehaviour behaviour)
@@ -38,6 +40,13 @@ namespace MscDuo.Duplication
             return game;
         }
 
+        static string PathOf(Transform t, Transform root)
+        {
+            var path = t.name;
+            while (t.parent != null && t != root) { t = t.parent; path = t.name + "/" + path; }
+            return path;
+        }
+
         internal static void Strip(GameObject root)
         {
             var doomed = new List<GameObject>();
@@ -49,13 +58,18 @@ namespace MscDuo.Duplication
                 Mods.Add(mod);
                 var go = behaviour.gameObject;
                 if (go != root && go.GetComponent<PlayMakerFSM>() == null) doomed.Add(go);
-                else foreign.Add(behaviour);
+                else
+                {
+                    foreign.Add(behaviour);
+                    Names.Add(PathOf(go.transform, root.transform) + " [" + behaviour.GetType().Name + "]");
+                }
             }
             foreach (var behaviour in foreign)
                 if (behaviour != null) Object.DestroyImmediate(behaviour);
             foreach (var go in doomed)
             {
                 if (go == null) continue;
+                Names.Add(PathOf(go.transform, root.transform));
                 go.SetActive(false);
                 Object.DestroyImmediate(go);
                 Removed++;
