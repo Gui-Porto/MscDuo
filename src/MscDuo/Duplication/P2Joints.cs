@@ -17,6 +17,7 @@ namespace MscDuo.Duplication
         int orphans;
         int relinked;
         int sounds;
+        int freed;
 
         internal static void Watch()
         {
@@ -37,12 +38,12 @@ namespace MscDuo.Duplication
             if (SatsumaCloner.Clone == null) { Destroy(gameObject); return; }
             pass++;
             next = pass < Passes.Length ? started + Passes[pass] : Time.time + Interval;
-            var report = pass == 1 ? new StringBuilder() : null;
-            var before = orphans + relinked + sounds;
+            var report = pass <= Passes.Length ? new StringBuilder() : null;
+            var before = orphans + relinked + sounds + freed;
             Sweep(report);
-            if (report != null) Save(report);
-            if (orphans + relinked + sounds > before || pass == 1)
-                ModConsole.Print($"<color=orange>[MSC Duo]</color> juntas da Satsuma 2: {orphans} órfãs removidas, {relinked} religadas da Satsuma 1 para a 2, {sounds} sons presos desligados.");
+            if (report != null) Save(report, pass);
+            if (orphans + relinked + sounds + freed > before || pass == 1)
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> juntas da Satsuma 2: {orphans} duplicadas removidas, {relinked} religadas, {freed} presas ao mundo na carroceria soltas, {sounds} sons presos desligados.");
         }
 
         static IEnumerable<GameObject> Roots()
@@ -67,6 +68,35 @@ namespace MscDuo.Duplication
             return false;
         }
 
+        static bool Settled(GameObject car)
+        {
+            foreach (var fsm in car.GetComponents<PlayMakerFSM>())
+                if (fsm.FsmName == "Setup") return fsm.ActiveStateName == "Lod ON" || fsm.ActiveStateName == "Lod OFF";
+            return false;
+        }
+
+        void RemoveDuplicates<T>(HashSet<Joint> referenced) where T : Joint
+        {
+            var seen = new HashSet<GameObject>();
+            foreach (var root in Roots())
+                foreach (var joint in root.GetComponentsInChildren<T>(true))
+                {
+                    if (joint == null || joint.gameObject == SatsumaCloner.Clone || !seen.Add(joint.gameObject)) continue;
+                    var all = new List<T>(joint.GetComponents<T>());
+                    if (all.Count < 2) continue;
+                    all.Sort((x, y) => (x.connectedBody == null ? 0 : 1).CompareTo(y.connectedBody == null ? 0 : 1));
+                    var left = all.Count;
+                    foreach (var candidate in all)
+                    {
+                        if (left <= 1) break;
+                        if (referenced.Contains(candidate)) continue;
+                        Destroy(candidate);
+                        left--;
+                        orphans++;
+                    }
+                }
+        }
+
         void Sweep(StringBuilder report)
         {
             var referenced = new HashSet<Joint>();
@@ -79,19 +109,35 @@ namespace MscDuo.Duplication
                     }
 
             var map = SatsumaCloner.Map;
+            var reverse = new Dictionary<GameObject, GameObject>();
+            if (map != null)
+                foreach (var pair in map)
+                {
+                    var original = pair.Key as GameObject;
+                    var copy = pair.Value as GameObject;
+                    if (original != null && copy != null) reverse[copy] = original;
+                }
+
+            var clone = SatsumaCloner.Clone;
+            if (Settled(clone))
+                foreach (var joint in clone.GetComponents<FixedJoint>())
+                {
+                    Destroy(joint);
+                    freed++;
+                }
+
             foreach (var root in Roots())
                 foreach (var joint in root.GetComponentsInChildren<Joint>(true))
                 {
-                    if (joint == null) continue;
+                    if (joint == null || joint.gameObject == clone) continue;
                     var body = joint.connectedBody;
                     var p1 = body != null && Inside(body.transform, OriginalRoots());
-                    var siblings = joint.GetComponents<FixedJoint>().Length;
                     var used = referenced.Contains(joint);
-                    report?.AppendLine($"{PathOf(joint.transform)} | {joint.GetType().Name} | ligada a {(body != null ? PathOf(body.transform) : "mundo")} | {(p1 ? "SATSUMA 1" : "ok")} | referenciada={used} | fixas no objeto={siblings}");
+                    report?.AppendLine($"{PathOf(joint.transform)} | {joint.GetType().Name} | ligada a {(body != null ? PathOf(body.transform) : "mundo")} | {(p1 ? "SATSUMA 1" : "ok")} | referenciada={used} | iguais no objeto={joint.GetComponents(joint.GetType()).Length}");
 
+                    Object mapped;
                     if (p1)
                     {
-                        Object mapped;
                         if (map != null && map.TryGetValue(body, out mapped) && mapped is Rigidbody)
                         {
                             joint.connectedBody = (Rigidbody)mapped;
@@ -99,24 +145,21 @@ namespace MscDuo.Duplication
                         }
                         continue;
                     }
-                }
-
-            var seen = new HashSet<GameObject>();
-            foreach (var root in Roots())
-                foreach (var joint in root.GetComponentsInChildren<FixedJoint>(true))
-                {
-                    if (joint == null || !seen.Add(joint.gameObject)) continue;
-                    var all = joint.GetComponents<FixedJoint>();
-                    var left = all.Length;
-                    foreach (var candidate in all)
+                    if (body != null) continue;
+                    GameObject source;
+                    if (!reverse.TryGetValue(joint.gameObject, out source) || source == null) continue;
+                    foreach (var other in source.GetComponents(joint.GetType()))
                     {
-                        if (left <= 1) break;
-                        if (referenced.Contains(candidate)) continue;
-                        Destroy(candidate);
-                        left--;
-                        orphans++;
+                        var target = ((Joint)other).connectedBody;
+                        if (target == null || map == null || !map.TryGetValue(target, out mapped) || !(mapped is Rigidbody)) continue;
+                        joint.connectedBody = (Rigidbody)mapped;
+                        relinked++;
+                        break;
                     }
                 }
+
+            RemoveDuplicates<FixedJoint>(referenced);
+            RemoveDuplicates<HingeJoint>(referenced);
 
             foreach (var root in Roots())
                 foreach (var audio in root.GetComponentsInChildren<AudioSource>())
@@ -129,13 +172,13 @@ namespace MscDuo.Duplication
                 }
         }
 
-        static void Save(StringBuilder report)
+        static void Save(StringBuilder report, int pass)
         {
             try
             {
                 var folder = Path.Combine(MscDuo.Instance.SettingsFolder, "dumps");
                 Directory.CreateDirectory(folder);
-                File.WriteAllText(Path.Combine(folder, "juntas-p2.txt"), report.ToString());
+                File.WriteAllText(Path.Combine(folder, pass == 1 ? "juntas-p2.txt" : "juntas-p2-depois.txt"), report.ToString());
             }
             catch (IOException) { }
         }
