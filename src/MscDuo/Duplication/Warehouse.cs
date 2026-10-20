@@ -80,14 +80,19 @@ namespace MscDuo.Duplication
                 var materials = new Material[part.Materials.Count];
                 for (int i = 0; i < materials.Length; i++)
                 {
-                    var source = part.Materials[i] == "cascalho" ? gravel : grass;
+                    var source = part.Materials[i] == "cascalho" || part.Materials[i] == "terra" ? gravel : grass;
                     var renderer = source != null ? source.GetComponent<Renderer>() : null;
                     materials[i] = renderer != null ? renderer.sharedMaterial : template;
                 }
                 var go = Create(part, materials, root.transform);
                 var collider = go.AddComponent<MeshCollider>();
                 collider.sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
-                if (part.Materials.Count == 1 && part.Materials[0] == "grama")
+                if (part.Materials.Count == 1 && part.Materials[0] == "terra")
+                {
+                    try { ModConsole.Print($"<color=orange>[MSC Duo]</color> terra entre o pátio e a casa 1: {PatioGround.Skin(go, collider, materials[0], PatioGround.DirtPaths, 1.5f)}."); }
+                    catch (System.Exception e) { ModConsole.Error($"[MSC Duo] terra do pátio falhou: {e}"); }
+                }
+                else if (part.Materials.Count == 1 && part.Materials[0] == "grama")
                 {
                     try { ModConsole.Print($"<color=orange>[MSC Duo]</color> {PatioGround.Skin(go, collider, materials[0])}."); }
                     catch (System.Exception e) { ModConsole.Error($"[MSC Duo] grama do pátio falhou: {e}"); }

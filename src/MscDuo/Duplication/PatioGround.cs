@@ -6,6 +6,7 @@ namespace MscDuo.Duplication
     internal static class PatioGround
     {
         static readonly string[] TerrainPaths = { "MAP/MESH/TERRAIN_OBJ/Grass1", "MAP/MESH/TERRAIN_OBJ/Grass2" };
+        internal static readonly string[] DirtPaths = { "MAP/MESH/TERRAIN_OBJ/Gravel" };
 
         const float Left = -1f;
         const float Right = 25f;
@@ -15,7 +16,7 @@ namespace MscDuo.Duplication
         const float Top = -0.02f;
         const float Sink = 0.05f;
 
-        internal static string Skin(GameObject go, MeshCollider collider, Material fallback)
+        internal static string Skin(GameObject go, MeshCollider collider, Material fallback, string[] paths = null, float spread = 0f)
         {
             var filter = go.GetComponent<MeshFilter>();
             var mesh = filter.sharedMesh;
@@ -30,7 +31,7 @@ namespace MscDuo.Duplication
             var cache = new Dictionary<MeshCollider, KeyValuePair<Color[], int[]>>();
             var hasColors = false;
             var terrains = new List<MeshCollider>();
-            foreach (var path in TerrainPaths)
+            foreach (var path in paths ?? TerrainPaths)
             {
                 var terrain = GameObject.Find(path);
                 var c = terrain != null ? terrain.GetComponent<MeshCollider>() : null;
@@ -66,6 +67,19 @@ namespace MscDuo.Duplication
                     break;
                 }
             }
+            if (spread > 0f)
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    var w = go.transform.TransformPoint(vertices[i]);
+                    foreach (var offset in new[] { new Vector3(spread, 0f, 0f), new Vector3(-spread, 0f, 0f), new Vector3(0f, 0f, spread), new Vector3(0f, 0f, -spread) })
+                        foreach (var terrain in terrains)
+                        {
+                            RaycastHit hit;
+                            if (!terrain.Raycast(new Ray(w + offset + Vector3.up * 5f, Vector3.down), out hit, 20f)) continue;
+                            pairs.Add(new KeyValuePair<Vector3, Vector2>(hit.point, hit.textureCoord));
+                            break;
+                        }
+                }
             var map = ApronExtension.Fit(pairs);
             for (int i = 0; i < vertices.Length; i++)
             {
