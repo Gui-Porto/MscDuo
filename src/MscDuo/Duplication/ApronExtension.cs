@@ -218,7 +218,7 @@ namespace MscDuo.Duplication
             return $"aterro com {vertices.Length} pontos ({pairs.Count} alinhados à grama de {(best != null ? best.name : "nenhum terreno")}, material {(chosen != null ? chosen.name : "nenhum")} de {(best != null ? best.sharedMaterials.Length : 0)})";
         }
 
-        static Material MaterialAt(Renderer renderer, MeshCollider collider, int triangle, Dictionary<MeshCollider, int[]> starts)
+        internal static Material MaterialAt(Renderer renderer, MeshCollider collider, int triangle, Dictionary<MeshCollider, int[]> starts)
         {
             var materials = renderer.sharedMaterials;
             if (materials.Length <= 1 || triangle < 0) return renderer.sharedMaterial;
@@ -235,7 +235,7 @@ namespace MscDuo.Duplication
             return renderer.sharedMaterial;
         }
 
-        static Color Nearest(Vector3[] vertices, bool[] found, Color[] colors, int i)
+        internal static Color Nearest(Vector3[] vertices, bool[] found, Color[] colors, int i)
         {
             var best = float.MaxValue;
             var color = Color.white;
@@ -248,7 +248,7 @@ namespace MscDuo.Duplication
             return color;
         }
 
-        static Vector3[] Fit(List<KeyValuePair<Vector3, Vector2>> pairs)
+        internal static Vector3[] Fit(List<KeyValuePair<Vector3, Vector2>> pairs)
         {
             if (pairs.Count < 3) return null;
             var m = new float[3, 3];
