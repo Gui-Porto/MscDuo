@@ -32,14 +32,12 @@ namespace MscDuo.Duplication
             Rug(9.0f, 11.6f, 13.0f, 15.7f);
             FloorLamp(8.65f, 14.9f, lights);
             Clock(11f, Back, 2.25f);
-            Lockers(14.0f, 4);
-            Bench(14.2f, 16.6f, 12.4f);
-            Board(16.6f, 17.9f);
             Pallets();
             var pieces = 0;
             pieces += Charger();
             pieces += Jack();
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> térreo: decoração montada, {pieces} de 2 peças do jogo (carregador e macaco).");
+            pieces += ToolCart();
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> térreo: decoração montada, {pieces} de 3 peças do jogo (carregador, macaco e carrinho de ferramentas).");
         }
 
         static Vector3 L(float x, float y, float z) => new Vector3(x, z, y);
@@ -326,8 +324,14 @@ namespace MscDuo.Duplication
         {
             var start = frame.TransformPoint(L(2.3f, 15.3f, 2.0f));
             var surface = (float?)null;
+            var floor = frame.position.y;
             foreach (var hit in Physics.RaycastAll(start, Vector3.down, 2.5f))
-                if (hit.collider != null && !hit.collider.isTrigger && (surface == null || hit.point.y > surface.Value)) surface = hit.point.y;
+            {
+                if (hit.collider == null || hit.collider.isTrigger) continue;
+                var h = hit.point.y - floor;
+                if (h < 0.6f || h > 1.15f) continue;
+                if (surface == null || hit.point.y > surface.Value) surface = hit.point.y;
+            }
             if (surface == null || surface.Value < frame.position.y + 0.3f) return 0;
             var copies = WarehouseRooms.Fixture(new[] { "YARD/Building/Garage/BatteryCharger" }, "Carregador", new Vector2(2.3f, Back - 0.15f), new Vector2(0f, -1f), surface.Value);
             return copies != null ? 1 : 0;
@@ -341,7 +345,61 @@ namespace MscDuo.Duplication
             var floor = WarehouseRooms.Floor(source.transform, list);
             var target = frame.TransformPoint(L(3.95f, 11.3f, 0f));
             var copies = WarehouseRooms.Place(list, source.transform, floor, Quaternion.identity, target, "Macaco");
-            return copies != null && copies.Count > 0 ? 1 : 0;
+            if (copies == null || copies.Count == 0) return 0;
+            SettleOnFloor(copies);
+            return 1;
+        }
+
+        static int ToolCart()
+        {
+            var source = DynoCloner.Find("REPAIRSHOP/LOD/ToolCart");
+            if (source == null) return 0;
+            var drawer = source.transform.Find("Drawer");
+            var front = drawer != null ? -drawer.up : source.transform.forward;
+            front.y = 0f;
+            if (front.sqrMagnitude < 1e-4f) front = source.transform.forward;
+            var wanted = frame.TransformDirection(L(0f, -1f, 0f));
+            var turn = Quaternion.FromToRotation(front.normalized, wanted);
+            var list = new List<GameObject> { source };
+            var floor = WarehouseRooms.Floor(source.transform, list);
+            var copies = WarehouseRooms.Place(list, source.transform, floor, turn, frame.TransformPoint(L(7.0f, 15.0f, 0f)), "Carrinho");
+            if (copies == null || copies.Count == 0) return 0;
+            SettleOnFloor(copies);
+            AgainstBackWall(copies, Back - 0.03f);
+            return 1;
+        }
+
+        static Bounds? ColliderBounds(List<GameObject> copies)
+        {
+            Bounds? result = null;
+            foreach (var copy in copies)
+                foreach (var r in copy.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!r.enabled || r.isPartOfStaticBatch || r is ParticleRenderer || !r.gameObject.activeInHierarchy) continue;
+                    if (result.HasValue) { var b = result.Value; b.Encapsulate(r.bounds); result = b; }
+                    else result = r.bounds;
+                }
+            return result;
+        }
+
+        static void SettleOnFloor(List<GameObject> copies)
+        {
+            var bounds = ColliderBounds(copies);
+            if (!bounds.HasValue) return;
+            var lift = frame.position.y + 0.005f - bounds.Value.min.y;
+            foreach (var copy in copies) copy.transform.position += Vector3.up * lift;
+        }
+
+        static void AgainstBackWall(List<GameObject> copies, float wallY)
+        {
+            var bounds = ColliderBounds(copies);
+            if (!bounds.HasValue) return;
+            var b = bounds.Value;
+            var far = float.MinValue;
+            foreach (var corner in new[] { b.min, b.max, new Vector3(b.min.x, b.min.y, b.max.z), new Vector3(b.max.x, b.min.y, b.min.z) })
+                far = Mathf.Max(far, Warehouse.ToLocal(corner).y);
+            var shift = Warehouse.Local(0f, wallY - far, 0f) - Warehouse.Local(0f, 0f, 0f);
+            foreach (var copy in copies) copy.transform.position += shift;
         }
     }
 }
