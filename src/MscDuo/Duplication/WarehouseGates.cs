@@ -62,6 +62,7 @@ namespace MscDuo.Duplication
                 if (gates[i] != null) sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "portao{0} = {1:0.0000}", i + 1, gates[i].Position));
             sb.AppendLine("luz_externa = " + (int)WarehouseExterior.Mode);
             foreach (var key in WarehouseLife.Remembered) sb.AppendLine(key + " = " + WarehouseToggles.Get(key));
+            WarehouseCart.Save(sb);
             File.WriteAllText(SavePath, sb.ToString());
         }
 

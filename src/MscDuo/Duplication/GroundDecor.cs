@@ -399,6 +399,7 @@ namespace MscDuo.Duplication
             if (copies == null || copies.Count == 0) return 0;
             SettleOnFloor(copies);
             AgainstBackWall(copies, Back - 0.03f);
+            WarehouseCart.Setup(copies[0], root.GetComponent<GateInput>() ?? root.gameObject.AddComponent<GateInput>());
             return 1;
         }
 

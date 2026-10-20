@@ -76,6 +76,11 @@ namespace MscDuo.Net
                 if (!session.Connected || session.transport is LoopbackTransport) return;
                 session.Broadcast(MessageType.ItemLinked, w => { w.Write(mine); w.Write(theirs); }, Channel.Reliable);
             });
+            WarehouseCart.Bind(() =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.CartState, WarehouseCart.Write, Channel.Unreliable);
+            });
             WarehouseToggles.Bind((key, value) =>
             {
                 if (!session.Connected || session.transport is LoopbackTransport) return;
@@ -104,6 +109,7 @@ namespace MscDuo.Net
             LiftCloner.Bind(null);
             WarehouseToggles.Bind(null);
             ItemPurchases.Bind(null, null);
+            WarehouseCart.Bind(null);
             if (!Current.transport.IsHost)
             {
                 PlayerContext.SaveActive();
@@ -293,6 +299,9 @@ namespace MscDuo.Net
                     case MessageType.ItemLinked:
                         ItemPurchases.ReadLink(reader);
                         break;
+                    case MessageType.CartState:
+                        WarehouseCart.Read(reader);
+                        break;
                     case MessageType.Toggle:
                         WarehouseToggles.Read(reader);
                         break;
@@ -308,6 +317,7 @@ namespace MscDuo.Net
                                 if (gate != null) Send(packet.From, MessageType.GateState, gate.Write, Channel.Reliable);
                         if (transport.IsHost) Send(packet.From, MessageType.ExteriorLight, WarehouseExterior.Write, Channel.Reliable);
                         if (transport.IsHost) Send(packet.From, MessageType.LiftState, LiftCloner.Write, Channel.Reliable);
+                        if (transport.IsHost) Send(packet.From, MessageType.CartState, WarehouseCart.Write, Channel.Reliable);
                         if (transport.IsHost)
                         {
                             var requester = packet.From;

@@ -28,11 +28,12 @@ namespace MscDuo.Net
         SaveChunk = 27,
         ItemBought = 28,
         ItemLinked = 29,
+        CartState = 30,
     }
 
     internal static class Protocol
     {
-        internal const ushort Version = 19;
+        internal const ushort Version = 20;
     }
 
     internal struct PlayerStateMessage
