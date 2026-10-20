@@ -11,6 +11,7 @@ namespace MscDuo.Sync
         static readonly string[] Files = { "defaultES2File.txt", "items.txt", "graveyard.txt", "trophies.txt", "MscDuo_P2.txt", "meshsave.txt", Duplication.VehicleCloner.HomeFlag, Duplication.VehicleCloner.CopiesFlag, Duplication.WarehouseGates.SaveFile };
         const string BackupName = "save_original";
         const string MarkerName = "arquivos.txt";
+        const string ModsBackup = "mods";
         const float RetrySeconds = 5f;
 
         enum Stage { Idle, Requesting, Ready, Failed }
@@ -110,10 +111,11 @@ namespace MscDuo.Sync
             var present = new List<string>();
             foreach (var name in Files)
                 if (File.Exists(Path.Combine(SaveFolder, name))) present.Add(name);
+            present.AddRange(ExtraVehicles.Present());
             w.Write(present.Count);
             foreach (var name in present)
             {
-                var bytes = File.ReadAllBytes(Path.Combine(SaveFolder, name));
+                var bytes = File.ReadAllBytes(LivePath(name));
                 w.Write(name);
                 w.Write(bytes.Length);
                 w.Write(bytes);
@@ -129,7 +131,7 @@ namespace MscDuo.Sync
             {
                 var name = r.ReadString();
                 var bytes = r.ReadBytes(r.ReadInt32());
-                if (Array.IndexOf(Files, name) >= 0) received[name] = bytes;
+                if (Known(name)) received[name] = bytes;
             }
             if (stage != Stage.Requesting) return;
             if (!InMenu)
@@ -153,7 +155,23 @@ namespace MscDuo.Sync
                     var path = Path.Combine(SaveFolder, name);
                     if (File.Exists(path)) File.Delete(path);
                 }
-                foreach (var pair in received) File.WriteAllBytes(Path.Combine(SaveFolder, pair.Key), pair.Value);
+                var folders = new List<string>();
+                foreach (var name in received.Keys)
+                {
+                    string folder, file;
+                    if (ExtraVehicles.Parse(name, out folder, out file) && !folders.Contains(folder)) folders.Add(folder);
+                }
+                foreach (var name in new List<string>(ExtraVehicles.Present()))
+                {
+                    string folder, file;
+                    if (ExtraVehicles.Parse(name, out folder, out file) && folders.Contains(folder)) File.Delete(LivePath(name));
+                }
+                foreach (var pair in received)
+                {
+                    var path = LivePath(pair.Key);
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    File.WriteAllBytes(path, pair.Value);
+                }
                 stage = Stage.Ready;
                 message = "Save do anfitrião recebido. Clique em CONTINUE para entrar no mundo dele.\nO seu save volta sozinho quando você sair para o menu.";
                 ModConsole.Print("<color=orange>[MSC Duo]</color> save do anfitrião instalado; o seu foi guardado e volta quando você sair para o menu.");
@@ -179,7 +197,34 @@ namespace MscDuo.Sync
                 File.Copy(source, Path.Combine(BackupFolder, name), true);
                 present.Add(name);
             }
+            foreach (var name in ExtraVehicles.Present())
+            {
+                var target = BackupPath(name);
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.Copy(LivePath(name), target, true);
+                present.Add(name);
+            }
             File.WriteAllLines(Marker, present.ToArray());
+        }
+
+        static bool Known(string name)
+        {
+            string folder, file;
+            return Array.IndexOf(Files, name) >= 0 || ExtraVehicles.Parse(name, out folder, out file);
+        }
+
+        static string LivePath(string name)
+        {
+            string folder, file;
+            return ExtraVehicles.Parse(name, out folder, out file) ? ExtraVehicles.PathOf(folder, file) : Path.Combine(SaveFolder, name);
+        }
+
+        static string BackupPath(string name)
+        {
+            string folder, file;
+            return ExtraVehicles.Parse(name, out folder, out file)
+                ? Path.Combine(Path.Combine(Path.Combine(BackupFolder, ModsBackup), folder), file)
+                : Path.Combine(BackupFolder, name);
         }
 
         internal static void Restore()
@@ -194,10 +239,13 @@ namespace MscDuo.Sync
                     var path = Path.Combine(SaveFolder, name);
                     if (File.Exists(path)) File.Delete(path);
                 }
+                ExtraVehicles.Clear();
                 foreach (var name in File.ReadAllLines(Marker))
                 {
-                    if (Array.IndexOf(Files, name) < 0) continue;
-                    File.Copy(Path.Combine(BackupFolder, name), Path.Combine(SaveFolder, name), true);
+                    if (!Known(name)) continue;
+                    var target = LivePath(name);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target));
+                    File.Copy(BackupPath(name), target, true);
                 }
                 Directory.Delete(BackupFolder, true);
                 ModConsole.Print("<color=orange>[MSC Duo]</color> o seu save original foi restaurado.");
