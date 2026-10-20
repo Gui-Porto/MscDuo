@@ -32,14 +32,14 @@ namespace MscDuo.Duplication
             go.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
             frame = go.transform;
 
-            Planks(13.9f, 13.0f, 17.95f, Back);
+            Planks(13.9f, 12.3f, 17.95f, Back);
             Cabinets(14.1f, 16.9f, 15.25f);
             BackShelves(14.1f, 16.9f);
             Neon("BAR", 15.5f, 2.2f, lights);
-            Counter(14.1f, 16.6f, 13.9f, 14.45f);
-            Tap(15.0f, 14.2f);
-            foreach (var x in new[] { 14.5f, 15.35f, 16.2f }) Stool(x, 13.45f);
-            foreach (var x in new[] { 14.6f, 15.35f, 16.1f }) Pendant(x, 14.15f, lights);
+            Counter(14.1f, 16.6f, 13.3f, 13.85f);
+            Tap(15.0f, 13.6f);
+            foreach (var x in new[] { 14.5f, 15.35f, 16.2f }) Stool(x, 12.75f);
+            foreach (var x in new[] { 14.6f, 15.35f, 16.1f }) Pendant(x, 13.55f, lights);
             var fridge = Fridge(17.45f);
             ModConsole.Print($"<color=orange>[MSC Duo]</color> bar: montado, geladeira da cozinha {(fridge ? "ok" : "não encontrada")}, som do armário {(openClip != null ? "ok" : "não encontrado")}.");
         }

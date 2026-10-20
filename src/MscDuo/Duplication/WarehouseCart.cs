@@ -80,7 +80,7 @@ namespace MscDuo.Duplication
                     if (open == null || open.Value != (v != 0)) fsm.SendEvent(OpenEvent);
                 });
                 if (collider != null)
-                    input.Buttons.Add(new GateButton { Collider = collider, Cap = drawer, Click = () => WarehouseToggles.Set(gaveta, WarehouseToggles.Get(gaveta) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(gaveta) == 0 ? "Abrir gaveta" : "Fechar gaveta" });
+                    input.Buttons.Add(new GateButton { Collider = collider, Cap = drawer, Priority = 1, Click = () => WarehouseToggles.Set(gaveta, WarehouseToggles.Get(gaveta) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(gaveta) == 0 ? "Abrir gaveta" : "Fechar gaveta" });
             }
             Collider body = null;
             foreach (var c in root.GetComponentsInChildren<Collider>(true))

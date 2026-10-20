@@ -426,6 +426,7 @@ namespace MscDuo.Duplication
         internal GateController Gate;
         internal int Command;
         internal string Label;
+        internal int Priority;
         internal Action Click;
         internal Func<string> Text;
         internal float PressedAt = -10f;
@@ -463,21 +464,41 @@ namespace MscDuo.Duplication
             var cam = Camera.main;
             if (cam != null)
             {
-                Collider nearest = null;
+                var hits = Physics.RaycastAll(cam.transform.position, cam.transform.forward, Reach);
                 var best = float.MaxValue;
-                foreach (var hit in Physics.RaycastAll(cam.transform.position, cam.transform.forward, Reach))
+                foreach (var hit in hits)
                 {
-                    if (hit.collider == null || hit.collider.isTrigger || hit.collider.transform.root.name == "PLAYER") continue;
-                    if (hit.distance < best) { best = hit.distance; nearest = hit.collider; }
+                    if (hit.collider == null || hit.collider.transform.root.name == "PLAYER") continue;
+                    if (hit.collider.isTrigger && Match(hit.collider) == null) continue;
+                    if (hit.distance < best) best = hit.distance;
                 }
-                if (nearest != null)
-                    foreach (var b in Buttons)
-                        if (b.Collider == nearest) { found = b; break; }
+                var rank = int.MinValue;
+                var nearest = float.MaxValue;
+                foreach (var hit in hits)
+                {
+                    if (hit.collider == null || hit.distance > best + 0.3f) continue;
+                    var b = Match(hit.collider);
+                    if (b == null) continue;
+                    if (hit.distance > best + 0.01f && b.Priority <= 0) continue;
+                    if (b.Priority > rank || b.Priority == rank && hit.distance < nearest)
+                    {
+                        rank = b.Priority;
+                        nearest = hit.distance;
+                        found = b;
+                    }
+                }
             }
             Hover(found);
             if (found != null && Input.GetMouseButtonDown(0)) found.Press();
             var now = Time.time;
             foreach (var b in Buttons) b.Animate(now);
+        }
+
+        GateButton Match(Collider collider)
+        {
+            foreach (var b in Buttons)
+                if (b.Collider == collider) return b;
+            return null;
         }
 
         void Hover(GateButton found)
