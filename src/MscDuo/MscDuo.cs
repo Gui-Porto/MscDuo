@@ -40,7 +40,7 @@ namespace MscDuo
             dumpKey = Keybind.Add("dump", "Exportar YARD, Satsuma e globais", KeyCode.F8);
             WakeKey = Keybind.Add("wake", "Levantar da cama enquanto espera o outro jogador", KeyCode.F);
             adminKey = Keybind.Add("admin", "Abrir o painel de admin", KeyCode.F10);
-            GateKey = Keybind.Add("portao", "Controle remoto do portão do galpão (o mais perto)", KeyCode.G);
+            GateKey = Keybind.Add("portao", "Controle remoto do portão do galpão (o mais perto)", KeyCode.J);
         }
 
         void OnMenuLoad()
