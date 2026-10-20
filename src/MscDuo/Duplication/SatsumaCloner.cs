@@ -131,6 +131,7 @@ namespace MscDuo.Duplication
             if (ModParts.Mods.Count > 0)
                 ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2 sem peças de mods: {ModParts.Removed} objetos tirados ({string.Join(", ", new List<string>(ModParts.Mods).ToArray())}): {string.Join("; ", ModParts.Names.ToArray())}.");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
+            P2Joints.Watch();
         }
 
         const float SeedReach = 30f;
