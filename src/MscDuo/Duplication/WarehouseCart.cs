@@ -82,9 +82,10 @@ namespace MscDuo.Duplication
                 if (collider != null)
                     input.Buttons.Add(new GateButton { Collider = collider, Cap = drawer, Priority = 1, Click = () => WarehouseToggles.Set(gaveta, WarehouseToggles.Get(gaveta) == 0 ? 1 : 0), Text = () => WarehouseToggles.Get(gaveta) == 0 ? "Abrir gaveta" : "Fechar gaveta" });
             }
-            Collider body = null;
+            Shell(root, drawer);
+            var bodies = new List<Collider>();
             foreach (var c in root.GetComponentsInChildren<Collider>(true))
-                if (!c.isTrigger && (drawer == null || !c.transform.IsChildOf(drawer))) { body = c; break; }
+                if (!c.isTrigger && (drawer == null || !c.transform.IsChildOf(drawer))) bodies.Add(c);
             foreach (var rb in root.GetComponentsInChildren<Rigidbody>(true)) rb.isKinematic = true;
             var cart = root.AddComponent<CartPush>();
             cart.Index = index;
@@ -96,9 +97,73 @@ namespace MscDuo.Duplication
                 root.transform.position = Warehouse.Local(x, y, h);
                 root.transform.rotation = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Inverse(Quaternion.Euler(0f, root.transform.eulerAngles.y, 0f)) * root.transform.rotation;
             }
-            if (body != null)
+            foreach (var body in bodies)
                 input.Buttons.Add(new GateButton { Collider = body, Cap = root.transform, Click = cart.Grab, Text = () => "Empurrar carrinho (segure)" });
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> carrinho de ferramentas {index + 1}: gaveta {(use != null ? "ok" : "não encontrada")}, empurrar {(body != null ? "ok" : "sem colisão")}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> carrinho de ferramentas {index + 1}: gaveta {(use != null ? "ok" : "não encontrada")}, empurrar com {bodies.Count} colisões.");
+        }
+
+        static Bounds? Bounds(Transform root, Transform space, Transform include, Transform exclude)
+        {
+            var found = false;
+            Vector3 min = Vector3.one * float.MaxValue, max = Vector3.one * float.MinValue;
+            foreach (var r in root.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (r.sharedMesh == null || !r.gameObject.activeInHierarchy) continue;
+                if (include != null && !r.transform.IsChildOf(include)) continue;
+                if (exclude != null && r.transform.IsChildOf(exclude)) continue;
+                var renderer = r.GetComponent<Renderer>();
+                if (renderer == null || !renderer.enabled) continue;
+                var lb = r.sharedMesh.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = new Vector3((i & 1) == 0 ? lb.min.x : lb.max.x, (i & 2) == 0 ? lb.min.y : lb.max.y, (i & 4) == 0 ? lb.min.z : lb.max.z);
+                    var p = space.InverseTransformPoint(r.transform.TransformPoint(corner));
+                    min = Vector3.Min(min, p);
+                    max = Vector3.Max(max, p);
+                    found = true;
+                }
+            }
+            if (!found) return null;
+            var b = new Bounds();
+            b.SetMinMax(min, max);
+            return b;
+        }
+
+        static void Shell(GameObject root, Transform drawer)
+        {
+            const float wall = 0.02f;
+            var shell = new GameObject("Casco");
+            shell.transform.parent = root.transform;
+            shell.transform.localPosition = Vector3.zero;
+            var forward = drawer != null ? drawer.up : root.transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 1e-4f) forward = Vector3.forward;
+            shell.transform.rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
+            var body = Bounds(root.transform, shell.transform, null, drawer);
+            if (!body.HasValue) return;
+            var min = body.Value.min;
+            var max = body.Value.max;
+            var bottom = min.y + 0.1f;
+            Add(shell, new Vector3(min.x, bottom, min.z), new Vector3(min.x + wall, max.y, max.z));
+            Add(shell, new Vector3(max.x - wall, bottom, min.z), new Vector3(max.x, max.y, max.z));
+            Add(shell, new Vector3(min.x, bottom, max.z - wall), new Vector3(max.x, max.y, max.z));
+            Add(shell, new Vector3(min.x, max.y - wall, min.z), new Vector3(max.x, max.y, max.z));
+            var slot = drawer != null ? Bounds(root.transform, shell.transform, drawer, null) : null;
+            if (!slot.HasValue)
+            {
+                Add(shell, new Vector3(min.x, bottom, min.z), new Vector3(max.x, max.y, min.z + wall));
+                return;
+            }
+            var s = slot.Value;
+            if (s.min.y > bottom + 0.01f) Add(shell, new Vector3(min.x, bottom, min.z), new Vector3(max.x, s.min.y, min.z + wall));
+            if (s.max.y < max.y - 0.01f) Add(shell, new Vector3(min.x, s.max.y, min.z), new Vector3(max.x, max.y, min.z + wall));
+        }
+
+        static void Add(GameObject shell, Vector3 a, Vector3 b)
+        {
+            var box = shell.AddComponent<BoxCollider>();
+            box.center = (a + b) / 2f;
+            box.size = new Vector3(Mathf.Abs(b.x - a.x), Mathf.Abs(b.y - a.y), Mathf.Abs(b.z - a.z));
         }
 
         internal static void Notify(int index)
