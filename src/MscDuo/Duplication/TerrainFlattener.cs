@@ -25,6 +25,8 @@ namespace MscDuo.Duplication
 
         static readonly Dictionary<Transform, Vector3> hedgeOrigins = new Dictionary<Transform, Vector3>();
         static readonly List<GameObject> hiddenHedges = new List<GameObject>();
+        static readonly List<Renderer> hiddenRoads = new List<Renderer>();
+        static readonly List<GameObject> leveledRoads = new List<GameObject>();
         static readonly Dictionary<MeshFilter, Mesh> originalMeshes = new Dictionary<MeshFilter, Mesh>();
         static readonly Dictionary<MeshCollider, Mesh> originalColliders = new Dictionary<MeshCollider, Mesh>();
 
@@ -196,75 +198,110 @@ namespace MscDuo.Duplication
             return false;
         }
 
-        static Dictionary<MeshFilter, float[]> RoadOffsets(Matrix4x4 toHouse, Bounds local)
+        class RoadLevel
         {
-            var offsets = new Dictionary<MeshFilter, float[]>();
-            foreach (var road in Roads())
-            {
-                var filter = road.GetComponent<MeshFilter>();
-                if (filter == null || filter.sharedMesh == null) continue;
-                Vector3[] vertices;
-                try { vertices = filter.sharedMesh.vertices; }
-                catch { continue; }
-                var toWorld = road.localToWorldMatrix;
-                var list = new float[vertices.Length];
-                var any = false;
-                for (int i = 0; i < vertices.Length; i++)
-                {
-                    list[i] = float.NaN;
-                    var world = toWorld.MultiplyPoint3x4(vertices[i]);
-                    var h = toHouse.MultiplyPoint3x4(world);
-                    var dx = Mathf.Max(0f, Mathf.Max(local.min.x - h.x, h.x - local.max.x));
-                    var dz = Mathf.Max(0f, Mathf.Max(local.min.z - h.z, h.z - local.max.z));
-                    if (Mathf.Sqrt(dx * dx + dz * dz) >= FlatMargin + BlendWidth) continue;
-                    float ground;
-                    if (!TerrainHeight(world, out ground)) continue;
-                    list[i] = world.y - ground;
-                    any = true;
-                }
-                if (any) offsets[filter] = list;
-            }
-            return offsets;
+            internal Transform Road;
+            internal Mesh Mesh;
+            internal bool Batched;
+            internal float[] Offsets;
         }
 
-        static int FollowRoads(Dictionary<MeshFilter, float[]> offsets)
+        static List<RoadLevel> RoadOffsets(Matrix4x4 toHouse, Bounds local)
+        {
+            var result = new List<RoadLevel>();
+            using (var extractor = new StaticBatchExtractor())
+                foreach (var road in Roads())
+                {
+                    var filter = road.GetComponent<MeshFilter>();
+                    var renderer = road.GetComponent<Renderer>();
+                    if (filter == null || filter.sharedMesh == null) continue;
+                    var batched = renderer != null && renderer.isPartOfStaticBatch;
+                    var mesh = batched ? extractor.Extract(renderer, filter.sharedMesh) : filter.sharedMesh;
+                    if (mesh == null) continue;
+                    Vector3[] vertices;
+                    try { vertices = mesh.vertices; }
+                    catch { continue; }
+                    var toWorld = road.localToWorldMatrix;
+                    var offsets = new float[vertices.Length];
+                    var any = false;
+                    for (int i = 0; i < vertices.Length; i++)
+                    {
+                        offsets[i] = float.NaN;
+                        var world = toWorld.MultiplyPoint3x4(vertices[i]);
+                        var h = toHouse.MultiplyPoint3x4(world);
+                        var dx = Mathf.Max(0f, Mathf.Max(local.min.x - h.x, h.x - local.max.x));
+                        var dz = Mathf.Max(0f, Mathf.Max(local.min.z - h.z, h.z - local.max.z));
+                        if (Mathf.Sqrt(dx * dx + dz * dz) >= FlatMargin + BlendWidth) continue;
+                        float ground;
+                        if (!TerrainHeight(world, out ground)) continue;
+                        offsets[i] = world.y - ground;
+                        any = true;
+                    }
+                    if (any) result.Add(new RoadLevel { Road = road, Mesh = mesh, Batched = batched, Offsets = offsets });
+                }
+            return result;
+        }
+
+        static int FollowRoads(List<RoadLevel> roads)
         {
             var followed = 0;
-            foreach (var pair in offsets)
+            foreach (var level in roads)
             {
-                var filter = pair.Key;
-                if (filter == null || filter.sharedMesh == null) continue;
-                var source = filter.sharedMesh;
-                var vertices = source.vertices;
-                if (vertices.Length != pair.Value.Length) continue;
-                var toWorld = filter.transform.localToWorldMatrix;
-                var toMesh = filter.transform.worldToLocalMatrix;
+                var road = level.Road;
+                var filter = road.GetComponent<MeshFilter>();
+                if (!level.Batched && filter.sharedMesh != level.Mesh) level.Mesh = filter.sharedMesh;
+                var vertices = level.Mesh.vertices;
+                if (vertices.Length != level.Offsets.Length) continue;
+                var toWorld = road.localToWorldMatrix;
+                var toMesh = road.worldToLocalMatrix;
                 var count = 0;
                 for (int i = 0; i < vertices.Length; i++)
                 {
-                    if (float.IsNaN(pair.Value[i])) continue;
+                    if (float.IsNaN(level.Offsets[i])) continue;
                     var world = toWorld.MultiplyPoint3x4(vertices[i]);
                     float ground;
                     if (!TerrainHeight(world, out ground)) continue;
-                    var y = ground + pair.Value[i];
+                    var y = ground + level.Offsets[i];
                     if (Mathf.Abs(y - world.y) < 0.001f) continue;
                     world.y = y;
                     vertices[i] = toMesh.MultiplyPoint3x4(world);
                     count++;
                 }
                 if (count == 0) continue;
-                var mesh = source;
-                if (!originalMeshes.ContainsKey(filter))
+                Mesh mesh;
+                if (level.Batched)
                 {
-                    mesh = Object.Instantiate(source);
-                    mesh.name = source.name + "_nivel";
-                    originalMeshes[filter] = source;
+                    mesh = level.Mesh;
+                    var source = road.GetComponent<Renderer>();
+                    var copy = new GameObject(road.name + "_nivel");
+                    copy.layer = road.gameObject.layer;
+                    copy.transform.parent = road;
+                    copy.transform.localPosition = Vector3.zero;
+                    copy.transform.localRotation = Quaternion.identity;
+                    copy.transform.localScale = Vector3.one;
+                    copy.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    var r = copy.AddComponent<MeshRenderer>();
+                    r.sharedMaterials = source.sharedMaterials;
+                    r.shadowCastingMode = source.shadowCastingMode;
+                    r.receiveShadows = source.receiveShadows;
+                    r.lightmapIndex = source.lightmapIndex;
+                    r.lightmapScaleOffset = source.lightmapScaleOffset;
+                    source.enabled = false;
+                    hiddenRoads.Add(source);
+                    leveledRoads.Add(copy);
+                }
+                else if (!originalMeshes.ContainsKey(filter))
+                {
+                    mesh = Object.Instantiate(level.Mesh);
+                    mesh.name = level.Mesh.name + "_nivel";
+                    originalMeshes[filter] = level.Mesh;
                     filter.sharedMesh = mesh;
                 }
+                else mesh = filter.sharedMesh;
                 mesh.vertices = vertices;
                 mesh.RecalculateNormals();
                 mesh.RecalculateBounds();
-                var collider = filter.GetComponent<MeshCollider>();
+                var collider = road.GetComponent<MeshCollider>();
                 if (collider != null)
                 {
                     if (!originalColliders.ContainsKey(collider)) originalColliders[collider] = collider.sharedMesh;
@@ -340,6 +377,10 @@ namespace MscDuo.Duplication
             hedgeOrigins.Clear();
             foreach (var hedge in hiddenHedges) if (hedge != null) hedge.SetActive(true);
             hiddenHedges.Clear();
+            foreach (var road in leveledRoads) if (road != null) Object.DestroyImmediate(road);
+            leveledRoads.Clear();
+            foreach (var road in hiddenRoads) if (road != null) road.enabled = true;
+            hiddenRoads.Clear();
             foreach (var pair in originalMeshes) if (pair.Key != null) pair.Key.sharedMesh = pair.Value;
             foreach (var pair in originalColliders)
             {
