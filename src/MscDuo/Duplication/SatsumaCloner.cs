@@ -82,6 +82,8 @@ namespace MscDuo.Duplication
                 return;
             }
 
+            SeedSave();
+            ModParts.Reset();
             var map = Map = new Dictionary<Object, Object>();
             Original = car1;
             OriginalDatabase = db1;
@@ -126,7 +128,26 @@ namespace MscDuo.Duplication
             }
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, {bodies} juntas apontadas para a Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
+            if (ModParts.Mods.Count > 0)
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2 sem peças de mods: {ModParts.Removed} objetos tirados ({string.Join(", ", new List<string>(ModParts.Mods).ToArray())}).");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
+        }
+
+        static void SeedSave()
+        {
+            var folder = Application.persistentDataPath;
+            var p2 = System.IO.Path.Combine(folder, SaveFile);
+            var game = System.IO.Path.Combine(folder, GameSaveFile);
+            if (System.IO.File.Exists(p2) || !System.IO.File.Exists(game)) return;
+            try
+            {
+                System.IO.File.Copy(game, p2);
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> {SaveFile} não existia; o jogador 2 começa com uma cópia do estado do jogador 1.");
+            }
+            catch (System.Exception e)
+            {
+                ModConsole.Warning($"[MSC Duo] não foi possível criar {SaveFile}: {e.Message}");
+            }
         }
 
         static float SnapToGround()
@@ -175,6 +196,7 @@ namespace MscDuo.Duplication
             var copy = (GameObject)Object.Instantiate(original, position, rotation);
             copy.name = name;
             MapHierarchy(original.transform, copy.transform, map);
+            ModParts.Strip(copy);
             return copy;
         }
 
