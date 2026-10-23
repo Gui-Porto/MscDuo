@@ -68,9 +68,9 @@ namespace MscDuo.Duplication
             setup.ActiveStateName == "Lod ON" || setup.ActiveStateName == "Lod OFF";
 
         internal static void Spawn(GameObject house1, GameObject house2) =>
-            Spawn(house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix, house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation), true);
+            Spawn(house2.transform.localToWorldMatrix * house1.transform.worldToLocalMatrix, house2.transform.rotation * Quaternion.Inverse(house1.transform.rotation), true, house1.transform.position);
 
-        static void Spawn(Matrix4x4 move, Quaternion turn, bool snap)
+        static void Spawn(Matrix4x4 move, Quaternion turn, bool snap, Vector3 home)
         {
 
             var car1 = FindRoot(CarName);
@@ -82,6 +82,8 @@ namespace MscDuo.Duplication
                 return;
             }
 
+            SeedSave(move, turn, home);
+            ModParts.Reset();
             var map = Map = new Dictionary<Object, Object>();
             Original = car1;
             OriginalDatabase = db1;
@@ -98,10 +100,16 @@ namespace MscDuo.Duplication
                 copy.transform.parent = Database.transform;
             }
 
+            var gauges = CloneDashGauges(db1, move, turn, map);
+            Loose.Clear();
+            Loose.AddRange(gauges);
+
             var lift = snap ? SnapToGround() : 0f;
             var locals = Variables = CarLocals();
             int fsms = 0, remapped = 0, saves = 0, failed = 0, separated = 0, confined = 0, bodies = 0;
-            foreach (var root in new[] { Clone, Parts, Database })
+            var roots = new List<GameObject> { Clone, Parts, Database };
+            roots.AddRange(gauges);
+            foreach (var root in roots)
             {
                 foreach (var fsm in root.GetComponentsInChildren<PlayMakerFSM>(true))
                 {
@@ -126,7 +134,102 @@ namespace MscDuo.Duplication
             }
 
             ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {map.Count} objetos clonados, {fsms} FSMs ({failed} com erro), {remapped} referências redirecionadas, {saves} saves em {SaveFile}, {separated} usos de variáveis do carro separados, {confined} avisos restritos à Satsuma 2, {bodies} juntas apontadas para a Satsuma 2, altura ajustada em {lift:0.00} m pela base de '{lowest}'.");
+            if (GaugeNames.Count > 0)
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2 com medidores de painel próprios: {string.Join(", ", GaugeNames.ToArray())} ({gauges.Count} peças soltas copiadas).");
+            if (ModParts.Mods.Count > 0)
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2 sem peças de mods: {ModParts.Removed} objetos tirados ({string.Join(", ", new List<string>(ModParts.Mods).ToArray())}): {string.Join("; ", ModParts.Names.ToArray())}.");
             CurrentVehicle.Setup(car1, parts1, Clone, Parts);
+            P2Joints.Watch();
+        }
+
+        static readonly List<string> GaugeNames = new List<string>();
+        internal static readonly List<GameObject> Loose = new List<GameObject>();
+
+        static List<GameObject> CloneDashGauges(GameObject db1, Matrix4x4 move, Quaternion turn, Dictionary<Object, Object> map)
+        {
+            GaugeNames.Clear();
+            var loose = new List<GameObject>();
+            var orders = db1.transform.Find("DatabaseOrders");
+            if (orders == null) return loose;
+            var container = new GameObject("DatabaseOrders");
+            container.transform.parent = Database.transform;
+            foreach (Transform entry in orders)
+            {
+                var activates = false;
+                var parts = new List<GameObject>();
+                foreach (var fsm in entry.GetComponents<PlayMakerFSM>())
+                {
+                    FsmTools.EnsureLoaded(fsm);
+                    foreach (var variable in fsm.FsmVariables.GameObjectVariables)
+                    {
+                        if (variable.Name.StartsWith("ActivateThis") && variable.Value != null) activates = true;
+                        var target = variable.Value;
+                        if (target == null || map.ContainsKey(target)) continue;
+                        var root = target.transform.root.gameObject;
+                        if (root.name.EndsWith("(Clone)") && !map.ContainsKey(root) && !parts.Contains(root)) parts.Add(root);
+                    }
+                }
+                if (!activates) continue;
+                var copy = CloneRoot(entry.gameObject, entry.name, Matrix4x4.identity, Quaternion.identity, map);
+                copy.transform.parent = container.transform;
+                GaugeNames.Add(entry.name);
+                foreach (var part in parts)
+                    if (!map.ContainsKey(part)) loose.Add(CloneRoot(part, part.name, move, turn, map));
+            }
+            if (GaugeNames.Count == 0) Object.Destroy(container);
+            return loose;
+        }
+
+        const float SeedReach = 30f;
+
+        static void SeedSave(Matrix4x4 move, Quaternion turn, Vector3 home)
+        {
+            var folder = Application.persistentDataPath;
+            var p2 = System.IO.Path.Combine(folder, SaveFile);
+            var game = System.IO.Path.Combine(folder, GameSaveFile);
+            if (System.IO.File.Exists(p2) || !System.IO.File.Exists(game)) return;
+            try
+            {
+                System.IO.File.Copy(game, p2);
+                var moved = MoveSeeded(move, turn, home);
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> {SaveFile} não existia; o jogador 2 começa com uma cópia do estado do jogador 1 ({moved} posições levadas da casa 1 para a casa 2).");
+            }
+            catch (System.Exception e)
+            {
+                if (System.IO.File.Exists(p2)) System.IO.File.Delete(p2);
+                ModConsole.Warning($"[MSC Duo] não foi possível criar {SaveFile}: {e.Message}");
+            }
+        }
+
+        static int MoveSeeded(Matrix4x4 move, Quaternion turn, Vector3 home)
+        {
+            var transformHash = ES2TypeManager.GetES2Type(typeof(Transform)).hash;
+            var tags = new List<string>();
+            using (var reader = ES2Reader.Create(SaveFile))
+                foreach (var pair in reader.ReadAllHeaders())
+                    if (pair.Value.collectionType == ES2Keys.Key._Null && pair.Value.valueType == transformHash) tags.Add(pair.Key);
+            var probe = new GameObject("MscDuo_seed");
+            var moved = 0;
+            try
+            {
+                var t = probe.transform;
+                foreach (var tag in tags)
+                {
+                    ES2.Load<Transform>(SaveFile + "?tag=" + tag, t);
+                    var flat = t.position - home;
+                    flat.y = 0f;
+                    if (flat.magnitude > SeedReach) continue;
+                    t.position = move.MultiplyPoint3x4(t.position);
+                    t.rotation = turn * t.rotation;
+                    ES2.Save(t, SaveFile + "?tag=" + tag);
+                    moved++;
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(probe);
+            }
+            return moved;
         }
 
         static float SnapToGround()
@@ -175,6 +278,7 @@ namespace MscDuo.Duplication
             var copy = (GameObject)Object.Instantiate(original, position, rotation);
             copy.name = name;
             MapHierarchy(original.transform, copy.transform, map);
+            ModParts.Strip(copy);
             return copy;
         }
 

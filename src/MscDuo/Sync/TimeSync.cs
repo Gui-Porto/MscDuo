@@ -46,6 +46,20 @@ namespace MscDuo.Sync
                         blocks++;
                     }
             }
+            var roofChecks = 0;
+            foreach (var fsm in Resources.FindObjectsOfTypeAll<PlayMakerFSM>())
+            {
+                if (fsm == null || fsm.FsmName != "RaycastAndFog") continue;
+                FsmTools.EnsureLoaded(fsm);
+                foreach (var state in fsm.FsmStates)
+                    foreach (var action in state.Actions)
+                        if (action is HutongGames.PlayMaker.Actions.Raycast ray && ray.repeatInterval != null && ray.repeatInterval.Value > 1)
+                        {
+                            ray.repeatInterval.Value = 1;
+                            roofChecks++;
+                        }
+            }
+            if (roofChecks > 0) ModConsole.Print($"<color=orange>[MSC Duo]</color> chuva: checagem de telhado e nuvem a cada 1 s ({roofChecks} raios).");
             if (weather != null)
             {
                 FsmTools.EnsureLoaded(weather);
@@ -80,8 +94,24 @@ namespace MscDuo.Sync
             SetInt(weather, "WeatherType", type);
             if (Int(weather, "WeatherCloudID") <= 0) SetInt(weather, "WeatherCloudID", 1);
             weather.SendEvent(WeatherEvent);
+            CloudOverPlayer(type > 0 ? 60f : 6000f);
             ForceSend();
             return true;
+        }
+
+        static void CloudOverPlayer(float ahead)
+        {
+            var player = GameObject.Find("PLAYER");
+            var clouds = weather.transform.Find("CloudObjects") ?? (GameObject.Find("CloudObjects") != null ? GameObject.Find("CloudObjects").transform : null);
+            if (player == null || clouds == null) return;
+            var cloud = clouds.Find(Int(weather, "WeatherCloudID").ToString());
+            if (cloud == null && clouds.childCount > 0) cloud = clouds.GetChild(0);
+            if (cloud == null) return;
+            var offset = cloud.position - weather.transform.position;
+            var target = player.transform.position - offset + Vector3.right * ahead;
+            SetFloat(weather, "PosX", target.x);
+            SetFloat(weather, "PosZ", target.z);
+            weather.transform.position = new Vector3(target.x, weather.transform.position.y, target.z);
         }
 
         internal static string CurrentBlock => color != null ? color.ActiveStateName : "";

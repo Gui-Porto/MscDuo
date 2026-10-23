@@ -12,7 +12,7 @@ namespace MscDuo.Duplication
             "MAP/MESH/TERRAIN_OBJ/Grass2",
         };
 
-        const float PivotAboveGround = 1.19f;
+        const float PivotAboveGround = 0.96f;
         const float Sink = 0.08f;
         const float FlatMargin = 3f;
         const float BlendWidth = 12f;
@@ -24,6 +24,9 @@ namespace MscDuo.Duplication
         const float HedgeSink = 0.05f;
 
         static readonly Dictionary<Transform, Vector3> hedgeOrigins = new Dictionary<Transform, Vector3>();
+        static readonly List<GameObject> hiddenHedges = new List<GameObject>();
+        static readonly List<Renderer> hiddenRoads = new List<Renderer>();
+        static readonly List<GameObject> leveledRoads = new List<GameObject>();
         static readonly Dictionary<MeshFilter, Mesh> originalMeshes = new Dictionary<MeshFilter, Mesh>();
         static readonly Dictionary<MeshCollider, Mesh> originalColliders = new Dictionary<MeshCollider, Mesh>();
 
@@ -37,6 +40,7 @@ namespace MscDuo.Duplication
             var top = house.transform.position.y + PitProbe;
             var pit = FindPit(house, toHouse, local, groundY, top);
             int moved = 0, flat = 0, meshes = 0, nearRoad = 0, cut = 0, uncut = 0;
+            var offsets = RoadOffsets(toHouse, local);
 
             foreach (var path in TerrainPaths)
             {
@@ -102,8 +106,9 @@ namespace MscDuo.Duplication
             }
 
             var roadCut = CutRoad(house, toHouse, local);
+            var followed = FollowRoads(offsets);
             var hedges = SettleHedges(house);
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra ({roadObjects} malhas): {roadCut} triângulos tirados de dentro da casa e da extensão; cerca viva: {hedges} pedaços assentados no chão.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> estradinha de terra ({roadObjects} malhas): {roadCut} triângulos tirados de dentro da casa e da extensão, {followed} pontos de estrada acompanhando o terreno; cerca viva: {hedges} pedaços assentados no chão.");
             ModConsole.Print($"<color=orange>[MSC Duo]</color> terreno: {moved} vértices ajustados ({flat} no platô) em {meshes} malhas, {nearRoad} em rampa até a estrada, platô {local.size.x:0.#} x {local.size.z:0.#} m, nível {groundY:0.##}, vala da garagem com {pit.Count} pontos, {cut} pedaços abertos ({uncut} mantidos).");
         }
 
@@ -165,7 +170,150 @@ namespace MscDuo.Duplication
             return removed;
         }
 
-        static int SettleHedges(GameObject house)
+        static IEnumerable<Transform> Roads()
+        {
+            var root = GameObject.Find(TerrainRoot);
+            if (root == null) yield break;
+            foreach (Transform child in root.transform)
+                if (System.Array.IndexOf(RoadNames, child.name) >= 0) yield return child;
+        }
+
+        static readonly Vector2[] Probes = { Vector2.zero, new Vector2(0.6f, 0f), new Vector2(-0.6f, 0f), new Vector2(0f, 0.6f), new Vector2(0f, -0.6f) };
+
+        static bool TerrainHeight(Vector3 world, out float height)
+        {
+            height = float.MinValue;
+            foreach (var probe in Probes)
+            {
+                foreach (var path in TerrainPaths)
+                {
+                    var go = GameObject.Find(path);
+                    var collider = go != null ? go.GetComponent<MeshCollider>() : null;
+                    RaycastHit hit;
+                    if (collider != null && collider.Raycast(new Ray(new Vector3(world.x + probe.x, world.y + 20f, world.z + probe.y), Vector3.down), out hit, 60f) && hit.point.y > height)
+                        height = hit.point.y;
+                }
+                if (height > float.MinValue) return true;
+            }
+            return false;
+        }
+
+        class RoadLevel
+        {
+            internal Transform Road;
+            internal Mesh Mesh;
+            internal bool Batched;
+            internal float[] Offsets;
+        }
+
+        static List<RoadLevel> RoadOffsets(Matrix4x4 toHouse, Bounds local)
+        {
+            var result = new List<RoadLevel>();
+            using (var extractor = new StaticBatchExtractor())
+                foreach (var road in Roads())
+                {
+                    var filter = road.GetComponent<MeshFilter>();
+                    var renderer = road.GetComponent<Renderer>();
+                    if (filter == null || filter.sharedMesh == null) continue;
+                    var batched = renderer != null && renderer.isPartOfStaticBatch;
+                    var mesh = batched ? extractor.Extract(renderer, filter.sharedMesh) : filter.sharedMesh;
+                    if (mesh == null) continue;
+                    Vector3[] vertices;
+                    try { vertices = mesh.vertices; }
+                    catch { continue; }
+                    var toWorld = road.localToWorldMatrix;
+                    var offsets = new float[vertices.Length];
+                    var any = false;
+                    for (int i = 0; i < vertices.Length; i++)
+                    {
+                        offsets[i] = float.NaN;
+                        var world = toWorld.MultiplyPoint3x4(vertices[i]);
+                        var h = toHouse.MultiplyPoint3x4(world);
+                        var dx = Mathf.Max(0f, Mathf.Max(local.min.x - h.x, h.x - local.max.x));
+                        var dz = Mathf.Max(0f, Mathf.Max(local.min.z - h.z, h.z - local.max.z));
+                        if (Mathf.Sqrt(dx * dx + dz * dz) >= FlatMargin + BlendWidth) continue;
+                        float ground;
+                        if (!TerrainHeight(world, out ground)) continue;
+                        offsets[i] = world.y - ground;
+                        any = true;
+                    }
+                    if (any) result.Add(new RoadLevel { Road = road, Mesh = mesh, Batched = batched, Offsets = offsets });
+                }
+            return result;
+        }
+
+        static int FollowRoads(List<RoadLevel> roads)
+        {
+            var followed = 0;
+            foreach (var level in roads)
+            {
+                var road = level.Road;
+                var filter = road.GetComponent<MeshFilter>();
+                if (!level.Batched && filter.sharedMesh != level.Mesh) level.Mesh = filter.sharedMesh;
+                var vertices = level.Mesh.vertices;
+                if (vertices.Length != level.Offsets.Length) continue;
+                var toWorld = road.localToWorldMatrix;
+                var toMesh = road.worldToLocalMatrix;
+                var count = 0;
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    if (float.IsNaN(level.Offsets[i])) continue;
+                    var world = toWorld.MultiplyPoint3x4(vertices[i]);
+                    float ground;
+                    if (!TerrainHeight(world, out ground)) continue;
+                    var y = ground + level.Offsets[i];
+                    if (Mathf.Abs(y - world.y) < 0.001f) continue;
+                    world.y = y;
+                    vertices[i] = toMesh.MultiplyPoint3x4(world);
+                    count++;
+                }
+                if (count == 0) continue;
+                Mesh mesh;
+                if (level.Batched)
+                {
+                    mesh = level.Mesh;
+                    var source = road.GetComponent<Renderer>();
+                    var copy = new GameObject(road.name + "_nivel");
+                    copy.layer = road.gameObject.layer;
+                    copy.transform.parent = road;
+                    copy.transform.localPosition = Vector3.zero;
+                    copy.transform.localRotation = Quaternion.identity;
+                    copy.transform.localScale = Vector3.one;
+                    copy.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    var r = copy.AddComponent<MeshRenderer>();
+                    r.sharedMaterials = source.sharedMaterials;
+                    r.shadowCastingMode = source.shadowCastingMode;
+                    r.receiveShadows = source.receiveShadows;
+                    r.lightmapIndex = source.lightmapIndex;
+                    r.lightmapScaleOffset = source.lightmapScaleOffset;
+                    source.enabled = false;
+                    hiddenRoads.Add(source);
+                    leveledRoads.Add(copy);
+                }
+                else if (!originalMeshes.ContainsKey(filter))
+                {
+                    mesh = Object.Instantiate(level.Mesh);
+                    mesh.name = level.Mesh.name + "_nivel";
+                    originalMeshes[filter] = level.Mesh;
+                    filter.sharedMesh = mesh;
+                }
+                else mesh = filter.sharedMesh;
+                mesh.vertices = vertices;
+                mesh.RecalculateNormals();
+                mesh.RecalculateBounds();
+                var collider = road.GetComponent<MeshCollider>();
+                if (collider != null)
+                {
+                    if (!originalColliders.ContainsKey(collider)) originalColliders[collider] = collider.sharedMesh;
+                    collider.sharedMesh = null;
+                    collider.sharedMesh = mesh;
+                }
+                followed += count;
+            }
+            return followed;
+        }
+
+        internal static int SettleHedges(GameObject house)
         {
             var fence = FindDeep(house.transform, "HedgeFence");
             var terrain = GameObject.Find(TerrainRoot);
@@ -173,23 +321,39 @@ namespace MscDuo.Duplication
             var moved = 0;
             foreach (Transform hedge in fence)
             {
-                var renderers = hedge.GetComponentsInChildren<Renderer>();
-                if (renderers.Length == 0) continue;
+                if (!hedge.gameObject.activeSelf) continue;
+                var renderers = new List<Renderer>();
+                foreach (var r in hedge.GetComponentsInChildren<Renderer>())
+                    if (r.enabled) renderers.Add(r);
+                if (renderers.Count == 0) continue;
                 var b = renderers[0].bounds;
                 foreach (var r in renderers) b.Encapsulate(r.bounds);
                 var ground = float.MaxValue;
+                var onRoad = false;
                 for (int i = 0; i < 3; i++)
                     for (int k = 0; k < 3; k++)
                     {
                         var x = Mathf.Lerp(b.min.x, b.max.x, 0.2f + 0.3f * i);
                         var z = Mathf.Lerp(b.min.z, b.max.z, 0.2f + 0.3f * k);
+                        RaycastHit? top = null;
                         foreach (var hit in Physics.RaycastAll(new Vector3(x, b.max.y + 2f, z), Vector3.down, b.size.y + 6f))
-                            if (hit.collider.transform.IsChildOf(terrain.transform) && hit.point.y < ground) ground = hit.point.y;
+                        {
+                            if (!hit.collider.transform.IsChildOf(terrain.transform)) continue;
+                            if (hit.point.y < ground) ground = hit.point.y;
+                            if (top == null || hit.point.y > top.Value.point.y) top = hit;
+                        }
+                        if (top != null && (top.Value.collider.name == RoadName || top.Value.collider.name == "DirtRoad")) onRoad = true;
                     }
+                if (onRoad)
+                {
+                    hedge.gameObject.SetActive(false);
+                    hiddenHedges.Add(hedge.gameObject);
+                    continue;
+                }
                 if (ground == float.MaxValue) continue;
                 var drop = b.min.y - ground + HedgeSink;
-                if (drop <= 0.01f) continue;
-                hedgeOrigins[hedge] = hedge.position;
+                if (Mathf.Abs(drop) <= 0.01f) continue;
+                if (!hedgeOrigins.ContainsKey(hedge)) hedgeOrigins[hedge] = hedge.position;
                 hedge.position -= Vector3.up * drop;
                 moved++;
             }
@@ -211,6 +375,12 @@ namespace MscDuo.Duplication
         {
             foreach (var pair in hedgeOrigins) if (pair.Key != null) pair.Key.position = pair.Value;
             hedgeOrigins.Clear();
+            foreach (var hedge in hiddenHedges) if (hedge != null) hedge.SetActive(true);
+            hiddenHedges.Clear();
+            foreach (var road in leveledRoads) if (road != null) Object.DestroyImmediate(road);
+            leveledRoads.Clear();
+            foreach (var road in hiddenRoads) if (road != null) road.enabled = true;
+            hiddenRoads.Clear();
             foreach (var pair in originalMeshes) if (pair.Key != null) pair.Key.sharedMesh = pair.Value;
             foreach (var pair in originalColliders)
             {

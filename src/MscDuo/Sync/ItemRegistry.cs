@@ -33,6 +33,20 @@ namespace MscDuo.Sync
 
         internal static bool TryId(Rigidbody body, out ushort id) => known.TryGetValue(body, out id);
 
+        internal static ushort AddDynamic(Rigidbody body)
+        {
+            ushort id;
+            if (known.TryGetValue(body, out id)) return id;
+            id = (ushort)items.Count;
+            known[body] = id;
+            items.Add(body);
+            paths.Add(PathOf(body.transform));
+            origins.Add(body.position);
+            return id;
+        }
+
+        internal static void Link(ushort remoteId, ushort localId) => fromRemote[remoteId] = localId;
+
         internal static void Build()
         {
             items.Clear();

@@ -23,7 +23,9 @@ SLAB = 0.25
 OVERHANG = 0.5
 ROOF = 0.12
 
-GATES = [(2.0, 7.0), (17.0, 22.0)]
+GATES = [(2.0, 22.0)]
+DYNO_BAYS = [(2.75, 6.25), (9.75, 14.25), (17.75, 21.25)]
+DYNO_Y = (1.0, 10.3)
 GATE_H = 4.5
 SIDE_DOOR = (12.5, 13.5)
 DOOR_H = 2.15
@@ -205,11 +207,12 @@ def roof_z(x):
 
 def floor(b):
     b.box("Piso", "concreto", -0.3, -0.3, -1.2, W + 0.3, D + 0.3, 0.0)
-    for x0, x1 in GATES:
-        for y in (1.0, 9.5):
+    y0, y1 = DYNO_Y
+    for x0, x1 in DYNO_BAYS:
+        for y in (y0, y1):
             b.box("Faixas", "faixa", x0, y - 0.06, 0.001, x1, y + 0.06, 0.004)
         for x in (x0, x1):
-            b.box("Faixas", "faixa", x - 0.06, 1.0, 0.001, x + 0.06, 9.5, 0.004)
+            b.box("Faixas", "faixa", x - 0.06, y0, 0.001, x + 0.06, y1, 0.004)
 
 
 def front_back(b):
@@ -248,7 +251,8 @@ def frame(b):
             b.box("Estrutura", "aco", x - COLUMN / 2, yc - COLUMN / 2, 0.0, x + COLUMN / 2, yc + COLUMN / 2, EAVE - 0.05)
         for x0, x1 in ((WALL, W / 2), (W - WALL, W / 2)):
             b.beam("Estrutura", "aco", (x0, yc, roof_z(x0) - RAFTER / 2 - 0.1), (x1, yc, RIDGE - RAFTER / 2 - 0.1), 0.22, RAFTER)
-        b.beam("Estrutura", "aco", (WALL + 1.2, yc, EAVE - 1.0), (W - WALL - 1.2, yc, EAVE - 1.0), 0.06, 0.06)
+        if yc < MEZ_Y:
+            b.beam("Estrutura", "aco", (WALL + 1.2, yc, EAVE - 1.0), (W - WALL - 1.2, yc, EAVE - 1.0), 0.06, 0.06)
     x = WALL
     while x < W - WALL:
         z = roof_z(x) - 0.12

@@ -22,6 +22,7 @@ namespace MscDuo
         internal SettingsKeybind WakeKey { get; private set; }
         SettingsKeybind adminKey;
         SettingsKeybind passengerKey;
+        internal SettingsKeybind GateKey { get; private set; }
 
         public override void ModSetup()
         {
@@ -41,6 +42,7 @@ namespace MscDuo
             WakeKey = Keybind.Add("wake", "Levantar da cama enquanto espera o outro jogador", KeyCode.F);
             adminKey = Keybind.Add("admin", "Abrir o painel de admin", KeyCode.F10);
             passengerKey = Keybind.Add("passenger", "Sentar e levantar do banco do passageiro", KeyCode.Return);
+            GateKey = Keybind.Add("portao", "Controle remoto do portão do galpão (o mais perto)", KeyCode.J);
         }
 
         void OnMenuLoad()
@@ -74,12 +76,14 @@ namespace MscDuo
             Sync.ItemRegistry.AddClone(SatsumaCloner.Clone, SatsumaCloner.Parts);
             Sync.SleepSync.Patch();
             Sync.InteractionSync.Patch();
+            Sync.ItemPurchases.Patch();
             Sync.TimeSync.Patch();
         }
 
         void OnSave()
         {
             VehicleCloner.MarkHomeSaved();
+            WarehouseGates.Save();
         }
 
         void OnGui()
@@ -95,6 +99,7 @@ namespace MscDuo
             Sync.Passenger.Tick(passengerKey != null && passengerKey.GetKeybindDown());
             if (adminKey != null && adminKey.GetKeybindDown()) AdminPanel.Toggle();
             AdminPanel.Tick();
+            if (GateKey != null && GateKey.GetKeybindDown()) WarehouseGates.Remote();
             if (NetSession.Current == null) Sync.SleepSync.Tick(Time.realtimeSinceStartup, false, null);
             if (dumpKey != null && dumpKey.GetKeybindDown())
                 SceneDumper.DumpDefault();

@@ -16,12 +16,18 @@ namespace MscDuo.Tools
 
         static readonly string[] Needs = { "PlayerHunger", "PlayerThirst", "PlayerFatigue", "PlayerStress", "PlayerUrine", "PlayerDirtiness" };
         static readonly string[] NeedLabels = { "Fome", "Sede", "Cansaço", "Estresse", "Mijo", "Sujeira" };
-        static readonly string[] Tabs = { "Jogador", "Veículos", "Teleporte", "Mundo" };
+        static readonly string[] Tabs = { "Jogador", "Veículos", "Teleporte", "Mundo", "Inspetor" };
+        static readonly float[] MoveSteps = { 0.01f, 0.1f, 1f };
+        static readonly float[] TurnSteps = { 1f, 5f, 15f, 90f };
         static readonly string[] Blocks = { "06-08", "10-12", "14-16", "18-20", "22-00", "02-04" };
         static readonly string[] BlockLabels = { "6h", "10h", "14h", "18h", "22h", "2h" };
         static readonly string[] WeatherLabels = { "Sol", "Chuva", "Tempestade" };
 
         static readonly bool[] frozen = new bool[Needs.Length];
+        static bool noMosquitos;
+        static bool loaded;
+        const string PrefsFile = "painel.txt";
+        static PlayMakerFSM mosquito;
         static bool open;
         static int tab;
         static string moneyText = "";
@@ -51,14 +57,48 @@ namespace MscDuo.Tools
             }
         }
 
+        static string PrefsPath => System.IO.Path.Combine(MscDuo.Instance.SettingsFolder, PrefsFile);
+
+        static void LoadPrefs()
+        {
+            loaded = true;
+            try
+            {
+                if (!System.IO.File.Exists(PrefsPath)) return;
+                foreach (var raw in System.IO.File.ReadAllLines(PrefsPath))
+                {
+                    var parts = raw.Split('=');
+                    if (parts.Length != 2) continue;
+                    var key = parts[0].Trim();
+                    var on = parts[1].Trim() == "1";
+                    if (key == "mosquitos") noMosquitos = on;
+                    for (int i = 0; i < Needs.Length; i++) if (key == Needs[i]) frozen[i] = on;
+                }
+            }
+            catch (System.Exception e) { ModConsole.Warning("[MSC Duo] não foi possível ler " + PrefsFile + ": " + e.Message); }
+        }
+
+        static void SavePrefs()
+        {
+            try
+            {
+                var lines = new List<string> { "mosquitos=" + (noMosquitos ? "1" : "0") };
+                for (int i = 0; i < Needs.Length; i++) lines.Add(Needs[i] + "=" + (frozen[i] ? "1" : "0"));
+                System.IO.File.WriteAllLines(PrefsPath, lines.ToArray());
+            }
+            catch (System.Exception e) { ModConsole.Warning("[MSC Duo] não foi possível gravar " + PrefsFile + ": " + e.Message); }
+        }
+
         internal static void Tick()
         {
+            if (!loaded) LoadPrefs();
             for (int i = 0; i < Needs.Length; i++)
             {
                 if (!frozen[i]) continue;
                 var need = FsmVariables.GlobalVariables.FindFsmFloat(Needs[i]);
                 if (need != null) need.Value = 0f;
             }
+            if (noMosquitos) KeepMosquitosAway();
             if (!open) return;
             if (ModLoader.CurrentScene != CurrentScene.Game) { open = false; return; }
             if (inMenu != null) inMenu.Value = true;
@@ -84,6 +124,7 @@ namespace MscDuo.Tools
                 case 1: VehiclesTab(); break;
                 case 2: TeleportTab(); break;
                 case 3: WorldTab(); break;
+                case 4: InspectorTab(); break;
             }
             GUILayout.EndScrollView();
             if (status.Length > 0) GUILayout.Label(status);
@@ -94,12 +135,21 @@ namespace MscDuo.Tools
         static void PlayerTab()
         {
             GUILayout.Label("Necessidades travadas em zero");
+            var changed = false;
             for (int i = 0; i < Needs.Length; i++)
-                frozen[i] = GUILayout.Toggle(frozen[i], " " + NeedLabels[i]);
+            {
+                var need = GUILayout.Toggle(frozen[i], " " + NeedLabels[i]);
+                if (need != frozen[i]) { frozen[i] = need; changed = true; }
+            }
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Travar todas")) for (int i = 0; i < frozen.Length; i++) frozen[i] = true;
-            if (GUILayout.Button("Soltar todas")) for (int i = 0; i < frozen.Length; i++) frozen[i] = false;
+            if (GUILayout.Button("Travar todas")) { for (int i = 0; i < frozen.Length; i++) frozen[i] = true; changed = true; }
+            if (GUILayout.Button("Soltar todas")) { for (int i = 0; i < frozen.Length; i++) frozen[i] = false; changed = true; }
             GUILayout.EndHorizontal();
+
+            GUILayout.Space(6f);
+            var mosquitos = GUILayout.Toggle(noMosquitos, " Sem mosquitos (como se tivesse passado spray)");
+            if (mosquitos != noMosquitos) { noMosquitos = mosquitos; changed = true; }
+            if (changed) SavePrefs();
 
             GUILayout.Space(10f);
             var money = FsmVariables.GlobalVariables.FindFsmFloat("PlayerMoney");
@@ -119,6 +169,22 @@ namespace MscDuo.Tools
                 status = $"dinheiro definido em {money.Value:0} mk";
             }
             GUILayout.EndHorizontal();
+        }
+
+        static void KeepMosquitosAway()
+        {
+            if (mosquito == null)
+            {
+                var player = Player();
+                if (player == null) return;
+                foreach (var fsm in player.GetComponentsInChildren<PlayMakerFSM>(true))
+                    if (fsm.gameObject.name == "Mosquito" && fsm.FsmName == "Move") { mosquito = fsm; break; }
+                if (mosquito == null) return;
+            }
+            var shield = mosquito.FsmVariables.FindFsmFloat("PlayerMosquitoShield");
+            if (shield != null) shield.Value = 200f;
+            var audio = mosquito.transform.Find("Audio");
+            if (audio != null && audio.gameObject.activeSelf) audio.gameObject.SetActive(false);
         }
 
         static void AddMoney(FsmFloat money, float amount)
@@ -227,6 +293,113 @@ namespace MscDuo.Tools
             GUILayout.EndHorizontal();
             GUI.enabled = true;
         }
+
+        static Transform selected;
+        static string search = "";
+        static int moveStep = 1;
+        static int turnStep = 1;
+
+        static void InspectorTab()
+        {
+            GUILayout.Label("Mire no objeto com o painel fechado, abra o painel e clique em Pegar.");
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Pegar o que estou mirando")) Pick();
+            if (selected != null && selected.parent != null && GUILayout.Button("Pai")) selected = selected.parent;
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            search = GUILayout.TextField(search, GUILayout.Width(240f));
+            if (GUILayout.Button("Procurar nome")) Search();
+            GUILayout.EndHorizontal();
+            if (selected == null) { GUILayout.Label("Nada selecionado."); return; }
+
+            GUILayout.Label("Caminho: " + PathOf(selected));
+            var p = selected.position;
+            var e = selected.eulerAngles;
+            GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "Posição: {0:0.###}  {1:0.###}  {2:0.###}", p.x, p.y, p.z));
+            GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "Rotação: {0:0.#}  {1:0.#}  {2:0.#}", e.x, e.y, e.z));
+            GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "Escala: {0:0.###}  {1:0.###}  {2:0.###}   ativo: {3}", selected.localScale.x, selected.localScale.y, selected.localScale.z, selected.gameObject.activeSelf));
+            if (Warehouse.Root != null && selected.IsChildOf(Warehouse.Root.transform))
+            {
+                var g = Warehouse.ToLocal(p);
+                GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "No galpão: x {0:0.##}  y {1:0.##}  altura {2:0.##}", g.x, g.y, g.z));
+            }
+            var components = new List<string>();
+            foreach (var c in selected.GetComponents<Component>())
+                if (c != null && !(c is Transform)) components.Add(c is PlayMakerFSM ? "FSM " + ((PlayMakerFSM)c).FsmName : c.GetType().Name);
+            GUILayout.Label("Componentes: " + (components.Count > 0 ? string.Join(", ", components.ToArray()) : "nenhum"));
+
+            GUILayout.Space(6f);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Passo:", GUILayout.Width(50f));
+            for (int i = 0; i < MoveSteps.Length; i++)
+                if (GUILayout.Toggle(moveStep == i, MoveSteps[i].ToString(CultureInfo.InvariantCulture) + " m", "Button")) moveStep = i;
+            GUILayout.EndHorizontal();
+            var step = MoveSteps[moveStep];
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("X-")) selected.position += Vector3.left * step;
+            if (GUILayout.Button("X+")) selected.position += Vector3.right * step;
+            if (GUILayout.Button("Y-")) selected.position += Vector3.down * step;
+            if (GUILayout.Button("Y+")) selected.position += Vector3.up * step;
+            if (GUILayout.Button("Z-")) selected.position += Vector3.back * step;
+            if (GUILayout.Button("Z+")) selected.position += Vector3.forward * step;
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Giro:", GUILayout.Width(50f));
+            for (int i = 0; i < TurnSteps.Length; i++)
+                if (GUILayout.Toggle(turnStep == i, TurnSteps[i] + "°", "Button")) turnStep = i;
+            if (GUILayout.Button("⟲")) selected.Rotate(Vector3.up, -TurnSteps[turnStep], Space.World);
+            if (GUILayout.Button("⟳")) selected.Rotate(Vector3.up, TurnSteps[turnStep], Space.World);
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(selected.gameObject.activeSelf ? "Esconder" : "Mostrar")) selected.gameObject.SetActive(!selected.gameObject.activeSelf);
+            if (GUILayout.Button("Copiar dados"))
+            {
+                var text = string.Format(CultureInfo.InvariantCulture, "{0}  pos {1:0.###} {2:0.###} {3:0.###}  rot {4:0.#} {5:0.#} {6:0.#}", PathOf(selected), p.x, p.y, p.z, e.x, e.y, e.z);
+                CopyToClipboard(text);
+                ModConsole.Print("[MSC Duo] " + text);
+                status = "dados copiados e escritos no console";
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        static void Pick()
+        {
+            var camera = Camera.main;
+            if (camera == null) { status = "câmera não encontrada"; return; }
+            var player = Player();
+            RaycastHit best = default(RaycastHit);
+            var found = false;
+            foreach (var hit in Physics.RaycastAll(camera.transform.position, camera.transform.forward, 100f))
+            {
+                if (player != null && hit.collider.transform.IsChildOf(player)) continue;
+                if (!found || hit.distance < best.distance) { best = hit; found = true; }
+            }
+            if (!found) { status = "nada na mira"; return; }
+            selected = best.collider.transform;
+            status = string.Format(CultureInfo.InvariantCulture, "pegou {0} a {1:0.0} m", selected.name, best.distance);
+        }
+
+        static void Search()
+        {
+            if (string.IsNullOrEmpty(search)) return;
+            var term = search.ToLowerInvariant();
+            foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+                if (t != null && t.hideFlags == HideFlags.None && t.name.ToLowerInvariant().Contains(term))
+                {
+                    selected = t;
+                    status = "achou " + PathOf(t);
+                    return;
+                }
+            status = "nenhum objeto com esse nome";
+        }
+
+        static void CopyToClipboard(string text)
+        {
+            var property = typeof(GUIUtility).GetProperty("systemCopyBuffer", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            if (property != null) property.SetValue(null, text, null);
+        }
+
+        static string PathOf(Transform t) => t.parent == null ? t.name : PathOf(t.parent) + "/" + t.name;
 
         static Transform Player()
         {

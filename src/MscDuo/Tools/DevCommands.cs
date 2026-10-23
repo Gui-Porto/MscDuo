@@ -15,7 +15,10 @@ namespace MscDuo.Tools
             var current = field != null ? field.GetValue(null) : null;
             if (current == null || ReferenceEquals(current, console)) return;
             console = current;
+            ConsoleCommand.Add(new DynoProbeCommand());
+            ConsoleCommand.Add(new ComputerProbeCommand());
             ConsoleCommand.Add(new DumpCommand());
+            ConsoleCommand.Add(new LookCommand());
             ConsoleCommand.Add(new MapCommand());
             ConsoleCommand.Add(new HouseCommand());
             ConsoleCommand.Add(new TeleportCommand());
@@ -27,6 +30,8 @@ namespace MscDuo.Tools
             ConsoleCommand.Add(new VanCommand());
             ConsoleCommand.Add(new DiagCommand());
             ConsoleCommand.Add(new AreaExportCommand());
+            ConsoleCommand.Add(new ReloadCommand());
+            ConsoleCommand.Add(new PhotoCommand());
             ConsoleCommand.Add(new BuildCommand());
             ConsoleCommand.Add(new CheckCommand());
             ConsoleCommand.Add(new ExportCommand());
@@ -143,7 +148,7 @@ namespace MscDuo.Tools
     internal class TeleportCommand : ConsoleCommand
     {
         public override string Name => "duo_tp";
-        public override string Help => "duo_tp [1 | 2 | car2 | x y z]  teleporta para a casa 1, casa 2, Satsuma 2 ou coordenada";
+        public override string Help => "duo_tp [1 | 2 | car2 | luz | x y z]  teleporta para a casa 1, casa 2, Satsuma 2, interruptor do galpão ou coordenada";
 
         public override void Run(string[] args)
         {
@@ -155,6 +160,8 @@ namespace MscDuo.Tools
                 target = HouseCloner.Original.transform.position;
             else if (args.Length == 1 && args[0] == "car2" && SatsumaCloner.Clone != null)
                 target = SatsumaCloner.Clone.transform.position + SatsumaCloner.Clone.transform.right * 2.5f;
+            else if (args.Length == 1 && args[0] == "luz" && Warehouse.LightSwitch != null)
+                target = Warehouse.LightSwitch.position + Vector3.forward * 1.2f - Vector3.up * 1.3f;
             else if (args.Length == 1 && args[0] == "2" && HouseCloner.Clone != null)
                 target = HouseCloner.Clone.transform.position;
             else if (args.Length == 3
@@ -169,6 +176,12 @@ namespace MscDuo.Tools
             }
 
             player.position = target + Vector3.up * 2f;
+            if (args.Length == 1 && args[0] == "luz" && Warehouse.LightSwitch != null)
+            {
+                var look = Warehouse.LightSwitch.position - player.position;
+                look.y = 0f;
+                if (look.sqrMagnitude > 1e-4f) player.rotation = Quaternion.LookRotation(look);
+            }
             ModConsole.Print($"<color=orange>[MSC Duo]</color> teleportado para {HouseCloner.Format(target)}");
         }
     }

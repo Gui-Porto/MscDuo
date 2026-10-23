@@ -26,11 +26,21 @@ FLOOR_LIFT = 0.1
 FLAT_MARGIN = 2.0
 FLAT_BLEND = 6.0
 FLAT_BELOW = 0.04
-FRONT_CLEAR = 12.0
+FRONT_CLEAR = 9.5
 PLATFORM_CELL = 0.5
 PLATFORM_SLOPE = 0.3
-PLATFORM_REACH = 10.0
+PLATFORM_REACH = 5.0
 PLATFORM_BELOW = 0.02
+PLATFORM_SINK = 0.04
+SIDE_SKIRT = 1.0
+GRAVEL_UV = 1.15
+ROAD_COVER = 0.03
+STUB_X = -21.0
+STUB_REACH = 7.0
+DIRT_REACH = 3.0
+DIRT_FROM_Y = 15.5
+DIRT_LIFT = 0.02
+DIRT_START = 0.5
 CORE_MARGIN = 1.0
 COLLECTION = "MAPA"
 
@@ -226,35 +236,136 @@ def clear_and_flatten(objects, floor, W, D):
 def platform(col, objects, floor, W, D):
     from mathutils.bvhtree import BVHTree
     dg = bpy.context.evaluated_depsgraph_get()
-    grounds = [BVHTree.FromObject(o, dg) for o in objects if o.type == "MESH" and "TERRAIN_OBJ" in o.name]
+    grounds = [(o.name.split("/")[-1], BVHTree.FromObject(o, dg)) for o in objects if o.type == "MESH" and "TERRAIN_OBJ" in o.name]
     gravel_mat = next((o.material_slots[0].material for o in objects if o.name.endswith("TERRAIN_OBJ/Gravel") and o.material_slots), None)
     grass_mat = next((o.material_slots[0].material for o in objects if o.name.endswith("TERRAIN_OBJ/Grass1") and o.material_slots), None)
 
     def ground(x, y):
-        best = None
-        for tree in grounds:
+        best, kind = None, None
+        for name, tree in grounds:
             hit = tree.ray_cast(Vector((x, y, floor + 30.0)), Vector((0, 0, -1)))
             if hit[0] is not None and (best is None or hit[0].z > best):
-                best = hit[0].z
-        return best
+                best, kind = hit[0].z, name
+        return best, kind
 
     cx0, cx1 = FRONT_X - D - CORE_MARGIN, FRONT_X + FRONT_CLEAR
     cy0, cy1 = LEFT_Y - CORE_MARGIN, LEFT_Y + W + CORE_MARGIN
     top = floor - PLATFORM_BELOW
-    gx0, gx1 = cx0 - PLATFORM_REACH, cx1 + PLATFORM_REACH
-    gy0, gy1 = cy0 - PLATFORM_REACH, cy1 + PLATFORM_REACH
+    gx0, gx1 = cx0 - STUB_REACH, cx1 + STUB_REACH
+    gy0, gy1 = cy0 - STUB_REACH, cy1 + STUB_REACH
     nx = int(round((gx1 - gx0) / PLATFORM_CELL)) + 1
     ny = int(round((gy1 - gy0) / PLATFORM_CELL)) + 1
-    heights = {}
+
+    def reach(x, y):
+        return max(cx0 - x, 0.0, x - cx1, cy0 - y, y - cy1)
+
+    samples = {}
+    for i in range(nx):
+        for j in range(ny):
+            samples[(i, j)] = ground(gx0 + i * PLATFORM_CELL, gy0 + j * PLATFORM_CELL)
+    road = {k for k, (g, kind) in samples.items() if kind == "Road" and gx0 + k[0] * PLATFORM_CELL < STUB_X and reach(gx0 + k[0] * PLATFORM_CELL, gy0 + k[1] * PLATFORM_CELL) > 0.0}
+
+    def near_road(i, j, cells):
+        return any((i + a, j + b) in road for a in range(-cells, cells + 1) for b in range(-cells, cells + 1))
+
+    points = {}
     for i in range(nx):
         for j in range(ny):
             x, y = gx0 + i * PLATFORM_CELL, gy0 + j * PLATFORM_CELL
-            g = ground(x, y)
+            d = reach(x, y)
+            g, kind = samples[(i, j)]
+            if d == 0.0:
+                points[(i, j)] = (top, False, False)
+                continue
             if g is None:
                 continue
-            d = math.hypot(max(cx0 - x, 0.0, x - cx1), max(cy0 - y, 0.0, y - cy1))
+            if x > cx1 + 1e-4:
+                if y < cy0 or y > cy1:
+                    continue
+                want = top + (g - PLATFORM_SINK - top) * min(d / SIDE_SKIRT, 1.0)
+                points[(i, j)] = (min(want, top), want > g + 0.01 and d <= SIDE_SKIRT, False)
+                continue
+            if x < STUB_X and near_road(i, j, 2):
+                cover = near_road(i, j, 1)
+                points[(i, j)] = (g + ROAD_COVER if cover else g - PLATFORM_SINK, False, cover)
+                continue
             want = top - d * PLATFORM_SLOPE
-            heights[(i, j)] = (max(want, g - 0.05), want > g + 0.005, d == 0.0)
+            fill = want > g + 0.01 and kind not in ("Gravel", "Road", "DirtRoad")
+            points[(i, j)] = (max(want, g - PLATFORM_SINK), fill, False)
+
+    meshes = {"Plataforma": bmesh.new(), "PlataformaGrama": bmesh.new()}
+    verts = {name: {} for name in meshes}
+    uvs = {name: bm.loops.layers.uv.new("UVMap") for name, bm in meshes.items()}
+    counts = {"nucleo": 0, "saia": 0, "aterro": 0, "estrada": 0}
+    for i in range(nx - 1):
+        for j in range(ny - 1):
+            quad = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            if any(k not in points for k in quad):
+                continue
+            cx = gx0 + (i + 0.5) * PLATFORM_CELL
+            cy = gy0 + (j + 0.5) * PLATFORM_CELL
+            d = reach(cx, cy)
+            if d == 0.0:
+                name, key = "Plataforma", "nucleo"
+            elif cx > cx1:
+                if d > SIDE_SKIRT or not any(points[k][1] for k in quad):
+                    continue
+                name, key = "Plataforma", "saia"
+            elif cx < STUB_X and any(points[k][2] for k in quad):
+                name, key = "PlataformaGrama", "estrada"
+            elif d <= PLATFORM_REACH and any(points[k][1] for k in quad):
+                name, key = "PlataformaGrama", "aterro"
+            else:
+                continue
+            bm = meshes[name]
+            face_verts = []
+            for k in quad:
+                if k not in verts[name]:
+                    verts[name][k] = bm.verts.new((gx0 + k[0] * PLATFORM_CELL, gy0 + k[1] * PLATFORM_CELL, points[k][0]))
+                face_verts.append(verts[name][k])
+            face = bm.faces.new(face_verts)
+            scale = GRAVEL_UV if name == "Plataforma" else 0.25
+            for loop in face.loops:
+                loop[uvs[name]].uv = (loop.vert.co.x * scale, loop.vert.co.y * scale)
+            counts[key] += 1
+    materials = {"Plataforma": gravel_mat or bpy.data.materials.new("plataforma_cascalho"),
+                 "PlataformaGrama": grass_mat or bpy.data.materials.new("plataforma_grama")}
+    for name, bm in meshes.items():
+        me = bpy.data.meshes.new(name)
+        bm.normal_update()
+        bm.to_mesh(me)
+        bm.free()
+        me.materials.append(materials[name])
+        old = bpy.data.objects.get(name)
+        if old is not None:
+            bpy.data.objects.remove(old, do_unlink=True)
+        col.objects.link(bpy.data.objects.new(name, me))
+    counts["terra"] = dirt(col, samples, gx0, gy0, nx, ny, cx1, cy1, top)
+    print("[MSC Duo] plataforma:", counts)
+    return sum(counts.values())
+
+
+def dirt(col, samples, gx0, gy0, nx, ny, cx1, cy1, top):
+    grass = ("Grass1", "Grass2")
+    heights = {}
+    for (i, j), (g, kind) in samples.items():
+        x, y = gx0 + i * PLATFORM_CELL, gy0 + j * PLATFORM_CELL
+        if g is None or x < cx1 - 1e-4 or x > cx1 + DIRT_REACH or y < DIRT_FROM_Y or y > cy1:
+            continue
+        d = x - cx1
+        skirt = top + (g - PLATFORM_SINK - top) * min(d / SIDE_SKIRT, 1.0)
+        if kind not in grass:
+            heights[(i, j)] = g + 0.01
+        elif d < DIRT_START - 1e-4:
+            heights[(i, j)] = min(skirt, g) - 0.03
+        else:
+            heights[(i, j)] = max(g + DIRT_LIFT, skirt + 0.01)
+
+    def strip(i, j):
+        g, kind = samples[(i, j)]
+        if kind not in grass or gx0 + i * PLATFORM_CELL - cx1 < DIRT_START - 1e-4:
+            return False
+        return any(samples.get((i + a, j), (None, None))[1] == "Gravel" for a in (1, 2, 3))
 
     bm = bmesh.new()
     uv = bm.loops.layers.uv.new("UVMap")
@@ -263,28 +374,27 @@ def platform(col, objects, floor, W, D):
     for i in range(nx - 1):
         for j in range(ny - 1):
             quad = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
-            if any(k not in heights for k in quad) or not any(heights[k][1] for k in quad):
+            if any(k not in heights for k in quad) or not any(strip(*k) for k in quad):
                 continue
             face_verts = []
             for k in quad:
                 if k not in verts:
-                    verts[k] = bm.verts.new((gx0 + k[0] * PLATFORM_CELL, gy0 + k[1] * PLATFORM_CELL, heights[k][0]))
+                    verts[k] = bm.verts.new((gx0 + k[0] * PLATFORM_CELL, gy0 + k[1] * PLATFORM_CELL, heights[k]))
                 face_verts.append(verts[k])
             face = bm.faces.new(face_verts)
-            face.material_index = 0 if all(heights[k][2] for k in quad) else 1
             for loop in face.loops:
-                loop[uv].uv = (loop.vert.co.x / 4.0, loop.vert.co.y / 4.0)
+                loop[uv].uv = (loop.vert.co.x * GRAVEL_UV, loop.vert.co.y * GRAVEL_UV)
             faces += 1
-    me = bpy.data.meshes.new("Plataforma")
+    me = bpy.data.meshes.new("PlataformaTerra")
     bm.normal_update()
     bm.to_mesh(me)
     bm.free()
-    gravel = gravel_mat or bpy.data.materials.new("plataforma_cascalho")
-    grass = grass_mat or bpy.data.materials.new("plataforma_grama")
-    me.materials.append(gravel)
-    me.materials.append(grass)
-    obj = bpy.data.objects.new("Plataforma", me)
-    col.objects.link(obj)
+    me.materials.append(bpy.data.materials.get("plataforma_terra") or bpy.data.materials.new("plataforma_terra"))
+    old = bpy.data.objects.get("PlataformaTerra")
+    if old is not None:
+        bpy.data.objects.remove(old, do_unlink=True)
+    if faces:
+        col.objects.link(bpy.data.objects.new("PlataformaTerra", me))
     return faces
 
 
@@ -308,8 +418,8 @@ def clear_trees(objects, W, D):
 def export_game(col):
     galpao = [o for o in bpy.data.collections["GALPAO"].objects if o.type == "MESH"]
     write_game_simple(GAME_GALPAO, galpao, lambda name, index: name.replace("galpao_", ""))
-    plat = [o for o in col.objects if o.name == "Plataforma"]
-    write_game_simple(GAME_PLATFORM, plat, lambda name, index: "cascalho" if index == 0 else "grama")
+    plat = [o for o in col.objects if o.name in ("Plataforma", "PlataformaGrama", "PlataformaTerra")]
+    write_game_simple(GAME_PLATFORM, plat, lambda name, index: "terra" if name.startswith("plataforma_terra") else "cascalho" if "GRAVEL" in name.upper() or "cascalho" in name else "grama")
     print("[MSC Duo] exportado para o jogo:", GAME_GALPAO, GAME_PLATFORM)
 
 

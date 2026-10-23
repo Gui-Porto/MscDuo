@@ -29,6 +29,7 @@ namespace MscDuo.Sync
                 "RCO_RUSCKO12(270)", "FLATBED", "BOAT", "COMBINE(350-400psi)",
             };
             foreach (var spec in VehicleCloner.Specs) names.Add(spec.Root + VehicleCloner.Suffix);
+            foreach (var extra in ExtraVehicles.Roots) if (!names.Contains(extra)) names.Add(extra);
             return names.ToArray();
         }
 
@@ -166,10 +167,25 @@ namespace MscDuo.Sync
         internal static Dictionary<string, GameObject> FindRoots()
         {
             var found = new Dictionary<string, GameObject>();
+            var scores = new Dictionary<string, int>();
             foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
-                if (t.parent == null && t.hideFlags == HideFlags.None && Array.IndexOf(Vehicles, t.name) >= 0 && !found.ContainsKey(t.name))
-                    found[t.name] = t.gameObject;
+            {
+                if (t.parent != null || t.hideFlags != HideFlags.None || Array.IndexOf(Vehicles, t.name) < 0) continue;
+                var score = Score(t);
+                int best;
+                if (scores.TryGetValue(t.name, out best) && best >= score) continue;
+                scores[t.name] = score;
+                found[t.name] = t.gameObject;
+            }
             return found;
+        }
+
+        static int Score(Transform t)
+        {
+            var score = 0;
+            if (t.GetComponent<Rigidbody>() != null) score += 2;
+            if (t.GetComponentsInChildren<PlayMakerFSM>(true).Length > 0) score += 1;
+            return score;
         }
 
         static GameObject RootOf(string name, float now)

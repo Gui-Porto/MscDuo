@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using MSCLoader;
+using MscDuo.Duplication;
 using MscDuo.Player;
 using MscDuo.Sync;
 using UnityEngine;
@@ -61,6 +62,40 @@ namespace MscDuo.Net
                 if (!session.Connected || session.transport is LoopbackTransport) return;
                 session.Broadcast(MessageType.Interaction, w => InteractionSync.WriteInteraction(w, key, state, fsm), Channel.Reliable);
             });
+            WarehouseGates.Bind(gate =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.GateState, gate.Write, Channel.Reliable);
+            });
+            ItemPurchases.Bind((key, id) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.ItemBought, w => { w.Write(key); w.Write(id); }, Channel.Reliable);
+            }, (theirs, mine) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.ItemLinked, w => { w.Write(mine); w.Write(theirs); }, Channel.Reliable);
+            });
+            WarehouseCart.Bind(index =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.CartState, w => WarehouseCart.Write(w, index), Channel.Unreliable);
+            });
+            WarehouseToggles.Bind((key, value) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.Toggle, w => { w.Write(key); w.Write(value); }, Channel.Reliable);
+            });
+            LiftCloner.Bind((position, moving) =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.LiftState, w => { w.Write(position); w.Write(moving); }, moving ? Channel.Unreliable : Channel.Reliable);
+            });
+            WarehouseExterior.Bind(() =>
+            {
+                if (!session.Connected || session.transport is LoopbackTransport) return;
+                session.Broadcast(MessageType.ExteriorLight, WarehouseExterior.Write, Channel.Reliable);
+            });
             ItemRegistry.Forget();
             ModConsole.Print($"<color=orange>[MSC Duo]</color> sessão iniciada ({transport.Name}).");
         }
@@ -69,6 +104,12 @@ namespace MscDuo.Net
         {
             if (Current == null) return;
             InteractionSync.Bind(null);
+            WarehouseGates.Bind(null);
+            WarehouseExterior.Bind(null);
+            LiftCloner.Bind(null);
+            WarehouseToggles.Bind(null);
+            ItemPurchases.Bind(null, null);
+            WarehouseCart.Bind(null);
             if (!Current.transport.IsHost)
             {
                 PlayerContext.SaveActive();
@@ -100,6 +141,7 @@ namespace MscDuo.Net
             TickCars(now, sendDue);
             TimeSync.Tick(now, transport.IsHost, Connected, body => Broadcast(MessageType.TimeState, body, Channel.Reliable));
             SleepSync.Tick(now, Connected, waiting => Broadcast(MessageType.SleepState, w => w.Write(waiting), Channel.Reliable));
+            if (!transport.IsHost && Connected && !(transport is LoopbackTransport)) WarehouseGates.Tick(now, () => Broadcast(MessageType.GateRequest, null, Channel.Reliable));
             if (!transport.IsHost) SaveTransfer.Tick(() => Broadcast(MessageType.SaveRequest, null, Channel.Reliable));
             if (now >= nextHandshake)
             {
@@ -248,8 +290,51 @@ namespace MscDuo.Net
                     case MessageType.Interaction:
                         InteractionSync.ReadInteraction(reader);
                         break;
+                    case MessageType.GateState:
+                        WarehouseGates.Read(reader);
+                        break;
+                    case MessageType.ItemBought:
+                        ItemPurchases.ReadAnnounce(reader);
+                        break;
+                    case MessageType.ItemLinked:
+                        ItemPurchases.ReadLink(reader);
+                        break;
+                    case MessageType.CartState:
+                        WarehouseCart.Read(reader);
+                        break;
+                    case MessageType.Toggle:
+                        WarehouseToggles.Read(reader);
+                        break;
+                    case MessageType.LiftState:
+                        LiftCloner.Read(reader);
+                        break;
+                    case MessageType.ExteriorLight:
+                        WarehouseExterior.Read(reader);
+                        break;
+                    case MessageType.GateRequest:
+                        if (transport.IsHost)
+                            foreach (var gate in WarehouseGates.All)
+                                if (gate != null) Send(packet.From, MessageType.GateState, gate.Write, Channel.Reliable);
+                        if (transport.IsHost) Send(packet.From, MessageType.ExteriorLight, WarehouseExterior.Write, Channel.Reliable);
+                        if (transport.IsHost) Send(packet.From, MessageType.LiftState, LiftCloner.Write, Channel.Reliable);
+                        if (transport.IsHost)
+                            for (int i = 0; i < WarehouseCart.Count; i++)
+                            {
+                                var cartIndex = i;
+                                Send(packet.From, MessageType.CartState, w => WarehouseCart.Write(w, cartIndex), Channel.Reliable);
+                            }
+                        if (transport.IsHost)
+                        {
+                            var requester = packet.From;
+                            WarehouseToggles.WriteAll(body => Send(requester, MessageType.Toggle, body, Channel.Reliable));
+                        }
+                        break;
                     case MessageType.SaveRequest:
-                        if (transport.IsHost) Send(packet.From, MessageType.SaveData, SaveTransfer.WriteSave, Channel.Reliable);
+                        if (transport.IsHost)
+                            foreach (var chunk in SaveTransfer.Chunks()) Send(packet.From, MessageType.SaveChunk, chunk, Channel.Reliable);
+                        break;
+                    case MessageType.SaveChunk:
+                        if (!transport.IsHost) SaveTransfer.ReadChunk(reader);
                         break;
                     case MessageType.SaveData:
                         if (!transport.IsHost) SaveTransfer.ReadSave(reader);

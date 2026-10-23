@@ -64,6 +64,10 @@
     <EmbeddedResource Include="../../blender/aterro.obj" LogicalName="MscDuo.aterro.obj" />
     <EmbeddedResource Include="../../blender/galpao_jogo.obj" LogicalName="MscDuo.galpao_jogo.obj" />
     <EmbeddedResource Include="../../blender/plataforma_jogo.obj" LogicalName="MscDuo.plataforma_jogo.obj" />
+    <EmbeddedResource Include="../../blender/moveis_jogo.obj" LogicalName="MscDuo.moveis_jogo.obj" />
+    <EmbeddedResource Include="../../blender/moveis_tex_jogo/*.jpg" LogicalName="MscDuo.moveis.%(Filename).jpg" />
+    <EmbeddedResource Include="../../blender/sons_galpao/*.wav" LogicalName="MscDuo.galpao_som.%(Filename).wav" />
+    <EmbeddedResource Include="../../blender/moveis_tex_jogo/*.png" LogicalName="MscDuo.moveis.%(Filename).png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/aco.png" LogicalName="MscDuo.galpao.aco.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/chapa.png" LogicalName="MscDuo.galpao.chapa.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/concreto.png" LogicalName="MscDuo.galpao.concreto.png" />
@@ -75,6 +79,14 @@
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/porta.png" LogicalName="MscDuo.galpao.porta.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/portao.png" LogicalName="MscDuo.galpao.portao.png" />
     <EmbeddedResource Include="../../blender/galpao_tex_jogo/vidro.png" LogicalName="MscDuo.galpao.vidro.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/azulejo.png" LogicalName="MscDuo.galpao.azulejo.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/tapete_lounge.png" LogicalName="MscDuo.galpao.tapete_lounge.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/piso_banheiro.png" LogicalName="MscDuo.galpao.piso_banheiro.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/lambri.png" LogicalName="MscDuo.galpao.lambri.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/tapete_sala.png" LogicalName="MscDuo.galpao.tapete_sala.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/tapete_jogos.png" LogicalName="MscDuo.galpao.tapete_jogos.png" />
+    <EmbeddedResource Include="../../blender/galpao_tex_jogo/tapete_escritorio.png" LogicalName="MscDuo.galpao.tapete_escritorio.png" />
+    <EmbeddedResource Include="../../blender/sons_portao/motor.wav" LogicalName="MscDuo.portao.motor.wav" />
   </ItemGroup>
 
   <Target Name="DeployToMods" AfterTargets="Build">

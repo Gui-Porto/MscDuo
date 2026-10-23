@@ -72,9 +72,17 @@ namespace MscDuo.Duplication
             Step("árvores", () => TreeClearer.Apply(Clone));
             Step("terreno", () => TerrainFlattener.Apply(Clone));
             Step("rampa", () => ApronExtension.Apply(Clone));
+            Step("cerca viva", () => TerrainFlattener.SettleHedges(Clone));
+            Step("composto", () => HideCompost(Clone));
             Step("contas", () => House2Bills.Setup(Clone));
             Step("satsuma", () => SatsumaCloner.Spawn(Original, Clone));
             Step("veículos", () => VehicleCloner.Spawn(Original, Clone, SatsumaCloner.Clone));
+        }
+
+        static void HideCompost(GameObject house)
+        {
+            var compost = FindDeep(house.transform, "komposti");
+            if (compost != null) compost.gameObject.SetActive(false);
         }
 
         static void Step(string name, System.Action action)
@@ -94,6 +102,7 @@ namespace MscDuo.Duplication
             Step("árvores", () => TreeClearer.Apply(Clone));
             Step("terreno", () => TerrainFlattener.Apply(Clone));
             Step("rampa", () => ApronExtension.Apply(Clone));
+            Step("cerca viva", () => TerrainFlattener.SettleHedges(Clone));
         }
 
         internal static bool FaceTowards(Vector3 target)
@@ -173,6 +182,8 @@ namespace MscDuo.Duplication
                 stats.Removed++;
             }
         }
+
+        internal static void FixStaticBatching(GameObject original, GameObject clone) => FixStaticBatching(original, clone, new CloneStats());
 
         static void FixStaticBatching(GameObject original, GameObject clone, CloneStats stats)
         {
