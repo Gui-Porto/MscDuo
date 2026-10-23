@@ -25,3 +25,8 @@ desktop.ini
 .DS_Store
 
 dist/
+*.dll
+*.exe
+*.zip
+*.7z
+*.rar
