@@ -23,4 +23,11 @@ unity/[Ll]ogs/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+dist/
+*.dll
+*.exe
+*.zip
+*.7z
+*.rar
 __pycache__/
