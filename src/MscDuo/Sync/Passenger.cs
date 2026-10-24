@@ -13,6 +13,8 @@ namespace MscDuo.Sync
         const float CarEyes = 0.12f;
         const float StepOut = 1.1f;
         const float BodyRadius = 0.3f;
+        const string DriveTrigger = "PlayerTrigger/DriveTrigger";
+        const float TriggerEyes = 0.65f;
         const string Hint = "PASSAGEIRO (ENTER)";
         static readonly string[] SingleSeat = { "kekmet", "combine", "boat", "flatbed" };
         static readonly string[] Movement = { "CharacterMotor", "FPSInputController" };
@@ -82,9 +84,10 @@ namespace MscDuo.Sync
             foreach (var single in SingleSeat)
                 if (link.Label.StartsWith(single)) return false;
             Transform pivot;
-            if (!pivots.TryGetValue(link.Root, out pivot)) pivots[link.Root] = pivot = Find(link.Root, "DriverHeadPivot");
+            if (!pivots.TryGetValue(link.Root, out pivot)) pivots[link.Root] = pivot = Find(link.Root, "DriverHeadPivot") ?? link.Root.Find(DriveTrigger);
             if (pivot == null) return false;
             local = driver = link.Root.InverseTransformPoint(pivot.position);
+            if (pivot.name != "DriverHeadPivot") local.y = driver.y += TriggerEyes;
             if (bike) local.z -= BikeBack;
             else local.x = -local.x;
             return true;
