@@ -15,7 +15,7 @@ namespace MscDuo.Sync
         const float MoveThreshold = 0.3f;
         const float SettleSeconds = 2f;
         const float MaxSettleAfterLeaving = 6f;
-        const float RootScanInterval = 10f;
+        const float RootScanInterval = 60f;
         const float YieldSeconds = 1f;
         const int MaxSnapshots = 32;
 
