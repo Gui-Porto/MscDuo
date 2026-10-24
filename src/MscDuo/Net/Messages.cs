@@ -33,7 +33,7 @@ namespace MscDuo.Net
 
     internal static class Protocol
     {
-        internal const ushort Version = 20;
+        internal const ushort Version = 22;
     }
 
     internal struct PlayerStateMessage
@@ -84,6 +84,7 @@ namespace MscDuo.Net
         internal bool Driving;
         internal float Rpm;
         internal float Throttle;
+        internal bool Running;
 
         internal void Write(BinaryWriter w)
         {
@@ -100,6 +101,7 @@ namespace MscDuo.Net
             w.Write(Driving);
             w.Write(Rpm);
             w.Write(Throttle);
+            w.Write(Running);
         }
 
         internal static CarStateMessage Read(BinaryReader r) => new CarStateMessage
@@ -114,6 +116,7 @@ namespace MscDuo.Net
             Driving = r.ReadBoolean(),
             Rpm = r.ReadSingle(),
             Throttle = r.ReadSingle(),
+            Running = r.ReadBoolean(),
         };
 
         static void Write(BinaryWriter w, Vector3 v)

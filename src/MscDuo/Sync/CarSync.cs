@@ -247,6 +247,8 @@ namespace MscDuo.Sync
             Drivetrain drivetrain;
             bool wasKinematic;
             bool drivetrainWasEnabled;
+            GameObject[] exhausts = new GameObject[0];
+            bool[] exhaustsWere = new bool[0];
             uint sequence;
 
             internal CarLink(int index, string label, string rootName)
@@ -269,6 +271,8 @@ namespace MscDuo.Sync
                     car = current;
                     body = car != null ? car.GetComponent<Rigidbody>() : null;
                     drivetrain = car != null ? car.GetComponentInChildren<Drivetrain>() : null;
+                    exhausts = car != null ? ExhaustsOf(car) : new GameObject[0];
+                    exhaustsWere = new bool[exhausts.Length];
                 }
                 Ready = body != null && car.activeInHierarchy;
                 return Ready;
@@ -286,7 +290,24 @@ namespace MscDuo.Sync
                 Driving = driving,
                 Rpm = drivetrain != null && drivetrain.enabled ? drivetrain.rpm : 0f,
                 Throttle = drivetrain != null && drivetrain.enabled ? drivetrain.throttle : 0f,
+                Running = Running(),
             };
+
+            bool Running()
+            {
+                if (exhausts.Length == 0) return drivetrain != null && drivetrain.enabled;
+                foreach (var exhaust in exhausts)
+                    if (exhaust != null && exhaust.activeSelf) return true;
+                return false;
+            }
+
+            static GameObject[] ExhaustsOf(GameObject root)
+            {
+                var found = new List<GameObject>();
+                foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    if (t.name == "Exhaust" && t.GetComponentsInChildren<AudioSource>(true).Length > 0) found.Add(t.gameObject);
+                return found.ToArray();
+            }
 
             internal void Apply(float renderTime)
             {
@@ -299,6 +320,7 @@ namespace MscDuo.Sync
                         drivetrainWasEnabled = drivetrain.enabled;
                         drivetrain.enabled = false;
                     }
+                    for (int e = 0; e < exhausts.Length; e++) exhaustsWere[e] = exhausts[e] != null && exhausts[e].activeSelf;
                     Applying = true;
                 }
 
@@ -337,6 +359,8 @@ namespace MscDuo.Sync
                     drivetrain.rpm = latest.Rpm;
                     drivetrain.throttle = latest.Throttle;
                 }
+                foreach (var exhaust in exhausts)
+                    if (exhaust != null && exhaust.activeSelf != latest.Running) exhaust.SetActive(latest.Running);
             }
 
             internal void Release()
@@ -351,6 +375,8 @@ namespace MscDuo.Sync
                         body.angularVelocity = last.AngularVelocity;
                     }
                     if (drivetrain != null) drivetrain.enabled = drivetrainWasEnabled;
+                    for (int e = 0; e < exhausts.Length; e++)
+                        if (exhausts[e] != null && exhausts[e].activeSelf != exhaustsWere[e]) exhausts[e].SetActive(exhaustsWere[e]);
                 }
                 Applying = false;
                 Snapshots.Clear();
