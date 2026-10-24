@@ -38,12 +38,20 @@ namespace MscDuo.Net
 
     internal struct PlayerStateMessage
     {
+        internal const byte Player2Flag = 1;
+        internal const byte PassengerFlag = 2;
+
         internal uint Sequence;
         internal float Time;
         internal Vector3 Position;
         internal float Yaw;
         internal float Pitch;
         internal byte Flags;
+        internal byte Vehicle;
+        internal Vector3 Head;
+        internal ushort Gestures;
+        internal byte Voice;
+        internal byte VoiceCount;
 
         internal void Write(BinaryWriter w)
         {
@@ -55,6 +63,13 @@ namespace MscDuo.Net
             w.Write(Angle16(Yaw));
             w.Write(Angle16(Pitch));
             w.Write(Flags);
+            w.Write(Vehicle);
+            w.Write(Head.x);
+            w.Write(Head.y);
+            w.Write(Head.z);
+            w.Write(Gestures);
+            w.Write(Voice);
+            w.Write(VoiceCount);
         }
 
         internal static PlayerStateMessage Read(BinaryReader r) => new PlayerStateMessage
@@ -65,6 +80,11 @@ namespace MscDuo.Net
             Yaw = FromAngle16(r.ReadUInt16()),
             Pitch = FromAngle16(r.ReadUInt16()),
             Flags = r.ReadByte(),
+            Vehicle = r.ReadByte(),
+            Head = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+            Gestures = r.ReadUInt16(),
+            Voice = r.ReadByte(),
+            VoiceCount = r.ReadByte(),
         };
 
         static ushort Angle16(float degrees) => (ushort)Mathf.RoundToInt(Mathf.Repeat(degrees, 360f) / 360f * 65535f);
