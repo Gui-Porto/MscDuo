@@ -15,7 +15,8 @@ namespace MscDuo.Sync
         const float MoveThreshold = 0.3f;
         const float SettleSeconds = 2f;
         const float MaxSettleAfterLeaving = 6f;
-        const float RootScanInterval = 10f;
+        const float RootScanInterval = 60f;
+        const float RootFindInterval = 2f;
         const float YieldSeconds = 1f;
         const int MaxSnapshots = 32;
 
@@ -36,6 +37,7 @@ namespace MscDuo.Sync
         static readonly List<CarLink> links = new List<CarLink>();
         static readonly Dictionary<string, GameObject> roots = new Dictionary<string, GameObject>();
         static float nextRootScan;
+        static readonly Dictionary<string, float> nextRootFind = new Dictionary<string, float>();
         static Transform player;
         static HutongGames.PlayMaker.FsmString currentVehicle;
 
@@ -192,6 +194,13 @@ namespace MscDuo.Sync
         {
             GameObject go;
             if (roots.TryGetValue(name, out go) && go != null) return go;
+            float findAt;
+            if (name.IndexOf('/') < 0 && (!nextRootFind.TryGetValue(name, out findAt) || now >= findAt))
+            {
+                nextRootFind[name] = now + RootFindInterval;
+                go = GameObject.Find(name);
+                if (go != null && go.transform.parent == null && go.GetComponent<Rigidbody>() != null) return roots[name] = go;
+            }
             if (now < nextRootScan) return null;
             nextRootScan = now + RootScanInterval;
             roots.Clear();

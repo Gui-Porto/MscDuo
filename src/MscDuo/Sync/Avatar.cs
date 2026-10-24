@@ -14,6 +14,8 @@ namespace MscDuo.Sync
         const float WalkAnimSpeed = 1.4f;
         const float NameHeight = 2.1f;
         const float EyesAhead = 0.08f;
+        const float EyesBelowTop = 0.11f;
+        const float DefaultEyesAboveHead = 0.1f;
         const float DefaultFeetBelowPivot = 0.28f;
         const float SkinWidth = 0.03f;
         const int PeePoints = 14;
@@ -113,6 +115,8 @@ namespace MscDuo.Sync
         Vector3 lastFeet;
         bool hasLast;
         float speed;
+        float eyesAboveHead = DefaultEyesAboveHead;
+        bool eyesMeasured;
 
         internal Avatar(string name)
         {
@@ -295,6 +299,12 @@ namespace MscDuo.Sync
                 moved.y = 0f;
                 speed = Mathf.Lerp(speed, moved.magnitude / dt, Mathf.Clamp01(dt * 8f));
             }
+            if (hasLast && !eyesMeasured && !crouching && head != body)
+            {
+                eyesMeasured = true;
+                eyesAboveHead = mesh.bounds.max.y - EyesBelowTop - head.position.y;
+                ModConsole.Print($"<color=orange>[MSC Duo]</color> avatar {name}: olhos {eyesAboveHead:0.000} m acima do osso da cabeça.");
+            }
             lastFeet = feet;
             hasLast = true;
 
@@ -333,7 +343,7 @@ namespace MscDuo.Sync
             root.transform.parent = vehicle;
             root.transform.rotation = vehicle.rotation;
             root.transform.position = headWorld;
-            if (head != null) root.transform.position += headWorld - vehicle.forward * EyesAhead - head.position;
+            if (head != null) root.transform.position += headWorld - vehicle.forward * EyesAhead - vehicle.up * eyesAboveHead - head.position;
             if (bike && !passenger) HoldHandlebar(vehicle);
             FaceCamera();
         }

@@ -21,6 +21,8 @@ namespace MscDuo.Duplication
         readonly Dictionary<PlayMakerFSM, int> attempts = new Dictionary<PlayMakerFSM, int>();
         readonly List<string> reassembled = new List<string>();
         const int MaxAttempts = 3;
+        static List<GameObject> originals = new List<GameObject>();
+        static Transform player;
 
         internal static void Watch()
         {
@@ -43,6 +45,7 @@ namespace MscDuo.Duplication
             next = pass < Passes.Length ? started + Passes[pass] : Time.time + Interval;
             var report = pass <= Passes.Length ? new StringBuilder() : null;
             var before = orphans + relinked + sounds + freed;
+            originals = new List<GameObject>(OriginalRoots());
             Sweep(report);
             var fixedNow = Reassemble();
             if (fixedNow > 0)
@@ -65,7 +68,7 @@ namespace MscDuo.Duplication
                 var part = data.FsmVariables.FindFsmGameObject("ThisPart");
                 var trigger = data.FsmVariables.FindFsmGameObject("Trigger");
                 if (installed == null || !installed.Value || part == null || part.Value == null || trigger == null || trigger.Value == null) continue;
-                if (part.Value.transform.IsChildOf(car.transform) || Inside(part.Value.transform, OriginalRoots())) continue;
+                if (part.Value.transform.IsChildOf(car.transform) || Inside(part.Value.transform, originals)) continue;
                 if (!trigger.Value.transform.IsChildOf(car.transform)) continue;
                 int tries;
                 attempts.TryGetValue(data, out tries);
@@ -118,8 +121,13 @@ namespace MscDuo.Duplication
 
         static bool OnPlayer(Transform t)
         {
-            var player = GameObject.Find("PLAYER");
-            return player != null && t.IsChildOf(player.transform);
+            if (player == null)
+            {
+                var go = GameObject.Find("PLAYER");
+                if (go == null) return false;
+                player = go.transform;
+            }
+            return t.IsChildOf(player);
         }
 
         static bool Settled(GameObject car)
@@ -185,7 +193,7 @@ namespace MscDuo.Duplication
                 {
                     if (joint == null || joint.gameObject == clone || OnPlayer(joint.transform)) continue;
                     var body = joint.connectedBody;
-                    var p1 = body != null && Inside(body.transform, OriginalRoots());
+                    var p1 = body != null && Inside(body.transform, originals);
                     var used = referenced.Contains(joint);
                     report?.AppendLine($"{PathOf(joint.transform)} | {joint.GetType().Name} | ligada a {(body != null ? PathOf(body.transform) : "mundo")} | {(p1 ? "SATSUMA 1" : "ok")} | referenciada={used} | iguais no objeto={joint.GetComponents(joint.GetType()).Length}");
 
