@@ -198,6 +198,12 @@ namespace MscDuo.Sync
             return roots.TryGetValue(name, out go) ? go : null;
         }
 
+        internal static bool Following(int index)
+        {
+            var link = Find((byte)index);
+            return link != null && link.Applying;
+        }
+
         static CarLink Find(byte index)
         {
             foreach (var link in links)

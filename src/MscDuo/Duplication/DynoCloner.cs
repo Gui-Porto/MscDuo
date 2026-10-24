@@ -100,6 +100,9 @@ namespace MscDuo.Duplication
 
             int fsms = 0, remapped = 0;
             PlayMakerFSM clonedComputer = null;
+            PlayMakerFSM distance = null;
+            GameObject owner = null;
+            var all = new List<PlayMakerFSM>();
             foreach (var copy in copies)
             {
                 copy.SetActive(true);
@@ -109,14 +112,38 @@ namespace MscDuo.Duplication
                     StripHooks(fsm);
                     remapped += SatsumaCloner.Remap(fsm, map);
                     if (fsm.gameObject.name == "Computer" && fsm.FsmName == "Use") clonedComputer = fsm;
-                    if (fsm.gameObject.name == "AttachPoint") copy.AddComponent<DynoOwner>().Setup(fsm, index);
+                    if (fsm.gameObject.name == "AttachPoint" && fsm.FsmName == "Distance") { distance = fsm; owner = copy; }
+                    all.Add(fsm);
                     fsms++;
                 }
             }
+            DynoOwner dyno = null;
+            if (distance != null)
+            {
+                dyno = owner.AddComponent<DynoOwner>();
+                dyno.Setup(distance, index + 1, all.ToArray());
+            }
             if (clonedComputer != null) MakeFree(clonedComputer);
-            var car = carMap != null ? SatsumaCloner.Clone : (SatsumaCloner.Original != null ? SatsumaCloner.Original : Find("SATSUMA(557kg, 248)"));
-            if (clonedComputer != null) InjectCar(clonedComputer, car);
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> dinamômetro {index + 1} no galpão: {fsms} FSMs, {remapped} referências, ligado a {(car != null ? car.name : "nada")}.");
+            if (clonedComputer != null && dyno != null) InjectCar(clonedComputer, () => dyno.Drivetrain);
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> dinamômetro {index + 1} no galpão: {fsms} FSMs, {remapped} referências, começa na Satsuma {index + 1} e passa para a que parar nos rolos.");
+        }
+
+        static GameObject Car(int index) =>
+            index == 1 ? (SatsumaCloner.Original != null ? SatsumaCloner.Original : Find("SATSUMA(557kg, 248)")) : SatsumaCloner.Clone;
+
+        static Dictionary<Object, Object> reverse;
+        static Dictionary<Object, Object> reverseOf;
+
+        static Dictionary<Object, Object> Reverse()
+        {
+            var map = SatsumaCloner.Map;
+            if (map == null) return null;
+            if (reverseOf == map) return reverse;
+            reverse = new Dictionary<Object, Object>();
+            foreach (var pair in map)
+                if (pair.Key != null && pair.Value != null) reverse[pair.Value] = pair.Key;
+            reverseOf = map;
+            return reverse;
         }
 
         internal static void StripHooks(PlayMakerFSM fsm)
@@ -150,9 +177,15 @@ namespace MscDuo.Duplication
 
         static void InjectCar(PlayMakerFSM computer, GameObject car)
         {
-            if (car == null || computer.Fsm.GetState("State 1") == null || !injected.Add(computer.GetInstanceID())) return;
+            if (car == null) return;
             var drivetrain = car.GetComponent<Drivetrain>();
-            computer.FsmInject("State 1", () => PointMeasureAt(drivetrain), false, 0, false);
+            InjectCar(computer, () => drivetrain);
+        }
+
+        static void InjectCar(PlayMakerFSM computer, System.Func<Drivetrain> drivetrain)
+        {
+            if (computer.Fsm.GetState("State 1") == null || !injected.Add(computer.GetInstanceID())) return;
+            computer.FsmInject("State 1", () => PointMeasureAt(drivetrain()), false, 0, false);
         }
 
         static void PointMeasureAt(Drivetrain drivetrain)
@@ -192,21 +225,59 @@ namespace MscDuo.Duplication
 
         class DynoOwner : MonoBehaviour
         {
-            PlayMakerFSM attach;
-            int index;
+            const float Reach = 3f;
+            const string Idle = "State 1";
 
-            internal void Setup(PlayMakerFSM fsm, int dyno)
+            PlayMakerFSM attach;
+            PlayMakerFSM[] fsms;
+            int car;
+
+            internal Drivetrain Drivetrain
+            {
+                get
+                {
+                    var root = Car(car);
+                    return root != null ? root.GetComponent<Drivetrain>() : null;
+                }
+            }
+
+            internal void Setup(PlayMakerFSM fsm, int satsuma, PlayMakerFSM[] all)
             {
                 attach = fsm;
-                index = dyno;
+                car = satsuma;
+                fsms = all;
             }
 
             void Update()
             {
                 if (attach == null) return;
+                if (attach.ActiveStateName == Idle) Follow();
                 var session = NetSession.Current;
-                var mine = session == null || !session.Connected || (index == 0) == session.Transport.IsHost;
+                var mine = session == null || !session.Connected || !Sync.CarSync.Following(car);
                 if (attach.enabled != mine) attach.enabled = mine;
+            }
+
+            void Follow()
+            {
+                var other = car == 1 ? 2 : 1;
+                var near = Point(other);
+                if (near == null) return;
+                var here = attach.transform.position;
+                var distance = (near.position - here).sqrMagnitude;
+                if (distance > Reach * Reach) return;
+                var current = Point(car);
+                if (current != null && (current.position - here).sqrMagnitude <= distance) return;
+                var map = other == 2 ? SatsumaCloner.Map : Reverse();
+                if (map == null) return;
+                foreach (var fsm in fsms)
+                    if (fsm != null) SatsumaCloner.Remap(fsm, map);
+                car = other;
+            }
+
+            static Transform Point(int index)
+            {
+                var root = Car(index);
+                return root != null ? root.transform.Find("CarSimulation/DynoDistance") : null;
             }
         }
     }
